@@ -439,6 +439,38 @@ def sql_depuis_prisma(chemin):
          '{entree}', '--script'], 'Prisma', vers_stdout=True, env=env)
 
 
+def sql_depuis_db(url):
+    """Dump a live database's schema to SQL (CLI only). SECURITY: never expose
+    this on a public service — it makes the process connect to any database the
+    caller names, including internal ones (SSRF). Returns (sql_path, dialect)."""
+    import os
+    env = dict(os.environ)
+    if url.startswith(('postgres://', 'postgresql://')):
+        outil = 'pg_dump'
+        cmd = ['pg_dump', '-s', '--no-owner', '--no-privileges', url]
+        dialecte = 'postgres'
+    elif url.startswith(('mysql://', 'mariadb://')):
+        from urllib.parse import urlparse, unquote
+        u = urlparse(url)
+        outil = 'mysqldump'
+        cmd = ['mysqldump', '--no-data', '--skip-comments', '--column-statistics=0',
+               '-h', u.hostname or 'localhost', '-P', str(u.port or 3306),
+               '-u', unquote(u.username or 'root'), u.path.lstrip('/')]
+        if u.password:
+            env['MYSQL_PWD'] = unquote(u.password)  # avoids the password on argv
+        dialecte = 'mysql'
+    else:
+        sys.exit('--db expects a postgresql:// or mysql:// URL')
+    if not shutil.which(outil):
+        sys.exit(f'--db needs {outil} in PATH')
+    r = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    if r.returncode or not r.stdout.strip():
+        sys.exit(f'{outil} failed:\n{r.stderr.strip()}')
+    sortie = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'db.sql'
+    sortie.write_text(r.stdout)
+    return str(sortie), dialecte
+
+
 def analyser_mwb(chemin):
     """Parse a MySQL Workbench .mwb model natively (zip + GRT XML, stdlib only).
 
@@ -882,8 +914,11 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
 
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
-    ap.add_argument('sql', metavar='sql|dbm|dbml|mwb|rb|mmd|ts',
-                    help='SQL DDL, or a .dbm/.dbml/.mwb/.prisma model file')
+    ap.add_argument('sql', nargs='?', metavar='sql|dbm|dbml|mwb|rb|mmd|ts',
+                    help='SQL DDL, or a .dbm/.dbml/.mwb/.prisma/.ts/.mmd model (omit with --db)')
+    ap.add_argument('--db', metavar='URL',
+                    help='dump a live database schema instead (postgresql://… or '
+                         'mysql://…). CLI ONLY — never expose on a public service (SSRF)')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
     ap.add_argument('--dbm', help='pgModeler model to reuse table positions from')
@@ -903,34 +938,44 @@ def principal():
                     help="make the --credit badge a link to this URL")
     args = ap.parse_args()
 
-    source = args.sql
-    dialecte = args.dialect
-    if source.endswith('.dbm'):
-        if not args.dbm:
-            args.dbm = source  # the model provides its own positions
-        source = sql_depuis_dbm(source)
-        dialecte = 'postgres'  # pgmodeler-cli always exports PostgreSQL
-    elif source.endswith('.dbml'):
-        source = sql_depuis_dbml(source)
-        dialecte = 'postgres'  # dbml2sql emits PostgreSQL
-    elif source.endswith('.prisma'):
-        source = sql_depuis_prisma(source)
-        # keep 'auto': prisma emits SQL in the schema's provider dialect
-        # (postgres, mysql, sqlite, sqlserver), which auto detects
-    if source.endswith('.mwb'):
-        tables, fks = normaliser_casse(*analyser_mwb(source))
-        dialecte = 'mysql'
-    elif source.endswith('.rb'):
-        tables, fks = normaliser_casse(*analyser_schema_rb(source))
-        dialecte = 'rails'
-    elif source.endswith(('.mmd', '.mermaid', '.md')):
-        tables, fks = analyser_mermaid(source)
-        dialecte = 'mermaid'
-    elif source.endswith('.ts'):
-        tables, fks = normaliser_casse(*analyser_drizzle(source))
-        dialecte = 'drizzle'
-    else:
+    if args.db:
+        source, dialecte = sql_depuis_db(args.db)
         tables, fks, dialecte = analyser(source, dialecte)
+        nom_defaut = re.sub(r'\W+', '_', args.db.rstrip('/').rsplit('/', 1)[-1].split('?')[0]) or 'database'
+        sortie_defaut = nom_defaut + '.html'
+    else:
+        if not args.sql:
+            ap.error('provide a model file, or --db URL to read a live database')
+        source = args.sql
+        dialecte = args.dialect
+        nom_defaut = Path(args.sql).stem
+        sortie_defaut = str(Path(args.sql).with_suffix('.html'))
+        if source.endswith('.dbm'):
+            if not args.dbm:
+                args.dbm = source  # the model provides its own positions
+            source = sql_depuis_dbm(source)
+            dialecte = 'postgres'  # pgmodeler-cli always exports PostgreSQL
+        elif source.endswith('.dbml'):
+            source = sql_depuis_dbml(source)
+            dialecte = 'postgres'  # dbml2sql emits PostgreSQL
+        elif source.endswith('.prisma'):
+            source = sql_depuis_prisma(source)
+            # keep 'auto': prisma emits SQL in the schema's provider dialect
+            # (postgres, mysql, sqlite, sqlserver), which auto detects
+        if source.endswith('.mwb'):
+            tables, fks = normaliser_casse(*analyser_mwb(source))
+            dialecte = 'mysql'
+        elif source.endswith('.rb'):
+            tables, fks = normaliser_casse(*analyser_schema_rb(source))
+            dialecte = 'rails'
+        elif source.endswith(('.mmd', '.mermaid', '.md')):
+            tables, fks = analyser_mermaid(source)
+            dialecte = 'mermaid'
+        elif source.endswith('.ts'):
+            tables, fks = normaliser_casse(*analyser_drizzle(source))
+            dialecte = 'drizzle'
+        else:
+            tables, fks, dialecte = analyser(source, dialecte)
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements'
                  + indice_dialecte(source))
@@ -946,8 +991,8 @@ def principal():
         for f in fks:
             f['audit'] = bool(motif.search(f['nom']))
 
-    titre = args.titre or Path(args.sql).stem
-    sortie = args.sortie or str(Path(args.sql).with_suffix('.html'))
+    titre = args.titre or nom_defaut
+    sortie = args.sortie or sortie_defaut
     Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs,
                                           dialecte, args.home_url, args.logo,
                                           args.credit, args.credit_url))

@@ -38,9 +38,16 @@ a fictional library model (12 tables, 3 schemas).
 ./mcdview.py db/schema.rb       # Rails schema (native, no tool)
 ./mcdview.py diagram.mmd        # Mermaid erDiagram (native, .mmd/.md)
 ./mcdview.py schema.ts          # Drizzle ORM schema (native, no tool)
+./mcdview.py --db postgresql://user:pw@host/db   # dump a live database (CLI only)
 ```
 
 Then open the generated HTML file in a browser.
+
+`--db` reads the schema straight from a running database instead of a file:
+`postgresql://…` shells out to `pg_dump -s`, `mysql://…` to `mysqldump
+--no-data`. It is a **command-line-only** feature — never wire it behind a
+public service, since it would let a caller point the process at any host it
+can reach (SSRF).
 
 A `.dbm` input needs `pgmodeler-cli` in the PATH: mcdview delegates the
 SQL generation to it (pgModeler resolves its relationships at export time),
@@ -77,6 +84,7 @@ In the page:
 | `--logo FILE` | Replace the header logo with this image (svg/png/jpg…, shown 22×22) |
 | `--credit TEXT` | Discreet attribution badge, bottom-right (off by default) |
 | `--credit-url URL` | Make the `--credit` badge a link to this URL |
+| `--db URL` | Read a live database's schema instead of a file (`postgresql://…` via `pg_dump`, `mysql://…` via `mysqldump`); CLI only |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
@@ -175,6 +183,18 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.19.0 — Read a live database via --db (2026-08-28)
+
+- `--db postgresql://…` / `--db mysql://…`: dump a running database's schema
+  (`pg_dump -s` for PostgreSQL, `mysqldump --no-data` for MySQL/MariaDB) and
+  render it, no intermediate file needed. The positional model argument
+  becomes optional; the page title defaults to the database name.
+- MySQL passwords go through the `MYSQL_PWD` environment variable, never on
+  the process command line.
+- **Command-line only.** This feature must not be exposed on a public
+  service: it would let a caller make the process connect to any host it can
+  reach (SSRF). The hosted site keeps taking uploaded files only.
 
 ### v0.18.0 — Drizzle ORM schema.ts input (2026-08-28)
 
