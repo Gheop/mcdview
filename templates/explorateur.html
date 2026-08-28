@@ -99,7 +99,7 @@ function voisins(cle) {
   return [...s];
 }
 
-// --- construction des tables ---
+// --- table construction ---
 const dl = document.getElementById("noms");
 D.tables.forEach(t => {
   const cle = t.schema + "." + t.nom;
@@ -123,7 +123,7 @@ Object.keys(elems).forEach(cle => {
   origines[cle] = { x: elems[cle].offsetLeft, y: elems[cle].offsetTop };
 });
 
-// --- liens SVG ---
+// --- SVG links ---
 function centre(cle) {
   const e = elems[cle];
   return { x: e.offsetLeft + e.offsetWidth / 2, y: e.offsetTop + e.offsetHeight / 2,
@@ -192,7 +192,7 @@ vp.addEventListener("pointerup", e => {
   }
 });
 
-// --- mode focus façon DBeaver : la table au centre, ses liées en étoile ---
+// --- DBeaver-like focus mode: the table in the center, its neighbours in a star ---
 function isoler(cle) {
   focusCle = cle;
   btnRetour.hidden = false;
@@ -200,7 +200,7 @@ function isoler(cle) {
   const garde = new Set([cle, ...voisinage]);
   Object.keys(elems).forEach(c => elems[c].classList.toggle("efface", !garde.has(c)));
   Object.keys(elems).forEach(c => elems[c].classList.toggle("choisie", c === cle));
-  // étoile : la table choisie garde sa place, les voisines en cercle autour
+  // star: the chosen table keeps its place, neighbours circle around it
   const c0 = centre(cle);
   const rayon = Math.max(360, 120 + voisinage.length * 42);
   voisinage.forEach((v, i) => {
@@ -228,7 +228,7 @@ btnRetour.addEventListener("click", vueGenerale);
 document.addEventListener("keydown", e => { if (e.key === "Escape") vueGenerale(); });
 vp.addEventListener("dblclick", () => { vueGenerale(); cadrer(Object.keys(elems)); });
 
-// --- panneau de détail ---
+// --- detail panel ---
 function lienTable(cle) {
   return `<a data-cible="${cle}">${cle.split(".")[1]}</a>`;
 }
@@ -256,7 +256,7 @@ function detailler(cle) {
     a.addEventListener("click", () => isoler(a.dataset.cible)));
 }
 
-// --- recherche ---
+// --- search ---
 document.getElementById("cherche").addEventListener("change", e => {
   const v = e.target.value.trim();
   const cle = parCle[v] ? v :

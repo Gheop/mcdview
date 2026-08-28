@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""mcdview — explorateur HTML interactif d'un modèle de données PostgreSQL.
+"""mcdview — interactive HTML explorer for a PostgreSQL data model.
 
-Génère une page autonome (aucune dépendance) depuis un fichier DDL : vue
-d'ensemble des tables par schéma, clic pour isoler une table avec ses tables
-liées, panneau de détail des champs (types, PK, FK cliquables, commentaires),
-recherche.
+Generates a self-contained page (no dependency) from a DDL file: overview
+of tables grouped by schema, click to isolate a table with its related
+tables, field detail panel (types, PK, clickable FKs, comments), search.
 
-Usage :
-    mcdview.py modele.sql [-o sortie.html] [--titre "Mon projet"]
-                [--dbm modele.dbm] [--fk-audit REGEX]
+Usage:
+    mcdview.py model.sql [-o output.html] [--titre "My project"]
+                [--dbm model.dbm] [--fk-audit REGEX]
 
---dbm      : reprend les positions des tables d'un modèle pgModeler.
-             Sans lui, mcdview calcule un placement automatique.
---fk-audit : regex sur le nom des contraintes FK à classer « audit »
-             (masquées par défaut, réaffichables d'une case à cocher).
+--dbm      : reuse table positions from a pgModeler model.
+             Without it, mcdview computes an automatic layout.
+--fk-audit : regex on FK constraint names to tag as "audit"
+             (hidden by default, shown back with a checkbox).
 """
 import argparse
 import json
@@ -26,18 +25,18 @@ from pathlib import Path
 PALETTE = ['#cdebc5', '#d6e6f5', '#a8d8b9', '#f5e3c8', '#e8d5f0',
            '#f0d0d0', '#d0e8e8', '#ede5c0', '#dcd6f7', '#f5d6a6']
 
-# métriques du placement automatique (mêmes ordres de grandeur que le rendu CSS)
+# automatic-layout metrics (same orders of magnitude as the CSS rendering)
 CHAR_W, ROW_H, HDR_H = 7.6, 20.5, 34
 GAP_X, GAP_Y, ZONE_GAP, TARGET_H = 120, 70, 300, 2200
 
 
-# mots-clés ouvrant une ligne de contrainte dans un corps de CREATE TABLE
+# keywords opening a constraint line inside a CREATE TABLE body
 MOTS_CONTRAINTE = ('CONSTRAINT', 'PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE',
                    'CHECK', 'EXCLUDE', 'LIKE ')
 
 
 def analyser_colonne(ligne):
-    """Une ligne de colonne → dict, ou None si ce n'en est pas une."""
+    """One column line → dict, or None if it is not one."""
     cm = re.match(r'"?(\w+)"?\s+(.+)$', ligne)
     if not cm:
         return None
@@ -49,7 +48,7 @@ def analyser_colonne(ligne):
     if dm:
         defaut = dm.group(1).strip()
         reste = reste[:dm.start()]
-    # coupe ce qu'on ne représente pas (REFERENCES inline, GENERATED, COLLATE...)
+    # cut what we do not represent (inline REFERENCES, GENERATED, COLLATE...)
     reste = re.split(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT)\b', reste)[0]
     return {'nom': nom, 'type': reste.strip(), 'nn': nn, 'defaut': defaut}
 
@@ -58,8 +57,8 @@ def analyser_sql(chemin):
     src = open(chemin).read()
     tables, fks = {}, []
 
-    # CREATE TABLE [schema.]nom ( ... ) [PARTITION BY ... / WITH ...];
-    # la parenthèse ouvrante peut être en fin de ligne ou seule sur la sienne
+    # CREATE TABLE [schema.]name ( ... ) [PARTITION BY ... / WITH ...];
+    # the opening parenthesis may end the line or stand on its own
     for m in re.finditer(
             r'CREATE TABLE (?:IF NOT EXISTS )?(?:(\w+)\.)?(\w+)\s*\(\n(.*?)\n\)[^;]*;',
             src, re.S):
@@ -80,8 +79,8 @@ def analyser_sql(chemin):
         tables[f'{sch}.{nom}'] = {'schema': sch, 'nom': nom, 'cols': cols, 'pk': pk,
                                   'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
 
-    # partitions : les contraintes portées par une partition remontent au
-    # parent, et les partitions elles-mêmes n'apparaissent pas dans le modèle
+    # partitions: constraints carried by a partition are folded back into
+    # the parent, and the partitions themselves do not appear in the model
     parent = {}
     for m in re.finditer(
             r'CREATE TABLE (?:(\w+)\.)?(\w+) PARTITION OF (?:(\w+)\.)?(\w+)', src):
@@ -100,7 +99,7 @@ def analyser_sql(chemin):
             cle = parent[cle]
         return cle
 
-    # PK déclarées après coup (style pg_dump -s)
+    # primary keys declared afterwards (pg_dump -s style)
     for m in re.finditer(
             r'ALTER TABLE (?:ONLY )?(?:(\w+)\.)?(\w+)\s+ADD CONSTRAINT \w+\s+'
             r'PRIMARY KEY\s*\(([^)]+)\)', src):
@@ -117,8 +116,8 @@ def analyser_sql(chemin):
         if cle in tables:
             tables[cle]['colcomments'][m.group(3)] = m.group(4).replace("''", "'")
 
-    # FK, y compris composites, cible sans colonnes (= PK de la cible) et
-    # déclarations portées par des partitions (remontées puis dédupliquées)
+    # FKs, including composite ones, targets without columns (= target PK)
+    # and declarations carried by partitions (folded back, then deduplicated)
     vues = set()
     for m in re.finditer(
             r'ALTER TABLE (?:ONLY )?(?:(\w+)\.)?(\w+)\s+ADD CONSTRAINT (\w+)\s+'
@@ -159,7 +158,7 @@ def positions_dbm(chemin, tables):
 
 
 def placement_auto(tables, fks):
-    """Zones par schéma en bandeau, colonnes équilibrées, tables liées voisines."""
+    """One zone per schema, balanced columns, related tables kept close."""
     adj = defaultdict(set)
     for f in fks:
         adj[f['de']].add(f['vers'])
@@ -207,9 +206,9 @@ def placement_auto(tables, fks):
         zone_x = max_x + ZONE_GAP
 
 
-# Interface de la page générée : le gabarit est écrit en français, les autres
-# langues sont des remplacements littéraux. Chaque clé doit exister telle
-# quelle dans le gabarit — traduire() échoue sinon, pour détecter une dérive.
+# UI of the generated page: the template is written in French, other
+# languages are literal replacements. Each key must exist verbatim in the
+# template — traduire() fails otherwise, to catch drift.
 TRADUCTIONS = {
     'en': {
         '<html lang="fr">': '<html lang="en">',
@@ -234,26 +233,26 @@ def traduire(html, lang):
         return html
     for source, cible in TRADUCTIONS[lang].items():
         if source not in html:
-            sys.exit(f'traduction impossible : chaîne absente du gabarit : {source!r}')
+            sys.exit(f'cannot translate: string missing from the template: {source!r}')
         html = html.replace(source, cible)
     return html
 
 
 def principal():
-    ap = argparse.ArgumentParser(description="explorateur HTML interactif d'un modèle PostgreSQL")
-    ap.add_argument('sql', help='fichier DDL PostgreSQL (CREATE TABLE...)')
-    ap.add_argument('-o', '--sortie', help='fichier HTML produit (défaut : <sql>.html)')
-    ap.add_argument('--titre', default=None, help="titre affiché (défaut : nom du fichier)")
-    ap.add_argument('--dbm', help='modèle pgModeler pour reprendre les positions des tables')
+    ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
+    ap.add_argument('sql', help='PostgreSQL DDL file (CREATE TABLE...)')
+    ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
+    ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
+    ap.add_argument('--dbm', help='pgModeler model to reuse table positions from')
     ap.add_argument('--fk-audit', default=None, metavar='REGEX',
-                    help="regex des contraintes FK à classer « audit » (masquées par défaut)")
+                    help="regex of FK constraint names to tag as audit (hidden by default)")
     ap.add_argument('--lang', default='fr', choices=['fr'] + sorted(TRADUCTIONS),
-                    help="langue de l'interface de la page (défaut : fr)")
+                    help="language of the page UI (default: fr)")
     args = ap.parse_args()
 
     tables, fks = analyser_sql(args.sql)
     if not tables:
-        sys.exit('aucune table trouvée : le DDL doit contenir des CREATE TABLE schema.table')
+        sys.exit('no table found: the DDL must contain CREATE TABLE statements')
 
     couleurs = {}
     if args.dbm:
@@ -283,8 +282,8 @@ def principal():
     html = html.replace('__LOGO__', logo.replace('width="128" height="128"', 'width="22" height="22"'))
     Path(sortie).write_text(html)
     naudit = sum(1 for f in fks if f['audit'])
-    print(f'{len(tables)} tables, {len(fks)} FK'
-          + (f" (dont {naudit} d'audit)" if naudit else '') + f' → {sortie}')
+    print(f'{len(tables)} tables, {len(fks)} FKs'
+          + (f' (including {naudit} audit FKs)' if naudit else '') + f' → {sortie}')
 
 
 if __name__ == '__main__':
