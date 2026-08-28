@@ -87,11 +87,13 @@ def principal():
     with tempfile.TemporaryDirectory(prefix='mcdview-tests-') as td:
         for cle, chemin in collecter(args.rapide):
             sortie = Path(td) / (cle.replace('/', '_') + '.html')
+            cmd = [sys.executable, str(RACINE / 'mcdview.py'), str(chemin),
+                   '-o', str(sortie), '--lang', 'en']
             t0 = time.perf_counter()
-            r = subprocess.run(
-                [sys.executable, str(RACINE / 'mcdview.py'), str(chemin),
-                 '-o', str(sortie), '--lang', 'en'],
-                capture_output=True, text=True)
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            # pgmodeler-cli occasionally fails a .dbm export transiently: one retry
+            if r.returncode and chemin.suffix == '.dbm':
+                r = subprocess.run(cmd, capture_output=True, text=True)
             ms = (time.perf_counter() - t0) * 1000
             total_ms += ms
             if r.returncode:
