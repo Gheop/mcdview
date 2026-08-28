@@ -22,7 +22,7 @@ CORPUS = Path(__file__).resolve().parent / 'corpus' / 'github'
 
 RECHERCHES = [
     ('filename:structure.sql language:SQL', '.sql', b'CREATE TABLE'),
-    ('extension:dbm dbmodel', '.dbm', b'<dbmodel'),
+    ('pgmodeler-ver extension:dbm', '.dbm', b'<dbmodel'),
 ]
 
 

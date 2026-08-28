@@ -31,14 +31,14 @@ ATTENDUS = {
     'exemples/northwind.sql': (14, 13),
     'exemples/chinook.sql': (11, 11),
     'samples/demo.dbm': (9, 8),
+    'samples/pagila.dbm': (15, 18),
     'samples/northwind.dbm': (14, 13),
     'samples/usda.dbm': (10, 11),
     'samples/cryptoconcept.dbm': (19, 19),
     'samples/3dcitydb.dbm': (60, 263),
     'conf/example.dbm': (2, 0),
 }
-# pgModeler's own pagila.dbm no longer loads in pgmodeler-cli (legacy sample)
-IGNORES = {'samples/pagila.dbm'}
+IGNORES = set()
 
 
 def charger_mcdview():

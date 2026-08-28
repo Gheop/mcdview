@@ -8,11 +8,12 @@ composition) and validating the result:
 - anomalies: tables without columns, FKs whose target column is unresolved,
   leftover placeholders in the HTML;
 - optional --chrome N: render N sampled pages headless and compare the DOM
-  table count with the parsed one (end-to-end JS sanity).
+  table count with the parsed one (end-to-end JS sanity);
+- optional --dbm: also run every corpus .dbm through pgmodeler-cli (export
+  timed apart, upstream loading failures classified as refus-pgmodeler).
 
 Writes one line per file to tests/resultats.tsv and prints a summary with
-percentiles. .dbm files are skipped here (pgmodeler-cli dominates the
-timing); tester.py covers them.
+percentiles.
 """
 import argparse
 import importlib.util
@@ -64,9 +65,13 @@ def principal():
     ap.add_argument('--chrome', type=int, default=0, metavar='N',
                     help='render N sampled pages headless and check the DOM')
     ap.add_argument('--limite', type=int, default=0, help='cap the file count')
+    ap.add_argument('--dbm', action='store_true',
+                    help='also run the corpus .dbm files through pgmodeler-cli')
     args = ap.parse_args()
 
     fichiers = sorted((RACINE / 'exemples').glob('*.sql')) + sorted(CORPUS.rglob('*.sql'))
+    if args.dbm:
+        fichiers += sorted(CORPUS.rglob('*.dbm'))
     if args.limite:
         fichiers = fichiers[:args.limite]
     lignes, stats = [], {'ok': [], 'sans-table': 0, 'erreur': 0}
@@ -75,7 +80,16 @@ def principal():
     for chemin in fichiers:
         octets = chemin.stat().st_size
         try:
-            (tables, fks), ms_parse = chrono(mcdview.analyser_sql, str(chemin))
+            source = str(chemin)
+            if chemin.suffix == '.dbm':
+                try:
+                    source, ms_export = chrono(mcdview.sql_depuis_dbm, source)
+                except SystemExit as e:
+                    stats['refus-pgmodeler'] = stats.get('refus-pgmodeler', 0) + 1
+                    lignes.append((chemin.name, octets, 0, 0, 0, 0, 0, 0,
+                                   'refus-pgmodeler: ' + str(e)[:80].replace('\n', ' ')))
+                    continue
+            (tables, fks), ms_parse = chrono(mcdview.analyser_sql, source)
             if not tables:
                 stats['sans-table'] += 1
                 lignes.append((chemin.name, octets, 0, 0, ms_parse, 0, 0, 0, 'sans-table'))
@@ -111,7 +125,8 @@ def principal():
     print(f'{len(lignes)} fichiers — {len(stats["ok"])} ok, '
           f'{stats["sans-table"]} sans table (autre dialecte), '
           f'{len([l for l in lignes if l[8].startswith("anomalie")])} anomalies, '
-          f'{stats["erreur"]} erreurs')
+          f'{stats["erreur"]} erreurs, '
+          f'{stats.get("refus-pgmodeler", 0)} refus pgmodeler-cli')
     tota = [t for _, t in stats['ok']]
     print('temps total (parse+placement+page) :', percentiles(tota))
     gros = [t for o, t in stats['ok'] if o > 500_000]

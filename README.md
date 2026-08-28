@@ -96,6 +96,18 @@ Plain Python 3, no dependency. All the rendering lives in
 `templates/explorateur.html` (inline CSS/JS); the data is injected as JSON
 in place of `__DONNEES__`.
 
+### Tested at scale
+
+The harness under `tests/` last ran mcdview over **839 schemas**: 529
+real-world `.sql` and 296 pgModeler `.dbm` harvested from public GitHub
+repositories, plus synthetic models up to 5000 tables. Results: **zero
+crashes**; every PostgreSQL schema produced a valid page (17,449 tables and
+19,788 FKs in total, DOM-verified on a sample in headless Chrome); MySQL
+and SQLite inputs are detected and get a clear hint; 99% of the loadable
+`.dbm` models convert (a `--fix-model` repair pass catches models saved by
+older pgModeler versions). Median page build: 4 ms; worst case (5000
+tables, 3.2 MB of DDL): 0.6 s.
+
 `tests/tester.py` runs mcdview end-to-end on every committed example and
 every pgModeler sample model, checks pinned table/FK counts and times each
 run; `tests/rapatrier.sh` fetches big real-world schemas (GitLab, Discourse)
@@ -108,6 +120,13 @@ pre-commit check with `git config core.hooksPath .githooks`.
 file's header.
 
 ## Changelog
+
+### v0.6.1 — .dbm repair fallback (2026-08-28)
+
+- When pgmodeler-cli refuses a `.dbm` (saved by an older pgModeler), mcdview
+  now retries through `--fix-model` before giving up — on the harvested
+  corpus this takes the refusal rate from 136/296 down to 2/296
+- Campaign results published in the README ("Tested at scale")
 
 ### v0.6.0 — Schema legend, large-scale campaign (2026-08-28)
 

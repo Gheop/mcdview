@@ -169,10 +169,23 @@ def sql_depuis_dbm(chemin):
     if not shutil.which('pgmodeler-cli'):
         sys.exit('reading a .dbm requires pgmodeler-cli in PATH '
                  '(or export the SQL yourself: pgmodeler-cli --export-to-file)')
-    sortie = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'export.sql'
-    r = subprocess.run(['pgmodeler-cli', '--export-to-file', '--input', chemin,
-                        '--output', str(sortie), '--silent'],
-                       capture_output=True, text=True)
+    coin = Path(tempfile.mkdtemp(prefix='mcdview-'))
+    sortie = coin / 'export.sql'
+
+    def exporter(entree):
+        return subprocess.run(['pgmodeler-cli', '--export-to-file', '--input',
+                               entree, '--output', str(sortie), '--silent'],
+                              capture_output=True, text=True)
+
+    r = exporter(chemin)
+    if r.returncode or not sortie.exists():
+        # a .dbm from an older pgModeler often loads only after --fix-model
+        repare = coin / 'repare.dbm'
+        rf = subprocess.run(['pgmodeler-cli', '--fix-model', '--input', chemin,
+                             '--output', str(repare), '--silent'],
+                            capture_output=True, text=True)
+        if not rf.returncode and repare.exists():
+            r = exporter(str(repare))
     if r.returncode or not sortie.exists():
         sys.exit(f'pgmodeler-cli export failed:\n{r.stdout}{r.stderr}')
     return str(sortie)
