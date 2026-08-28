@@ -67,6 +67,8 @@ In the page:
 | `--fk-audit REGEX` | Tag as "audit" the FKs whose constraint name matches: hidden by default, shown back with a checkbox |
 | `--lang {fr,en}` | Language of the page UI (default: `fr`) |
 | `--dialect NAME` | Input SQL dialect (default: `auto`); non-PostgreSQL needs `sqlglot` |
+| `--home-url URL` | Wrap the header logo in a link to this URL |
+| `--logo FILE` | Replace the header logo with this image (svg/png/jpg…, shown 22×22) |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
@@ -160,6 +162,13 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.10.0 — Header logo link and custom logo (2026-08-28)
+
+- `--home-url URL`: the header logo becomes a link (e.g. back to the
+  hosting site); URL escaped, nothing changes when the option is absent
+- `--logo FILE`: replace the header logo with your own image (svg/png/jpg…),
+  embedded as an `<img>` data URI so a third-party SVG cannot run scripts
 
 ### v0.9.5 — Parser fixes from content-invariant testing (2026-08-28)
 

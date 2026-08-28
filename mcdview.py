@@ -15,6 +15,7 @@ Usage:
              (hidden by default, shown back with a checkbox).
 """
 import argparse
+import base64
 import json
 import re
 import shutil
@@ -487,7 +488,13 @@ def echapper(texte):
             .replace('>', '&gt;').replace('"', '&quot;'))
 
 
-def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgresql'):
+MIMES_LOGO = {'.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+              '.ico': 'image/x-icon'}
+
+
+def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgresql',
+                  home_url=None, logo_file=None):
     """Assemble the final HTML page from parsed and positioned tables."""
     couleurs = dict(couleurs or {})
     for i, s in enumerate(sorted({t['schema'] for t in tables.values()})):
@@ -500,8 +507,18 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
     html = traduire((ici / 'templates' / 'explorateur.html').read_text(), lang)
     logo = (ici / 'logo.svg').read_text()
     html = html.replace('__DONNEES__', json_txt).replace('__TITRE__', echapper(titre))
-    return html.replace('__LOGO__', logo.replace('width="128" height="128"',
-                                                 'width="22" height="22"'))
+    if logo_file:
+        # a custom logo is embedded as <img> data URI: in an image context no
+        # script from a third-party SVG can run, unlike an inlined <svg>
+        mime = MIMES_LOGO.get(Path(logo_file).suffix.lower(), 'image/png')
+        b64 = base64.b64encode(Path(logo_file).read_bytes()).decode()
+        logo = f'<img src="data:{mime};base64,{b64}" width="22" height="22" alt="">'
+    else:
+        logo = logo.replace('width="128" height="128"', 'width="22" height="22"')
+    if home_url:
+        logo = (f'<a href="{echapper(home_url)}" style="display:flex" '
+                f'title="{echapper(home_url)}">{logo}</a>')
+    return html.replace('__LOGO__', logo)
 
 
 def principal():
@@ -517,6 +534,10 @@ def principal():
                     help="language of the page UI (default: fr)")
     ap.add_argument('--dialect', default='auto', choices=DIALECTES,
                     help="input SQL dialect (default: auto; non-PostgreSQL needs sqlglot)")
+    ap.add_argument('--home-url', default=None, metavar='URL',
+                    help="wrap the header logo in a link to this URL")
+    ap.add_argument('--logo', default=None, metavar='FILE',
+                    help="replace the header logo (svg/png/jpg…, shown 22×22)")
     args = ap.parse_args()
 
     source = args.sql
@@ -544,7 +565,8 @@ def principal():
 
     titre = args.titre or Path(args.sql).stem
     sortie = args.sortie or str(Path(args.sql).with_suffix('.html'))
-    Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs, dialecte))
+    Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs,
+                                          dialecte, args.home_url, args.logo))
     naudit = sum(1 for f in fks if f['audit'])
     print(f'{len(tables)} tables, {len(fks)} FKs'
           + (f' (including {naudit} audit FKs)' if naudit else '') + f' → {sortie}')
