@@ -35,6 +35,7 @@ a fictional library model (12 tables, 3 schemas).
 ./mcdview.py model.dbml         # dbdiagram.io model (needs @dbml/cli)
 ./mcdview.py schema.prisma      # Prisma schema (needs prisma)
 ./mcdview.py model.mwb          # MySQL Workbench model (native, no tool)
+./mcdview.py db/schema.rb       # Rails schema (native, no tool)
 ```
 
 Then open the generated HTML file in a browser.
@@ -88,8 +89,8 @@ and, when it finds no table, tries several sqlglot dialects and keeps the one
 that parses the most tables; pass `--dialect mysql` (etc.) to force one. Model files are read through an upstream converter (an optional dependency,
 like the SQL dialects): pgModeler `.dbm` via `pgmodeler-cli`,
 dbdiagram.io `.dbml` via `@dbml/cli`, and Prisma `schema.prisma` via the
-`prisma` CLI. MySQL Workbench `.mwb` is read **natively** (it is a zip of a
-GRT XML model — no external tool needed). Other proprietary formats (Navicat,
+`prisma` CLI. MySQL Workbench `.mwb` and Rails `db/schema.rb` are read **natively** (no
+external tool needed). Other proprietary formats (Navicat,
 ERwin, Oracle SQL Developer Data Modeler…) have no reliable converter: export
 their SQL instead (Workbench-style Forward Engineer), which mcdview reads.
 
@@ -171,6 +172,12 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.16.0 — Rails schema.rb input (2026-08-28)
+
+- Read Rails `db/schema.rb` natively (the `create_table` / `add_foreign_key`
+  DSL is regular): the implicit `id` primary key, column types, and foreign
+  keys (default column resolved by singularizing the target table)
 
 ### v0.15.0 — MySQL Workbench .mwb input (2026-08-28)
 

@@ -518,6 +518,64 @@ def analyser_mwb(chemin):
     return tables, fks
 
 
+def singulariser(mot):
+    """Rough ActiveRecord singularize, for the default FK column name."""
+    if mot.endswith('ies'):
+        return mot[:-3] + 'y'
+    if re.search(r'(ss|sh|ch|x|z)es$', mot):
+        return mot[:-2]
+    if mot.endswith('s') and not mot.endswith('ss'):
+        return mot[:-1]
+    return mot
+
+
+def analyser_schema_rb(chemin):
+    """Parse a Rails db/schema.rb natively (the create_table / add_foreign_key
+    DSL is regular). The implicit `id` primary key is added unless `id: false`;
+    `add_foreign_key "from", "to"` defaults its column to <singular(to)>_id."""
+    src = open(chemin, errors='replace').read()
+    tables, fks = {}, []
+    for m in re.finditer(
+            r'create_table\s+["\']([^"\']+)["\']\s*(,[^\n]*?)?\s+do\s*\|(\w+)\|\n(.*?)\n\s*end',
+            src, re.S):
+        nom, opts, var, corps = m.groups()
+        opts = opts or ''
+        cle = f'public.{nom}'
+        cols, pk = [], []
+        if 'id: false' not in opts:
+            mpk = re.search(r'primary_key:\s*["\']([^"\']+)["\']', opts)
+            pkn = mpk.group(1) if mpk else 'id'
+            mid = re.search(r'\bid:\s*:(\w+)', opts)
+            cols.append({'nom': pkn, 'type': mid.group(1) if mid else 'bigint',
+                         'nn': True, 'defaut': ''})
+            pk = [pkn]
+        for cm in re.finditer(r'\b' + re.escape(var) + r'\.(\w+)\s+["\'"]([^"\'"]+)["\'"]([^\n]*)', corps):
+            typ, cn, reste = cm.groups()
+            if typ == 'index':
+                continue
+            defc = re.search(r'default:\s*("[^"]*"|\'[^\']*\'|[^,\n]+)', reste)
+            defaut = defc.group(1).strip('\'"') if defc else ''
+            if typ in ('references', 'belongs_to'):
+                cols.append({'nom': cn + '_id', 'type': 'bigint',
+                             'nn': 'null: false' in reste, 'defaut': ''})
+                if 'polymorphic: true' in reste:
+                    cols.append({'nom': cn + '_type', 'type': 'string', 'nn': False, 'defaut': ''})
+            else:
+                cols.append({'nom': cn, 'type': typ, 'nn': 'null: false' in reste, 'defaut': defaut})
+        tables[cle] = {'schema': 'public', 'nom': nom, 'cols': cols, 'pk': pk,
+                       'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
+    for m in re.finditer(r'add_foreign_key\s+["\']([^"\']+)["\'],\s*["\']([^"\']+)["\']([^\n]*)', src):
+        det, verst, reste = m.groups()
+        mc = re.search(r'column:\s*["\']([^"\']+)["\']', reste)
+        col = mc.group(1) if mc else singulariser(verst) + '_id'
+        mp = re.search(r'primary_key:\s*["\']([^"\']+)["\']', reste)
+        de, vers = f'public.{det}', f'public.{verst}'
+        if de in tables and vers in tables:
+            fks.append({'de': de, 'col': col, 'vers': vers,
+                        'colcible': mp.group(1) if mp else 'id', 'nom': '', 'audit': False})
+    return tables, fks
+
+
 def positions_dbm(chemin, tables):
     root = ET.parse(chemin).getroot()
     couleurs = {}
@@ -695,7 +753,7 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
 
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
-    ap.add_argument('sql', metavar='sql|dbm|dbml|mwb',
+    ap.add_argument('sql', metavar='sql|dbm|dbml|mwb|rb',
                     help='SQL DDL, or a .dbm/.dbml/.mwb/.prisma model file')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
@@ -733,6 +791,9 @@ def principal():
     if source.endswith('.mwb'):
         tables, fks = normaliser_casse(*analyser_mwb(source))
         dialecte = 'mysql'
+    elif source.endswith('.rb'):
+        tables, fks = normaliser_casse(*analyser_schema_rb(source))
+        dialecte = 'rails'
     else:
         tables, fks, dialecte = analyser(source, dialecte)
     if not tables:

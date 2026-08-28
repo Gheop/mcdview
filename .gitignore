@@ -7,3 +7,4 @@ tests/corpus/modeles/
 *.log
 tests/corpus/prisma/
 tests/corpus/mwb/
+tests/corpus/rails/
