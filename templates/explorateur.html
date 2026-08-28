@@ -107,7 +107,8 @@ function ech(s) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 document.getElementById("compte").textContent =
-  D.tables.length + " tables · " + D.fks.length + " FK";
+  D.tables.length + " tables · " + D.fks.length + " FK" +
+  (D.dialecte && D.dialecte !== "postgresql" ? " · " + D.dialecte : "");
 
 function fksVisibles() {
   return D.fks.filter(f => ckAudit.checked || !f.audit);

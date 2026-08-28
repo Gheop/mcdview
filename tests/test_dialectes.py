@@ -32,7 +32,7 @@ def principal():
     echecs = []
     for rel, (dialecte, nt, nf, pks) in CAS.items():
         chemin = RACINE / 'tests' / rel
-        tables, fks = mcdview.analyser(str(chemin), dialecte)
+        tables, fks, _ = mcdview.analyser(str(chemin), dialecte)
         if len(tables) != nt:
             echecs.append(f'{rel}: {len(tables)} tables != {nt}')
         if len(fks) != nf:

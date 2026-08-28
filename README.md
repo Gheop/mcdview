@@ -161,6 +161,13 @@ file's header.
 
 ## Changelog
 
+### v0.9.2 — Dialect polish (2026-08-28)
+
+- The detected dialect is shown in the toolbar counter for non-PostgreSQL
+  models (e.g. `12 tables · 21 FK · mysql`)
+- sqlglot column types are lowercased to match the PostgreSQL parser
+  (`INT(11)` → `int(11)`), keeping string literals intact
+
 ### v0.9.1 — Isolated view no longer overlaps (2026-08-28)
 
 - When isolating a table, the star of related tables now sizes its radius to

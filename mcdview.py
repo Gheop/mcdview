@@ -177,13 +177,14 @@ def flairer_dialecte(chemin):
 
 
 def analyser(chemin, dialecte='auto'):
-    """Parse a DDL file, choosing the parser from the dialect."""
+    """Parse a DDL file. Returns (tables, fks, effective_dialect)."""
     if dialecte in ('auto', 'postgres', 'postgresql'):
         tables, fks = analyser_sql(chemin)
         if tables or dialecte != 'auto':
-            return tables, fks
+            return tables, fks, 'postgresql'
         dialecte = flairer_dialecte(chemin)  # auto found nothing: not PostgreSQL
-    return analyser_sqlglot(chemin, dialecte)
+    tables, fks = analyser_sqlglot(chemin, dialecte)
+    return tables, fks, dialecte
 
 
 def analyser_sqlglot(chemin, dialecte):
@@ -247,8 +248,11 @@ def analyser_sqlglot(chemin, dialecte):
                         ajouter_fk(k, [d.name], c, '')
                 if comc is not None:
                     colcomments[d.name] = comc.name
-                cols.append({'nom': d.name,
-                             'type': typ.sql(dialect=dialecte) if typ else '',
+                brut = typ.sql(dialect=dialecte) if typ else ''
+                # lowercase to match the PostgreSQL parser's output, but keep
+                # string literals intact (ENUM('Active') must not become 'active')
+                type_txt = brut if "'" in brut else brut.lower()
+                cols.append({'nom': d.name, 'type': type_txt,
                              'nn': any(isinstance(c, exp.NotNullColumnConstraint) for c in kinds),
                              'defaut': defc.sql(dialect=dialecte) if defc is not None else ''})
             for p in stmt.find_all(exp.PrimaryKey):
@@ -440,12 +444,13 @@ def echapper(texte):
             .replace('>', '&gt;').replace('"', '&quot;'))
 
 
-def composer_page(tables, fks, titre, lang='fr', couleurs=None):
+def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgresql'):
     """Assemble the final HTML page from parsed and positioned tables."""
     couleurs = dict(couleurs or {})
     for i, s in enumerate(sorted({t['schema'] for t in tables.values()})):
         couleurs.setdefault(s, PALETTE[i % len(PALETTE)])
-    donnees = {'schemas': couleurs, 'tables': list(tables.values()), 'fks': fks}
+    donnees = {'schemas': couleurs, 'tables': list(tables.values()), 'fks': fks,
+               'dialecte': dialecte}
     # '<' escaped in the JSON: no '</script>' or '<!--' can leak from the data
     json_txt = json.dumps(donnees, ensure_ascii=False).replace('<', '\\u003c')
     ici = Path(__file__).parent
@@ -478,7 +483,7 @@ def principal():
             args.dbm = source  # the model provides its own positions
         source = sql_depuis_dbm(source)
         dialecte = 'postgres'  # pgmodeler-cli always exports PostgreSQL
-    tables, fks = analyser(source, dialecte)
+    tables, fks, dialecte = analyser(source, dialecte)
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements'
                  + indice_dialecte(source))
@@ -496,7 +501,7 @@ def principal():
 
     titre = args.titre or Path(args.sql).stem
     sortie = args.sortie or str(Path(args.sql).with_suffix('.html'))
-    Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs))
+    Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs, dialecte))
     naudit = sum(1 for f in fks if f['audit'])
     print(f'{len(tables)} tables, {len(fks)} FKs'
           + (f' (including {naudit} audit FKs)' if naudit else '') + f' → {sortie}')
