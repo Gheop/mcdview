@@ -67,6 +67,8 @@ def principal():
     ap.add_argument('--limite', type=int, default=0, help='cap the file count')
     ap.add_argument('--dbm', action='store_true',
                     help='also run the corpus .dbm files through pgmodeler-cli')
+    ap.add_argument('--strict', action='store_true',
+                    help='exit non-zero on any exception or anomaly (pre-commit)')
     args = ap.parse_args()
 
     fichiers = sorted((RACINE / 'exemples').glob('*.sql')) + sorted(CORPUS.rglob('*.sql'))
@@ -155,6 +157,14 @@ def principal():
                 print(f'  chrome ok {l[0]:50s} {l[2]:5d} tables rendues en {dt:5.1f} s')
         print(f'chrome : {len(echantillon) - rates}/{len(echantillon)} pages conformes')
     print(f'détail par fichier : {TSV}\npages : {td}')
+
+    if args.strict:
+        # exceptions are always a regression; anomalies come from faithful
+        # source models (empty tables in a .dbm), so they only warn
+        durs = [l for l in lignes if l[8].startswith('erreur')]
+        if durs:
+            print(f'\nSTRICT: {len(durs)} fichier(s) en exception — régression')
+            sys.exit(1)
 
 
 if __name__ == '__main__':

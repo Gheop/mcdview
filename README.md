@@ -30,11 +30,15 @@ and reuses the table positions drawn in the model.
 In the page:
 
 - **wheel**: zoom, **drag**: pan;
+- **hover a table**: lights up its foreign-key links;
 - **click a table**: isolates it with its related tables (the others fade
   out, the view re-frames) and shows its detail on the right — fields,
-  types, NOT NULL, PK 🔑, clickable FK 🔗, table and column comments,
-  list of referencing tables;
+  types, NOT NULL, DEFAULT, PK 🔑, clickable FK 🔗, table and column
+  comments, list of referencing tables; the URL gets a `#schema.table`
+  permalink that reopens straight on that table;
 - **drag a table** to rearrange the diagram, the links follow live;
+- **schema chips** (bottom-left, when there are several schemas): click to
+  frame that schema's zone;
 - **Escape** or "overview": back to the full, re-framed overview;
 - **search** with table name autocompletion.
 
@@ -108,11 +112,20 @@ and SQLite inputs are detected and get a clear hint; 99% of the loadable
 older pgModeler versions). Median page build: 4 ms; worst case (5000
 tables, 3.2 MB of DDL): 0.6 s.
 
+Model data (names, types, comments, defaults) is HTML-escaped and the JSON
+data island escapes every `<`, so a hostile schema cannot inject markup or
+script into the page — this matters when generating pages from files you did
+not write. `tests/test_securite.py` checks the escaping and a ReDoS/DoS time
+budget on hostile inputs (`tests/malveillant/`).
+
 `tests/tester.py` runs mcdview end-to-end on every committed example and
 every pgModeler sample model, checks pinned table/FK counts and times each
-run; `tests/rapatrier.sh` fetches big real-world schemas (GitLab, Discourse)
-into a local, uncommitted corpus for stress testing. Enable the quick
-pre-commit check with `git config core.hooksPath .githooks`.
+run; `tests/grand_banc.py` runs the whole local corpus (`--strict` fails on
+any exception, `--dbm` adds the pgModeler models, `--chrome N` DOM-validates
+N sampled pages); `tests/rapatrier.sh`, `tests/moissonner.py` and
+`tests/generer_synthetique.py` fill the local, uncommitted corpus. The
+pre-commit hook (`git config core.hooksPath .githooks`) runs the pinned
+regression, the security suite and the strict corpus campaign.
 
 ## License
 
@@ -120,6 +133,18 @@ pre-commit check with `git config core.hooksPath .githooks`.
 file's header.
 
 ## Changelog
+
+### v0.7.0 — Hover, permalinks, hardening (2026-08-28)
+
+- Hover a table to light up its links; `#schema.table` permalinks that
+  reopen on the right table; DEFAULT values in the detail panel; table
+  comments as tooltips; a table/FK counter in the toolbar
+- Security: all injected model data is HTML-escaped and the JSON island
+  escapes `<`, closing an XSS vector; the CREATE TABLE body is now bounded
+  by string search instead of a lazy regex, killing a ReDoS (a 830 KiB
+  malformed file went from 13 s to 0.3 s)
+- Security test suite and a strict corpus campaign wired into the
+  pre-commit hook
 
 ### v0.6.1 — .dbm repair fallback (2026-08-28)
 

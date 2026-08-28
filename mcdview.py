@@ -67,12 +67,21 @@ def analyser_sql(chemin):
     tables, fks = {}, []
 
     # CREATE TABLE [schema.]name ( ... ) [PARTITION BY ... / WITH ...];
-    # the opening parenthesis may end the line or stand on its own
+    # the opening parenthesis may end the line or stand on its own. The body
+    # is delimited by string search, not by a lazy `.*?` regex: on malformed
+    # input (many openers, no closer) the latter backtracks catastrophically.
     for m in re.finditer(
-            r'CREATE TABLE (?:IF NOT EXISTS )?(?:(\w+)\.)?(\w+)\s*\(\n(.*?)\n\)[^;]*;',
-            src, re.S):
+            r'CREATE TABLE (?:IF NOT EXISTS )?(?:(\w+)\.)?(\w+)\s*\(\n', src):
+        if ' PARTITION OF ' in src[m.start():m.end()]:
+            continue
+        fin = src.find('\n)', m.end())
+        if fin == -1 or ';' not in src[fin:fin + 200]:
+            continue
+        corps = src[m.end():fin]
+        if 'CREATE TABLE' in corps:  # opener with no closer: not a real body
+            continue
         sch = m.group(1) or 'public'
-        nom, corps = m.group(2), m.group(3)
+        nom = m.group(2)
         cols, pk = [], []
         for ligne in corps.split('\n'):
             ligne = ligne.strip().rstrip(',')
@@ -292,17 +301,23 @@ def traduire(html, lang):
     return html
 
 
+def echapper(texte):
+    return (texte.replace('&', '&amp;').replace('<', '&lt;')
+            .replace('>', '&gt;').replace('"', '&quot;'))
+
+
 def composer_page(tables, fks, titre, lang='fr', couleurs=None):
     """Assemble the final HTML page from parsed and positioned tables."""
     couleurs = dict(couleurs or {})
     for i, s in enumerate(sorted({t['schema'] for t in tables.values()})):
         couleurs.setdefault(s, PALETTE[i % len(PALETTE)])
     donnees = {'schemas': couleurs, 'tables': list(tables.values()), 'fks': fks}
-    json_txt = json.dumps(donnees, ensure_ascii=False).replace('</', '<\\/')
+    # '<' escaped in the JSON: no '</script>' or '<!--' can leak from the data
+    json_txt = json.dumps(donnees, ensure_ascii=False).replace('<', '\\u003c')
     ici = Path(__file__).parent
     html = traduire((ici / 'templates' / 'explorateur.html').read_text(), lang)
     logo = (ici / 'logo.svg').read_text()
-    html = html.replace('__DONNEES__', json_txt).replace('__TITRE__', titre)
+    html = html.replace('__DONNEES__', json_txt).replace('__TITRE__', echapper(titre))
     return html.replace('__LOGO__', logo.replace('width="128" height="128"',
                                                  'width="22" height="22"'))
 
