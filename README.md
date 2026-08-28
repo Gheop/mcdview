@@ -163,6 +163,15 @@ file's header.
 
 ## Changelog
 
+### v0.11.0 — SQL Server routing and ALTER ADD COLUMN (2026-08-28)
+
+- SQL Server DDL (`[bracket]` identifiers) is routed to the sqlglot tsql
+  parser instead of being mangled by the PostgreSQL parser
+- `ALTER TABLE ... ADD [COLUMN] name type` columns are now read, not just
+  the ones inside the `CREATE TABLE` body
+- Both found by running the content-invariant test over a larger, more
+  dialect-diverse harvested corpus
+
 ### v0.10.1 — Case-insensitive key matching (2026-08-28)
 
 - PK/FK column names are matched to columns case-insensitively (unquoted SQL

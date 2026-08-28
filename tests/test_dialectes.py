@@ -20,6 +20,8 @@ CAS = {
         'public.client': ['id'], 'public.commande': ['id'], 'public.ligne': ['id']}),
     'dialectes/notes.sqlite.sql': ('auto', 4, 3, {
         'public.note_etiquette': ['note_id', 'etiquette_id']}),
+    'dialectes/ventes.tsql.sql': ('auto', 2, 1, {
+        'dbo.Customer': ['CustomerID'], 'dbo.Order': ['OrderID']}),
 }
 
 

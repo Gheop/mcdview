@@ -132,6 +132,16 @@ def analyser_sql(chemin):
         if cle in tables and not tables[cle]['pk']:
             tables[cle]['pk'] = identifiants(m.group(3))
 
+    # columns added afterwards: ALTER TABLE t ADD [COLUMN] name type;
+    for m in re.finditer(
+            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD (?:COLUMN )?'
+            r'(?!CONSTRAINT\b|PRIMARY\b|FOREIGN\b|UNIQUE\b|CHECK\b|INDEX\b|KEY\b|\()'
+            r'["\[`]?(\w+)["\]`]?\s+([^;,\n]+)', src):
+        cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
+        col = analyser_colonne(f"{m.group(3)} {m.group(4).strip()}")
+        if cle in tables and col and col['nom'] not in {c['nom'] for c in tables[cle]['cols']}:
+            tables[cle]['cols'].append(col)
+
     for m in re.finditer(r"COMMENT ON TABLE (?:\"?(\w+)\"?\.)?\"?(\w+)\"? IS E?'((?:[^']|'')*)'", src):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:
@@ -178,6 +188,8 @@ def flairer_dialecte(chemin):
     src = open(chemin, errors='replace').read(300000)
     if 'AUTOINCREMENT' in src:
         return 'sqlite'
+    if re.search(r'\[\w+\]\s+\w', src):
+        return 'tsql'
     if re.search(r'CREATE TABLE[^(]*`', src):
         return 'mysql'
     return 'mysql'  # reasonable default for non-PostgreSQL DDL
@@ -189,10 +201,12 @@ DIALECTES_ESSAI = ['mysql', 'sqlite', 'postgres', 'tsql', 'oracle', 'clickhouse'
 
 
 def ressemble_postgres(chemin):
-    """False when the DDL is clearly another dialect (backticks never appear in
-    valid PostgreSQL, AUTOINCREMENT is SQLite) that the regex parser would mangle."""
+    """False when the DDL is clearly another dialect the regex parser would
+    mangle: backticks (never valid PostgreSQL), AUTOINCREMENT (SQLite) or
+    bracket-quoted identifiers like `[column] type` (SQL Server)."""
     src = open(chemin, errors='replace').read(300000)
-    return '`' not in src and 'AUTOINCREMENT' not in src.upper()
+    return ('`' not in src and 'AUTOINCREMENT' not in src.upper()
+            and not re.search(r'\[\w+\]\s+\w', src))
 
 
 def normaliser_casse(tables, fks):
