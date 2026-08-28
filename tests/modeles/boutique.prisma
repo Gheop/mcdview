@@ -1,0 +1,28 @@
+// Prisma schema fixture — converted to SQL by `prisma migrate diff`.
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id        Int        @id @default(autoincrement())
+  nom       String
+  courriel  String?
+  commandes Commande[]
+}
+
+model Commande {
+  id       Int     @id @default(autoincrement())
+  client   Client  @relation(fields: [clientId], references: [id])
+  clientId Int
+  total    Decimal
+  lignes   Ligne[]
+}
+
+model Ligne {
+  id         Int      @id @default(autoincrement())
+  commande   Commande @relation(fields: [commandeId], references: [id])
+  commandeId Int
+  produit    String
+  quantite   Int
+}

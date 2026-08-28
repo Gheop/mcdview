@@ -5,3 +5,4 @@ tests/corpus/
 tests/resultats.tsv
 tests/corpus/modeles/
 *.log
+tests/corpus/prisma/

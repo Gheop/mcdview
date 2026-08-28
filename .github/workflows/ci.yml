@@ -30,8 +30,8 @@ jobs:
           ruff check --select F,E9 mcdview.py tests/*.py
       - name: install sqlglot (optional backend for non-PostgreSQL dialects)
         run: pip install sqlglot
-      - name: install model-file converters (DBML)
-        run: npm install -g @dbml/cli
+      - name: install model-file converters (DBML, Prisma)
+        run: npm install -g @dbml/cli prisma@6
       - name: pinned regression (examples; .dbm samples skipped without pgmodeler-cli)
         run: ./tests/tester.py --rapide
       - name: security (XSS escaping, ReDoS/DoS budget)

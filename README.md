@@ -33,6 +33,7 @@ a fictional library model (12 tables, 3 schemas).
 ./mcdview.py model.sql -o explorer.html --titre "My project"
 ./mcdview.py model.dbm          # pgModeler model (needs pgmodeler-cli)
 ./mcdview.py model.dbml         # dbdiagram.io model (needs @dbml/cli)
+./mcdview.py schema.prisma      # Prisma schema (needs prisma)
 ```
 
 Then open the generated HTML file in a browser.
@@ -84,8 +85,9 @@ PostgreSQL uses the built-in parser (no dependency). For any other dialect,
 Spark, Hive. `--dialect auto` (the default) uses the PostgreSQL parser first
 and, when it finds no table, tries several sqlglot dialects and keeps the one
 that parses the most tables; pass `--dialect mysql` (etc.) to force one. Model files are read through an upstream converter (an optional dependency,
-like the SQL dialects): pgModeler `.dbm` via `pgmodeler-cli`, and
-dbdiagram.io `.dbml` via `@dbml/cli`. Proprietary binary formats (MySQL
+like the SQL dialects): pgModeler `.dbm` via `pgmodeler-cli`,
+dbdiagram.io `.dbml` via `@dbml/cli`, and Prisma `schema.prisma` via the
+`prisma` CLI. Proprietary binary formats (MySQL
 Workbench `.mwb`…) are not read directly — export their DDL to `.sql` first.
 
 `--fk-audit` is for models where every table carries audit columns
@@ -166,6 +168,14 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.14.0 — Prisma schema input (2026-08-28)
+
+- Read Prisma `schema.prisma` models, converted to SQL by `prisma migrate
+  diff`; the schema's provider (postgres/mysql/sqlite/sqlserver) is detected
+  automatically, MongoDB schemas are reported as unsupported
+- The PK/FK parsers now accept double-quoted constraint names
+  (`CONSTRAINT "x_pkey" PRIMARY KEY ...`), as emitted by Prisma and modern tools
 
 ### v0.13.0 — DBML input (2026-08-28)
 

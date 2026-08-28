@@ -92,7 +92,7 @@ def analyser_sql(chemin):
         cols, pk = [], []
         for ligne in corps.split('\n'):
             ligne = ligne.strip().rstrip(',')
-            cm = re.match(r'(?:CONSTRAINT \w+ )?PRIMARY KEY\s*\(([^)]+)\)', ligne)
+            cm = re.match(r'(?:CONSTRAINT "?\w+"? )?PRIMARY KEY\s*\(([^)]+)\)', ligne)
             if cm:
                 pk = identifiants(cm.group(1))
                 continue
@@ -126,7 +126,7 @@ def analyser_sql(chemin):
 
     # primary keys declared afterwards (pg_dump -s style)
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD CONSTRAINT \w+\s+'
+            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD CONSTRAINT "?\w+"?\s+'
             r'PRIMARY KEY\s*\(([^)]+)\)', src):
         cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
         if cle in tables and not tables[cle]['pk']:
@@ -155,7 +155,7 @@ def analyser_sql(chemin):
     # and declarations carried by partitions (folded back, then deduplicated)
     vues = set()
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD (?:CONSTRAINT (\w+)\s+)?'
+            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD (?:CONSTRAINT "?(\w+)"?\s+)?'
             r'FOREIGN KEY\s*\(([^)]+)\)\s*REFERENCES (?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?',
             src):
         ssch, stab, cname, scols, dsch, dtab, dcols = m.groups()
@@ -403,14 +403,17 @@ def sql_depuis_dbm(chemin):
     return str(sortie)
 
 
-def sql_depuis_convertisseur(chemin, outil, cmd, format_nom):
+def sql_depuis_convertisseur(chemin, outil, cmd, format_nom, vers_stdout=False, env=None):
     """Run an external converter that turns a model file into PostgreSQL SQL,
-    return the SQL path. Optional dependency, like pgmodeler-cli for .dbm."""
+    return the SQL path. Optional dependency, like pgmodeler-cli for .dbm.
+    vers_stdout: the tool prints the SQL (captured) instead of writing sortie."""
     if not shutil.which(outil):
         sys.exit(f'reading a {format_nom} file requires {outil} in PATH')
     sortie = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'export.sql'
     r = subprocess.run([a.format(entree=chemin, sortie=str(sortie)) for a in cmd],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=env)
+    if vers_stdout and not r.returncode and r.stdout.strip():
+        sortie.write_text(r.stdout)
     if r.returncode or not sortie.exists() or not sortie.stat().st_size:
         sys.exit(f'{outil} failed to convert the {format_nom} file:\n{r.stdout}{r.stderr}')
     return str(sortie)
@@ -421,6 +424,18 @@ def sql_depuis_dbml(chemin):
     return sql_depuis_convertisseur(
         chemin, 'dbml2sql',
         ['dbml2sql', '{entree}', '--postgres', '-o', '{sortie}'], 'DBML')
+
+
+def sql_depuis_prisma(chemin):
+    """Convert a Prisma schema to SQL through `prisma migrate diff` (writes to
+    stdout). A dummy DATABASE_URL is set so `url = env(...)` schemas resolve;
+    no database is contacted (--from-empty diffs against an empty datamodel)."""
+    import os
+    env = dict(os.environ, DATABASE_URL='postgresql://u:p@localhost:5432/d')
+    return sql_depuis_convertisseur(
+        chemin, 'prisma',
+        ['prisma', 'migrate', 'diff', '--from-empty', '--to-schema-datamodel',
+         '{entree}', '--script'], 'Prisma', vers_stdout=True, env=env)
 
 
 def positions_dbm(chemin, tables):
@@ -631,6 +646,10 @@ def principal():
     elif source.endswith('.dbml'):
         source = sql_depuis_dbml(source)
         dialecte = 'postgres'  # dbml2sql emits PostgreSQL
+    elif source.endswith('.prisma'):
+        source = sql_depuis_prisma(source)
+        # keep 'auto': prisma emits SQL in the schema's provider dialect
+        # (postgres, mysql, sqlite, sqlserver), which auto detects
     tables, fks, dialecte = analyser(source, dialecte)
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements'
