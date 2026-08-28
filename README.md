@@ -8,6 +8,9 @@ no dependency — to browse the model: overview of tables grouped by schema,
 click a table to isolate it with its related tables, field detail panel,
 search box.
 
+**Try it without installing anything: [mcdview.dev](https://mcdview.dev/)** —
+drop a `.sql` or `.dbm` file and get a shareable link to your model's page.
+
 **[Live demo](https://gheop.github.io/mcdview/exemples/mediatheque.html)** —
 a fictional library model (12 tables, 3 schemas).
 
@@ -135,6 +138,11 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.8.5 — Hosted at mcdview.dev (2026-08-28)
+
+- Link to the hosted service at [mcdview.dev](https://mcdview.dev/): upload a
+  `.sql` or `.dbm` and get a shareable link, no install needed
 
 ### v0.8.4 — Rearrange no longer overlaps big tables (2026-08-28)
 
