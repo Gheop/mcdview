@@ -348,6 +348,11 @@ function reorganiser() {
   const k = Math.sqrt(surface / n);               // ideal edge length
   const iters = Math.max(60, Math.min(300, Math.round(6000 / Math.sqrt(n))));
   let temp = k * 1.2;                             // cooling: max move per step
+  // gravity target: pull every table gently toward the centroid so weakly
+  // linked ones don't drift off and blow up the frame
+  let cx = 0, cy = 0;
+  for (let i = 0; i < n; i++) { cx += px[i]; cy += py[i]; }
+  cx /= n; cy /= n;
   const dx = new Float64Array(n), dy = new Float64Array(n);
   for (let it = 0; it < iters; it++) {
     dx.fill(0); dy.fill(0);
@@ -355,6 +360,9 @@ function reorganiser() {
       for (let j = i + 1; j < n; j++) {
         let ex = px[i] - px[j], ey = py[i] - py[j];
         let d = Math.hypot(ex, ey) || 0.01;
+        // bounded range: far pairs don't repel, so gravity can reel in
+        // isolated tables instead of letting them drift off
+        if (d > 5 * k) continue;
         const dmin = taille[i] + taille[j] + 40;
         // stronger push while boxes would overlap, normal 1/d repulsion else
         const rep = (k * k / d) * (d < dmin ? 3 : 1);
@@ -366,17 +374,41 @@ function reorganiser() {
     for (const [a, b] of aretes) {
       let ex = px[a] - px[b], ey = py[a] - py[b];
       const d = Math.hypot(ex, ey) || 0.01;
-      const att = d * d / k;
+      // ideal edge length grows with the two boxes so wide linked tables are
+      // not pulled into each other (a constant k overlaps big tables)
+      const lg = Math.max(k, taille[a] + taille[b] + 60);
+      const att = d * d / lg;
       ex = ex / d * att; ey = ey / d * att;
       dx[a] -= ex; dy[a] -= ey;
       dx[b] += ex; dy[b] += ey;
     }
     for (let i = 0; i < n; i++) {
+      dx[i] += (cx - px[i]) * 0.06; dy[i] += (cy - py[i]) * 0.06;
       const d = Math.hypot(dx[i], dy[i]) || 0.01;
       px[i] += dx[i] / d * Math.min(d, temp);
       py[i] += dy[i] / d * Math.min(d, temp);
     }
     temp = Math.max(k * 0.05, temp * 0.96);       // simulated annealing
+  }
+  // final safety net: push apart any pair whose bounding circles still touch,
+  // so the layout ends with zero visible overlap whatever the forces settled on
+  for (let passe = 0; passe < 24; passe++) {
+    let colle = false;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let ex = px[i] - px[j], ey = py[i] - py[j];
+        const d = Math.hypot(ex, ey) || 0.01;
+        const dmin = taille[i] + taille[j] + 40;
+        if (d < dmin) {
+          const pousse = (dmin - d) / 2;
+          ex /= d; ey /= d;
+          px[i] += ex * pousse; py[i] += ey * pousse;
+          px[j] -= ex * pousse; py[j] -= ey * pousse;
+          colle = true;
+        }
+      }
+    }
+    if (!colle) break;
   }
   cles.forEach(c => {
     const e = elems[c], i = idx[c];

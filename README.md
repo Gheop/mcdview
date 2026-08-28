@@ -136,6 +136,14 @@ file's header.
 
 ## Changelog
 
+### v0.8.4 — Rearrange no longer overlaps big tables (2026-08-28)
+
+- The rearrange layout now sizes each edge to the two tables it links (a
+  constant target was pulling wide tables into each other), reins in weakly
+  linked tables with a gravity term and a bounded repulsion range, and ends
+  with a de-overlap pass — a 69-table model went from 60 overlapping pairs
+  to zero, in a compact frame
+
 ### v0.8.3 — Own the pgmodeler-cli image, reliable .dbm CI (2026-08-28)
 
 - `docker/pgmodeler-cli/` + `image.yml` build and publish
