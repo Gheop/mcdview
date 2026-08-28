@@ -1,74 +1,90 @@
 # mcdview
 
-<img src="logo.svg" width="96" align="right" alt="logo mcdview">
+<img src="logo.svg" width="96" align="right" alt="mcdview logo">
 
-Explorateur HTML interactif d'un modèle de données PostgreSQL. À partir d'un
-fichier DDL (`CREATE TABLE ...`), mcdview génère une page autonome — aucun
-serveur, aucune dépendance — où l'on navigue dans le modèle : vue d'ensemble
-des tables par schéma, clic pour isoler une table avec ses tables liées,
-panneau de détail des champs, recherche.
+Interactive HTML explorer for a PostgreSQL data model. From a DDL file
+(`CREATE TABLE ...`), mcdview generates a self-contained page — no server,
+no dependency — to browse the model: overview of tables grouped by schema,
+click a table to isolate it with its related tables, field detail panel,
+search box.
 
-## Utilisation
+**[Live demo](https://gheop.github.io/mcdview/exemples/mediatheque.html)** —
+a fictional library model (12 tables, 3 schemas).
+
+[![mcdview showing a table isolated with its related tables](docs/screenshot.webp)](https://gheop.github.io/mcdview/exemples/mediatheque.html)
+
+## Usage
 
 ```bash
-./mcdview.py modele.sql
-./mcdview.py modele.sql -o explorateur.html --titre "Mon projet"
+./mcdview.py model.sql
+./mcdview.py model.sql -o explorer.html --titre "My project"
 ```
 
-Puis ouvrir le fichier HTML produit dans un navigateur.
+Then open the generated HTML file in a browser.
 
-Dans la page :
+In the page:
 
-- **molette** : zoom, **glisser** : déplacement;
-- **clic sur une table** : l'isole avec ses tables liées (les autres
-  disparaissent, la vue se cadre) et affiche son détail à droite — champs,
-  types, NOT NULL, PK 🔑, FK 🔗 cliquables, commentaires de tables et de
-  colonnes, liste des tables qui la référencent;
-- **Échap** ou « vue générale » : retour au plan complet, recadré;
-- **recherche** avec autocomplétion des noms de tables.
+- **wheel**: zoom, **drag**: pan;
+- **click a table**: isolates it with its related tables (the others fade
+  out, the view re-frames) and shows its detail on the right — fields,
+  types, NOT NULL, PK 🔑, clickable FK 🔗, table and column comments,
+  list of referencing tables;
+- **Escape** or "vue générale": back to the full, re-framed overview;
+- **search** with table name autocompletion.
 
 ## Options
 
-| Option | Effet |
+| Option | Effect |
 |---|---|
-| `-o, --sortie FICHIER` | Fichier HTML produit (défaut : `<sql>.html`) |
-| `--titre TEXTE` | Titre affiché dans la page (défaut : nom du fichier) |
-| `--dbm FICHIER` | Reprend les positions des tables d'un modèle pgModeler au lieu du placement automatique |
-| `--fk-audit REGEX` | Classe « audit » les FK dont le nom de contrainte matche : masquées par défaut, réaffichables d'une case à cocher |
+| `-o, --sortie FILE` | Output HTML file (default: `<sql>.html`) |
+| `--titre TEXT` | Title shown in the page (default: file name) |
+| `--dbm FILE` | Reuse table positions from a pgModeler model instead of automatic layout |
+| `--fk-audit REGEX` | Tag as "audit" the FKs whose constraint name matches: hidden by default, shown back with a checkbox |
 
-Sans `--dbm`, mcdview calcule un placement automatique : une zone par schéma,
-tables rangées en colonnes équilibrées, les tables liées rapprochées.
+Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
+tables arranged in balanced columns, related tables pulled together.
 
-## Ce que mcdview lit dans le DDL
+`--fk-audit` is for models where every table carries audit columns
+(`created_by`, `modified_by`...) pointing to a users table: those FKs turn
+that table into a hub linked to everything and clutter the graph.
 
-- `CREATE TABLE schema.table (...)` : colonnes, types, NOT NULL, DEFAULT,
+## What mcdview reads from the DDL
+
+- `CREATE TABLE schema.table (...)`: columns, types, NOT NULL, DEFAULT,
   `CONSTRAINT ... PRIMARY KEY`;
 - `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY ... REFERENCES ...`;
-- `COMMENT ON TABLE` et `COMMENT ON COLUMN`.
+- `COMMENT ON TABLE` and `COMMENT ON COLUMN`.
 
-Les tables doivent être qualifiées par leur schéma. Un dump `pg_dump -s`
-qualifié convient.
+Tables must be schema-qualified. A qualified `pg_dump -s` dump works.
 
-## Exemple
+## Example
 
-`exemples/mediatheque.html` est généré depuis `exemples/mediatheque.sql`,
-un modèle fictif de médiathèque (12 tables, 3 schémas, 21 FK dont 7 d'audit) :
+`exemples/mediatheque.html` ([live](https://gheop.github.io/mcdview/exemples/mediatheque.html))
+is generated from `exemples/mediatheque.sql`, a fictional library model
+(12 tables, 3 schemas, 21 FKs including 7 audit FKs):
 
 ```bash
 ./mcdview.py exemples/mediatheque.sql --titre "Médiathèque (démo)" --fk-audit '_idmodificateur_fk$'
 ```
 
-## Développement
+## Development
 
-Python 3 standard, aucune dépendance. Le rendu vit dans
-`templates/explorateur.html` (CSS/JS inline), les données y sont injectées en
-JSON à la place de `__DONNEES__`.
+Plain Python 3, no dependency. All the rendering lives in
+`templates/explorateur.html` (inline CSS/JS); the data is injected as JSON
+in place of `__DONNEES__`.
 
 ## Changelog
 
-### v0.1.0 — Première version autonome (2026-08-27)
+### v0.1.1 — Public release (2026-08-28)
 
-- Extraction du projet Gest'EA pour en faire un outil générique
-- Placement automatique des tables (une zone par schéma, colonnes équilibrées, tables liées rapprochées) — le `.dbm` pgModeler devient optionnel
-- Options `--titre`, `--fk-audit`, `--dbm`, `-o`
-- Logo SVG, case « FK d'audit » masquée quand aucune FK ne matche
+- Fictional library demo (`exemples/mediatheque.sql`) with a live version
+  on GitHub Pages
+- README in English, screenshot
+- Published on GitHub
+
+### v0.1.0 — First standalone version (2026-08-27)
+
+- Automatic table layout (one zone per schema, balanced columns, related
+  tables pulled together) — the pgModeler `.dbm` becomes optional
+- `--titre`, `--fk-audit`, `--dbm`, `-o` options
+- SVG logo, "audit FK" checkbox hidden when no FK matches
