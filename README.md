@@ -40,6 +40,7 @@ In the page:
 | `--titre TEXT` | Title shown in the page (default: file name) |
 | `--dbm FILE` | Reuse table positions from a pgModeler model instead of automatic layout |
 | `--fk-audit REGEX` | Tag as "audit" the FKs whose constraint name matches: hidden by default, shown back with a checkbox |
+| `--lang {fr,en}` | Language of the page UI (default: `fr`) |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
@@ -64,7 +65,7 @@ is generated from `exemples/mediatheque.sql`, a fictional library model
 (12 tables, 3 schemas, 21 FKs including 7 audit FKs):
 
 ```bash
-./mcdview.py exemples/mediatheque.sql --titre "Médiathèque (démo)" --fk-audit '_idmodificateur_fk$'
+./mcdview.py exemples/mediatheque.sql --titre "Médiathèque (démo)" --fk-audit '_idmodificateur_fk$' --lang en
 ```
 
 ## Development
@@ -74,6 +75,12 @@ Plain Python 3, no dependency. All the rendering lives in
 in place of `__DONNEES__`.
 
 ## Changelog
+
+### v0.2.0 — English UI (2026-08-28)
+
+- `--lang {fr,en}` option: language of the generated page's interface
+  (search box, help text, detail panel labels)
+- The live demo now uses the English UI
 
 ### v0.1.1 — Public release (2026-08-28)
 

@@ -138,6 +138,38 @@ def placement_auto(tables, fks):
         zone_x = max_x + ZONE_GAP
 
 
+# Interface de la page générée : le gabarit est écrit en français, les autres
+# langues sont des remplacements littéraux. Chaque clé doit exister telle
+# quelle dans le gabarit — traduire() échoue sinon, pour détecter une dérive.
+TRADUCTIONS = {
+    'en': {
+        '<html lang="fr">': '<html lang="en">',
+        'placeholder="chercher une table…"': 'placeholder="find a table…"',
+        '← vue générale (Échap)': '← overview (Esc)',
+        "> FK d'audit": '> audit FKs',
+        "Cliquer sur une table pour l'isoler avec ses\n"
+        "tables liées et voir son détail ici.<br><br>Molette : zoom.\n"
+        "Glisser : déplacer. Échap : vue générale.":
+            'Click a table to isolate it with its\n'
+            'related tables and see its details here.<br><br>Wheel: zoom.\n'
+            'Drag: pan. Escape: overview.',
+        '<div class="schema">schéma ': '<div class="schema">schema ',
+        '<h4>Référencée par</h4>': '<h4>Referenced by</h4>',
+        'aucune table': 'no table',
+    },
+}
+
+
+def traduire(html, lang):
+    if lang == 'fr':
+        return html
+    for source, cible in TRADUCTIONS[lang].items():
+        if source not in html:
+            sys.exit(f'traduction impossible : chaîne absente du gabarit : {source!r}')
+        html = html.replace(source, cible)
+    return html
+
+
 def principal():
     ap = argparse.ArgumentParser(description="explorateur HTML interactif d'un modèle PostgreSQL")
     ap.add_argument('sql', help='fichier DDL PostgreSQL (CREATE TABLE...)')
@@ -146,6 +178,8 @@ def principal():
     ap.add_argument('--dbm', help='modèle pgModeler pour reprendre les positions des tables')
     ap.add_argument('--fk-audit', default=None, metavar='REGEX',
                     help="regex des contraintes FK à classer « audit » (masquées par défaut)")
+    ap.add_argument('--lang', default='fr', choices=['fr'] + sorted(TRADUCTIONS),
+                    help="langue de l'interface de la page (défaut : fr)")
     args = ap.parse_args()
 
     tables, fks = analyser_sql(args.sql)
@@ -175,6 +209,7 @@ def principal():
     ici = Path(__file__).parent
     html = (ici / 'templates' / 'explorateur.html').read_text()
     logo = (ici / 'logo.svg').read_text()
+    html = traduire(html, args.lang)
     html = html.replace('__DONNEES__', json_txt).replace('__TITRE__', titre)
     html = html.replace('__LOGO__', logo.replace('width="128" height="128"', 'width="22" height="22"'))
     Path(sortie).write_text(html)
