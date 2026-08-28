@@ -163,6 +163,13 @@ file's header.
 
 ## Changelog
 
+### v0.10.1 — Case-insensitive key matching (2026-08-28)
+
+- PK/FK column names are matched to columns case-insensitively (unquoted SQL
+  identifiers are case-insensitive), so a `PLAYERID` primary key on a
+  `playerID` column shows its 🔑 instead of being dropped as a phantom —
+  found by the content-invariant test on a wider harvested corpus
+
 ### v0.10.0 — Header logo link and custom logo (2026-08-28)
 
 - `--home-url URL`: the header logo becomes a link (e.g. back to the

@@ -195,18 +195,37 @@ def ressemble_postgres(chemin):
     return '`' not in src and 'AUTOINCREMENT' not in src.upper()
 
 
+def normaliser_casse(tables, fks):
+    """Map PK/FK column names onto the actual column name when they differ only
+    by case (unquoted SQL identifiers are case-insensitive), so the 🔑/🔗 icons
+    match. A name with no case-insensitive match is left as is (a real phantom)."""
+    for t in tables.values():
+        reel = {c['nom'].lower(): c['nom'] for c in t['cols']}
+        t['pk'] = [reel.get(p.lower(), p) for p in t['pk']]
+    for f in fks:
+        src = tables.get(f['de'])
+        if src:
+            f['col'] = {c['nom'].lower(): c['nom'] for c in src['cols']}.get(
+                f['col'].lower(), f['col'])
+        dst = tables.get(f['vers'])
+        if dst and f['colcible']:
+            f['colcible'] = {c['nom'].lower(): c['nom'] for c in dst['cols']}.get(
+                f['colcible'].lower(), f['colcible'])
+    return tables, fks
+
+
 def analyser(chemin, dialecte='auto'):
     """Parse a DDL file. Returns (tables, fks, effective_dialect)."""
     if dialecte in ('postgres', 'postgresql'):
         tables, fks = analyser_sql(chemin)
-        return tables, fks, 'postgresql'
+        return (*normaliser_casse(tables, fks), 'postgresql')
     if dialecte == 'auto':
         # PostgreSQL regex parser first, but only trust it when the file isn't
         # obviously another dialect it would mis-parse (MySQL backtick PKs...)
         if ressemble_postgres(chemin):
             tables, fks = analyser_sql(chemin)
             if tables:
-                return tables, fks, 'postgresql'
+                return (*normaliser_casse(tables, fks), 'postgresql')
         # otherwise try several sqlglot dialects, keep the most tables
         candidats = list(dict.fromkeys([flairer_dialecte(chemin)] + DIALECTES_ESSAI))
         meilleur = ({}, [], candidats[0])
@@ -214,9 +233,9 @@ def analyser(chemin, dialecte='auto'):
             t, f = analyser_sqlglot(chemin, d, strict=False)
             if len(t) > len(meilleur[0]):
                 meilleur = (t, f, d)
-        return meilleur
+        return (*normaliser_casse(meilleur[0], meilleur[1]), meilleur[2])
     tables, fks = analyser_sqlglot(chemin, dialecte)
-    return tables, fks, dialecte
+    return (*normaliser_casse(tables, fks), dialecte)
 
 
 def analyser_sqlglot(chemin, dialecte, strict=True):
