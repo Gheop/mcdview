@@ -51,11 +51,11 @@ qualifié convient.
 
 ## Exemple
 
-`exemples/gestea.html` est généré depuis le modèle Gest'EA (70 tables,
-4 schémas, 186 FK) :
+`exemples/mediatheque.html` est généré depuis `exemples/mediatheque.sql`,
+un modèle fictif de médiathèque (12 tables, 3 schémas, 21 FK dont 7 d'audit) :
 
 ```bash
-./mcdview.py mcd.sql -o exemples/gestea.html --titre "Gest'EA" --fk-audit '_idmodificateur_fk$'
+./mcdview.py exemples/mediatheque.sql --titre "Médiathèque (démo)" --fk-audit '_idmodificateur_fk$'
 ```
 
 ## Développement
