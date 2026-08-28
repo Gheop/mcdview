@@ -136,6 +136,17 @@ file's header.
 
 ## Changelog
 
+### v0.8.1 — CI test pipeline (2026-08-28)
+
+- CI now runs on every push and pull request: Python error linting
+  (`ruff --select F,E9`, `py_compile`), the pinned regression, the security
+  suite, the strict corpus campaign, HTML structure validation and a
+  headless-Chrome DOM check on the generated example pages; deploy to Pages
+  only runs on `main` after the tests pass
+- `tests/valider_html.py` validates a page's structure and data island
+- A best-effort `.dbm` job installs pgmodeler-cli on the runner (never
+  blocks a PR)
+
 ### v0.8.0 — Rearrange button (2026-08-28)
 
 - "Rearrange" button: a dependency-free force-directed relayout
