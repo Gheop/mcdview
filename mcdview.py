@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+import zipfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -438,6 +439,85 @@ def sql_depuis_prisma(chemin):
          '{entree}', '--script'], 'Prisma', vers_stdout=True, env=env)
 
 
+def analyser_mwb(chemin):
+    """Parse a MySQL Workbench .mwb model natively (zip + GRT XML, stdlib only).
+
+    The .mwb is a zip whose document.mwb.xml is a GRT object tree: schemas hold
+    tables, tables hold columns/indices/foreign keys, and cross-references
+    (a column's type, a PK's columns, an FK's endpoints) are id links resolved
+    against every object's `id` attribute.
+    """
+    with zipfile.ZipFile(chemin) as z:
+        racine = ET.fromstring(z.read('document.mwb.xml'))
+
+    def par_cle(el, cle):
+        return next((c for c in el if c.get('key') == cle), None)
+
+    def txt(el, cle):
+        e = par_cle(el, cle)
+        return (e.text or '').strip() if e is not None else ''
+
+    def objets(el, cle):
+        liste = par_cle(el, cle)
+        return list(liste) if liste is not None else []
+
+    def type_colonne(col):
+        st = txt(col, 'simpleType') or txt(col, 'userType')
+        base = st.rsplit('.', 1)[-1] if st else ''
+        lg, prec, scale = txt(col, 'length'), txt(col, 'precision'), txt(col, 'scale')
+        if lg and lg not in ('-1', '0'):
+            return f'{base}({lg})'
+        if prec and prec not in ('-1', '0'):
+            return f'{base}({prec},{scale})' if scale and scale != '-1' else f'{base}({prec})'
+        return base
+
+    tables, fks = {}, []
+    col_par_id = {}   # column id -> (name, table key)
+    tbl_par_id = {}   # table id -> table key
+
+    for sch in racine.iter('value'):
+        if sch.get('struct-name') != 'db.mysql.Schema':
+            continue
+        schema = txt(sch, 'name') or 'public'
+        for t in objets(sch, 'tables'):
+            nom = txt(t, 'name')
+            cle = f'{schema}.{nom}'
+            tbl_par_id[t.get('id')] = cle
+            cols = []
+            for c in objets(t, 'columns'):
+                cn = txt(c, 'name')
+                col_par_id[c.get('id')] = (cn, cle)
+                cols.append({'nom': cn, 'type': type_colonne(c),
+                             'nn': txt(c, 'isNotNull') == '1', 'defaut': txt(c, 'defaultValue')})
+            pk = []
+            for idx in objets(t, 'indices'):
+                if txt(idx, 'isPrimary') == '1':
+                    for ic in objets(idx, 'columns'):
+                        rc = txt(ic, 'referencedColumn')
+                        if rc in col_par_id:
+                            pk.append(col_par_id[rc][0])
+            tables[cle] = {'schema': schema, 'nom': nom, 'cols': cols, 'pk': pk,
+                           'x': 0, 'y': 0, 'comment': txt(t, 'comment'), 'colcomments': {}}
+
+    for fk in racine.iter('value'):
+        if fk.get('struct-name') != 'db.mysql.ForeignKey':
+            continue
+        srcs = [e.text.strip() for e in objets(fk, 'columns') if e.text]
+        dsts = [e.text.strip() for e in objets(fk, 'referencedColumns') if e.text]
+        cible_tbl = tbl_par_id.get(txt(fk, 'referencedTable'))
+        nom = txt(fk, 'name')
+        for i, scid in enumerate(srcs):
+            if scid not in col_par_id:
+                continue
+            scol, de = col_par_id[scid]
+            dcol, vers = col_par_id.get(dsts[i] if i < len(dsts) else None, ('', cible_tbl))
+            vers = vers or cible_tbl
+            if de in tables and vers in tables:
+                fks.append({'de': de, 'col': scol, 'vers': vers,
+                            'colcible': dcol, 'nom': nom, 'audit': False})
+    return tables, fks
+
+
 def positions_dbm(chemin, tables):
     root = ET.parse(chemin).getroot()
     couleurs = {}
@@ -615,8 +695,8 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
 
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
-    ap.add_argument('sql', metavar='sql|dbm|dbml',
-                    help='SQL DDL, pgModeler .dbm, or dbdiagram.io .dbml model')
+    ap.add_argument('sql', metavar='sql|dbm|dbml|mwb',
+                    help='SQL DDL, or a .dbm/.dbml/.mwb/.prisma model file')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
     ap.add_argument('--dbm', help='pgModeler model to reuse table positions from')
@@ -650,7 +730,11 @@ def principal():
         source = sql_depuis_prisma(source)
         # keep 'auto': prisma emits SQL in the schema's provider dialect
         # (postgres, mysql, sqlite, sqlserver), which auto detects
-    tables, fks, dialecte = analyser(source, dialecte)
+    if source.endswith('.mwb'):
+        tables, fks = normaliser_casse(*analyser_mwb(source))
+        dialecte = 'mysql'
+    else:
+        tables, fks, dialecte = analyser(source, dialecte)
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements'
                  + indice_dialecte(source))

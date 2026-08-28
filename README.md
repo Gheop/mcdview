@@ -34,6 +34,7 @@ a fictional library model (12 tables, 3 schemas).
 ./mcdview.py model.dbm          # pgModeler model (needs pgmodeler-cli)
 ./mcdview.py model.dbml         # dbdiagram.io model (needs @dbml/cli)
 ./mcdview.py schema.prisma      # Prisma schema (needs prisma)
+./mcdview.py model.mwb          # MySQL Workbench model (native, no tool)
 ```
 
 Then open the generated HTML file in a browser.
@@ -87,11 +88,10 @@ and, when it finds no table, tries several sqlglot dialects and keeps the one
 that parses the most tables; pass `--dialect mysql` (etc.) to force one. Model files are read through an upstream converter (an optional dependency,
 like the SQL dialects): pgModeler `.dbm` via `pgmodeler-cli`,
 dbdiagram.io `.dbml` via `@dbml/cli`, and Prisma `schema.prisma` via the
-`prisma` CLI. Proprietary binary model formats (MySQL Workbench `.mwb`, Navicat, ERwin,
-Oracle SQL Developer Data Modeler…) are not read directly — there is no
-reliable headless converter for them. Export their SQL instead (in MySQL
-Workbench: Database → Forward Engineer, or File → Export → Forward Engineer
-SQL CREATE Script); the resulting `.sql` is read like any other DDL.
+`prisma` CLI. MySQL Workbench `.mwb` is read **natively** (it is a zip of a
+GRT XML model — no external tool needed). Other proprietary formats (Navicat,
+ERwin, Oracle SQL Developer Data Modeler…) have no reliable converter: export
+their SQL instead (Workbench-style Forward Engineer), which mcdview reads.
 
 `--fk-audit` is for models where every table carries audit columns
 (`created_by`, `modified_by`...) pointing to a users table: those FKs turn
@@ -171,6 +171,12 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.15.0 — MySQL Workbench .mwb input (2026-08-28)
+
+- Read MySQL Workbench `.mwb` models natively — the file is a zip whose
+  `document.mwb.xml` (GRT object tree) is parsed with the standard library,
+  no external tool: schemas, tables, column types, primary and foreign keys
 
 ### v0.14.0 — Prisma schema input (2026-08-28)
 

@@ -6,3 +6,4 @@ tests/resultats.tsv
 tests/corpus/modeles/
 *.log
 tests/corpus/prisma/
+tests/corpus/mwb/
