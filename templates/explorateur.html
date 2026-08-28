@@ -25,6 +25,7 @@
   .table.choisie { border-color: var(--ligne-vive); border-width: 2.5px;
     box-shadow: 0 2px 12px #0b74c455; }
   .table.efface { opacity: 0; pointer-events: none; }
+  .table.deplace { transition: none; cursor: grabbing; }
   .table h3 { margin: 0; padding: 4px 10px; font-size: 13px; color: #1c1e22;
     border-radius: 4px 4px 0 0; white-space: nowrap; }
   .table ul { margin: 0; padding: 3px 10px 5px; list-style: none; }
@@ -169,24 +170,50 @@ vp.addEventListener("wheel", e => {
   k = nk;
   rendre();
 }, { passive: false });
-let drag = null;
+let drag = null, lienPrevus = false;
+function liensAuProchainRendu() {
+  // one link redraw per frame while a table is being dragged
+  if (lienPrevus) return;
+  lienPrevus = true;
+  requestAnimationFrame(() => { lienPrevus = false; dessinerLiens(); });
+}
 vp.addEventListener("pointerdown", e => {
-  drag = { px: e.clientX, py: e.clientY, ox: x, oy: y, bouge: false };
-  vp.classList.add("drag");
+  const table = e.target.closest(".table");
+  drag = { px: e.clientX, py: e.clientY, ox: x, oy: y, bouge: false,
+           table, tx: table ? table.offsetLeft : 0, ty: table ? table.offsetTop : 0 };
+  if (table) table.classList.add("deplace");
+  else vp.classList.add("drag");
   vp.setPointerCapture(e.pointerId);
 });
 vp.addEventListener("pointermove", e => {
   if (!drag) return;
   if (Math.abs(e.clientX - drag.px) + Math.abs(e.clientY - drag.py) > 3) drag.bouge = true;
-  x = drag.ox + e.clientX - drag.px;
-  y = drag.oy + e.clientY - drag.py;
-  rendre();
+  if (!drag.bouge) return;
+  if (drag.table) {
+    // pointer deltas are in screen pixels, the plan is scaled by k
+    drag.table.style.left = Math.round(drag.tx + (e.clientX - drag.px) / k) + "px";
+    drag.table.style.top = Math.round(drag.ty + (e.clientY - drag.py) / k) + "px";
+    liensAuProchainRendu();
+  } else {
+    x = drag.ox + e.clientX - drag.px;
+    y = drag.oy + e.clientY - drag.py;
+    rendre();
+  }
 });
 vp.addEventListener("pointerup", e => {
-  const clicSec = drag && !drag.bouge;
+  const fini = drag;
   drag = null;
   vp.classList.remove("drag");
-  if (clicSec) {
+  if (!fini) return;
+  if (fini.table) {
+    fini.table.classList.remove("deplace");
+    if (fini.bouge && !focusCle) {
+      // moved in the overview: the new position becomes the home position
+      const cle = fini.table.dataset.cle;
+      origines[cle] = { x: fini.table.offsetLeft, y: fini.table.offsetTop };
+    }
+  }
+  if (!fini.bouge) {
     const cible = document.elementFromPoint(e.clientX, e.clientY)?.closest(".table");
     if (cible) isoler(cible.dataset.cle);
   }

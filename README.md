@@ -34,7 +34,8 @@ In the page:
   out, the view re-frames) and shows its detail on the right — fields,
   types, NOT NULL, PK 🔑, clickable FK 🔗, table and column comments,
   list of referencing tables;
-- **Escape** or "vue générale": back to the full, re-framed overview;
+- **drag a table** to rearrange the diagram, the links follow live;
+- **Escape** or "overview": back to the full, re-framed overview;
 - **search** with table name autocompletion.
 
 ## Options
@@ -95,7 +96,21 @@ Plain Python 3, no dependency. All the rendering lives in
 `templates/explorateur.html` (inline CSS/JS); the data is injected as JSON
 in place of `__DONNEES__`.
 
+`tests/tester.py` runs mcdview end-to-end on every committed example and
+every pgModeler sample model, checks pinned table/FK counts and times each
+run; `tests/rapatrier.sh` fetches big real-world schemas (GitLab, Discourse)
+into a local, uncommitted corpus for stress testing. Enable the quick
+pre-commit check with `git config core.hooksPath .githooks`.
+
 ## Changelog
+
+### v0.5.0 — Draggable tables, test bench (2026-08-28)
+
+- Tables can be dragged around the diagram, links redraw live; a table
+  moved in the overview keeps its new home position
+- Regression/benchmark runner (`tests/tester.py`) over the examples, the
+  pgModeler sample models and an optional local corpus of big real-world
+  schemas (GitLab: 1066 tables parsed in ~0.7 s), plus a pre-commit hook
 
 ### v0.4.0 — pgModeler .dbm input, CI-built pages (2026-08-28)
 

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Quick regression before each commit (committed examples + pgModeler samples).
+# Full run, corpus included: tests/tester.py
+exec ./tests/tester.py --rapide
