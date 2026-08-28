@@ -283,6 +283,10 @@ TRADUCTIONS = {
             'Click a table to isolate it with its\n'
             'related tables and see its details here.<br><br>Wheel: zoom.\n'
             'Drag: pan. Escape: overview.',
+        '⇄ réorganiser': '⇄ rearrange',
+        '"réétaler les tables pour dégager les liens"':
+            '"spread the tables out to unclutter the links"',
+        '"trop de tables pour réorganiser ("': '"too many tables to rearrange ("',
         '<div class="schema">schéma ': '<div class="schema">schema ',
         '<h4>Référencée par</h4>': '<h4>Referenced by</h4>',
         'aucune table': 'no table',

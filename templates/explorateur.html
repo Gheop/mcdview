@@ -76,6 +76,7 @@
   <input id="cherche" type="search" placeholder="chercher une table…" list="noms">
   <datalist id="noms"></datalist>
   <button id="vueGenerale" hidden>← vue générale (Échap)</button>
+  <button id="reorganiser" title="réétaler les tables pour dégager les liens">⇄ réorganiser</button>
   <label id="labelAudit"><input type="checkbox" id="voirAudit"> FK d'audit</label>
   <span id="compte"></span>
 </div>
@@ -316,6 +317,79 @@ function vueGenerale() {
 btnRetour.addEventListener("click", vueGenerale);
 document.addEventListener("keydown", e => { if (e.key === "Escape") vueGenerale(); });
 vp.addEventListener("dblclick", () => { vueGenerale(); cadrer(Object.keys(elems)); });
+
+// --- force-directed relayout: spread tables so FK links overlap less ---
+// Fruchterman-Reingold on table centers; node size is folded into the ideal
+// distance so big tables push each other apart. One-shot on the button.
+const btnReorg = document.getElementById("reorganiser");
+const REORG_MAX = 400;  // above this, O(n²) freezes the tab: disable the button
+if (D.tables.length > REORG_MAX) {
+  btnReorg.disabled = true;
+  btnReorg.title = "trop de tables pour réorganiser (" + D.tables.length + ")";
+}
+function reorganiser() {
+  const cles = Object.keys(elems).filter(c => !elems[c].classList.contains("efface"));
+  const n = cles.length;
+  if (n < 2 || n > REORG_MAX) return;
+  btnReorg.disabled = true;
+  const idx = {}, taille = {};
+  const px = new Float64Array(n), py = new Float64Array(n);
+  cles.forEach((c, i) => {
+    idx[c] = i;
+    const e = elems[c];
+    px[i] = e.offsetLeft + e.offsetWidth / 2;
+    py[i] = e.offsetTop + e.offsetHeight / 2;
+    taille[i] = Math.hypot(e.offsetWidth, e.offsetHeight) / 2;
+  });
+  const aretes = fksVisibles()
+    .filter(f => idx[f.de] !== undefined && idx[f.vers] !== undefined && f.de !== f.vers)
+    .map(f => [idx[f.de], idx[f.vers]]);
+  const surface = n * 90000;
+  const k = Math.sqrt(surface / n);               // ideal edge length
+  const iters = Math.max(60, Math.min(300, Math.round(6000 / Math.sqrt(n))));
+  let temp = k * 1.2;                             // cooling: max move per step
+  const dx = new Float64Array(n), dy = new Float64Array(n);
+  for (let it = 0; it < iters; it++) {
+    dx.fill(0); dy.fill(0);
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let ex = px[i] - px[j], ey = py[i] - py[j];
+        let d = Math.hypot(ex, ey) || 0.01;
+        const dmin = taille[i] + taille[j] + 40;
+        // stronger push while boxes would overlap, normal 1/d repulsion else
+        const rep = (k * k / d) * (d < dmin ? 3 : 1);
+        ex /= d; ey /= d;
+        dx[i] += ex * rep; dy[i] += ey * rep;
+        dx[j] -= ex * rep; dy[j] -= ey * rep;
+      }
+    }
+    for (const [a, b] of aretes) {
+      let ex = px[a] - px[b], ey = py[a] - py[b];
+      const d = Math.hypot(ex, ey) || 0.01;
+      const att = d * d / k;
+      ex = ex / d * att; ey = ey / d * att;
+      dx[a] -= ex; dy[a] -= ey;
+      dx[b] += ex; dy[b] += ey;
+    }
+    for (let i = 0; i < n; i++) {
+      const d = Math.hypot(dx[i], dy[i]) || 0.01;
+      px[i] += dx[i] / d * Math.min(d, temp);
+      py[i] += dy[i] / d * Math.min(d, temp);
+    }
+    temp = Math.max(k * 0.05, temp * 0.96);       // simulated annealing
+  }
+  cles.forEach(c => {
+    const e = elems[c], i = idx[c];
+    e.style.left = Math.round(px[i] - e.offsetWidth / 2) + "px";
+    e.style.top = Math.round(py[i] - e.offsetHeight / 2) + "px";
+    if (!focusCle) origines[c] = { x: e.offsetLeft, y: e.offsetTop };
+  });
+  setTimeout(() => {
+    dessinerLiens(); cadrer(cles);
+    btnReorg.disabled = D.tables.length > REORG_MAX;
+  }, 380);
+}
+btnReorg.addEventListener("click", reorganiser);
 
 // --- detail panel ---
 function lienTable(cle) {

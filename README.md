@@ -37,6 +37,8 @@ In the page:
   comments, list of referencing tables; the URL gets a `#schema.table`
   permalink that reopens straight on that table;
 - **drag a table** to rearrange the diagram, the links follow live;
+- **"rearrange" button**: a force-directed relayout that spreads the tables
+  to unclutter the links (disabled above 400 tables, where it would be slow);
 - **schema chips** (bottom-left, when there are several schemas): click to
   frame that schema's zone;
 - **Escape** or "overview": back to the full, re-framed overview;
@@ -133,6 +135,13 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.8.0 — Rearrange button (2026-08-28)
+
+- "Rearrange" button: a dependency-free force-directed relayout
+  (Fruchterman-Reingold) that spreads tables to reduce link crossings —
+  on a 69-table model with its audit FKs hidden, crossings dropped from
+  662 to 217. Disabled above 400 tables (the O(n²) pass would freeze the tab)
 
 ### v0.7.0 — Hover, permalinks, hardening (2026-08-28)
 
