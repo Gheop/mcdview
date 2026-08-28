@@ -10,4 +10,5 @@ set -e
 ./tests/tester.py --rapide
 ./tests/test_securite.py
 ./tests/test_dialectes.py
+./tests/test_invariants.py --strict
 ./tests/grand_banc.py --strict

@@ -37,7 +37,7 @@ ATTENDUS = {
     'samples/usda.dbm': (10, 11),
     'samples/cryptoconcept.dbm': (19, 19),
     'samples/3dcitydb.dbm': (60, 263),
-    'conf/example.dbm': (2, 0),
+    'conf/example.dbm': (3, 2),  # the quoted "table" is now read (was missed)
 }
 IGNORES = set()
 

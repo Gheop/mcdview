@@ -161,6 +161,17 @@ file's header.
 
 ## Changelog
 
+### v0.9.5 — Parser fixes from content-invariant testing (2026-08-28)
+
+- Strip quoting from column names in PK/FK lists, so a `` `id` `` or
+  `"timestamp"` primary key no longer becomes a phantom (unmatched) key
+- Read quoted table/schema names (`CREATE TABLE "accounts"`), so double-quoted
+  DDL (e.g. Drizzle output) is parsed instead of dropped entirely
+- Route obviously non-PostgreSQL files (backticks) to sqlglot rather than
+  letting the regex parser mangle them
+- New `tests/test_invariants.py`: checks the parsed model is internally
+  consistent (no empty types, no phantom PK columns, FK endpoints exist)
+
 ### v0.9.4 — Auto-dialect tries several parsers (2026-08-28)
 
 - When PostgreSQL yields no table, `--dialect auto` now tries several sqlglot

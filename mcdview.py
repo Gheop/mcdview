@@ -44,6 +44,12 @@ RE_DEFAUT = re.compile(r'\s*\bDEFAULT\s+(.*)$')
 RE_COUPE = re.compile(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT)\b')
 
 
+def identifiants(liste):
+    """Split a comma list of column names and strip quoting, so PK/FK column
+    names match the columns (which are stored unquoted)."""
+    return [c.strip().strip('"`') for c in liste.split(',')]
+
+
 def analyser_colonne(ligne):
     """One column line → dict, or None if it is not one."""
     cm = RE_COLONNE.match(ligne)
@@ -71,7 +77,7 @@ def analyser_sql(chemin):
     # is delimited by string search, not by a lazy `.*?` regex: on malformed
     # input (many openers, no closer) the latter backtracks catastrophically.
     for m in re.finditer(
-            r'CREATE TABLE (?:IF NOT EXISTS )?(?:(\w+)\.)?(\w+)\s*\(\n', src):
+            r'CREATE TABLE (?:IF NOT EXISTS )?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(\n', src):
         if ' PARTITION OF ' in src[m.start():m.end()]:
             continue
         fin = src.find('\n)', m.end())
@@ -87,7 +93,7 @@ def analyser_sql(chemin):
             ligne = ligne.strip().rstrip(',')
             cm = re.match(r'(?:CONSTRAINT \w+ )?PRIMARY KEY\s*\(([^)]+)\)', ligne)
             if cm:
-                pk = [c.strip() for c in cm.group(1).split(',')]
+                pk = identifiants(cm.group(1))
                 continue
             if not ligne or ligne.startswith('--') or ligne.startswith(MOTS_CONTRAINTE):
                 continue
@@ -119,17 +125,17 @@ def analyser_sql(chemin):
 
     # primary keys declared afterwards (pg_dump -s style)
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:(\w+)\.)?(\w+)\s+ADD CONSTRAINT \w+\s+'
+            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD CONSTRAINT \w+\s+'
             r'PRIMARY KEY\s*\(([^)]+)\)', src):
         cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
         if cle in tables and not tables[cle]['pk']:
-            tables[cle]['pk'] = [c.strip() for c in m.group(3).split(',')]
+            tables[cle]['pk'] = identifiants(m.group(3))
 
-    for m in re.finditer(r"COMMENT ON TABLE (?:(\w+)\.)?(\w+) IS E?'((?:[^']|'')*)'", src):
+    for m in re.finditer(r"COMMENT ON TABLE (?:\"?(\w+)\"?\.)?\"?(\w+)\"? IS E?'((?:[^']|'')*)'", src):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:
             tables[cle]['comment'] = m.group(3).replace("''", "'")
-    for m in re.finditer(r"COMMENT ON COLUMN (?:(\w+)\.)?(\w+)\.(\w+) IS E?'((?:[^']|'')*)'", src):
+    for m in re.finditer(r"COMMENT ON COLUMN (?:\"?(\w+)\"?\.)?\"?(\w+)\"?\.\"?(\w+)\"? IS E?'((?:[^']|'')*)'", src):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:
             tables[cle]['colcomments'][m.group(3)] = m.group(4).replace("''", "'")
@@ -138,16 +144,16 @@ def analyser_sql(chemin):
     # and declarations carried by partitions (folded back, then deduplicated)
     vues = set()
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:(\w+)\.)?(\w+)\s+ADD CONSTRAINT (\w+)\s+'
-            r'FOREIGN KEY\s*\(([^)]+)\)\s*REFERENCES (?:(\w+)\.)?(\w+)(?:\s*\(([^)]+)\))?',
+            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD CONSTRAINT (\w+)\s+'
+            r'FOREIGN KEY\s*\(([^)]+)\)\s*REFERENCES (?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?',
             src):
         ssch, stab, cname, scols, dsch, dtab, dcols = m.groups()
         de = resoudre(f"{ssch or 'public'}.{stab}")
         vers = resoudre(f"{dsch or 'public'}.{dtab}")
         if de not in tables or vers not in tables:
             continue
-        sources = [c.strip() for c in scols.split(',')]
-        cibles = ([c.strip() for c in dcols.split(',')] if dcols
+        sources = identifiants(scols)
+        cibles = (identifiants(dcols) if dcols
                   else tables[vers]['pk'])
         for i, scol in enumerate(sources):
             dcol = cibles[i] if i < len(cibles) else ''
@@ -181,14 +187,26 @@ def flairer_dialecte(chemin):
 DIALECTES_ESSAI = ['mysql', 'sqlite', 'postgres', 'tsql', 'oracle', 'clickhouse', 'duckdb']
 
 
+def ressemble_postgres(chemin):
+    """False when the DDL is clearly another dialect (backticks never appear in
+    valid PostgreSQL, AUTOINCREMENT is SQLite) that the regex parser would mangle."""
+    src = open(chemin, errors='replace').read(300000)
+    return '`' not in src and 'AUTOINCREMENT' not in src.upper()
+
+
 def analyser(chemin, dialecte='auto'):
     """Parse a DDL file. Returns (tables, fks, effective_dialect)."""
-    if dialecte in ('auto', 'postgres', 'postgresql'):
+    if dialecte in ('postgres', 'postgresql'):
         tables, fks = analyser_sql(chemin)
-        if tables or dialecte != 'auto':
-            return tables, fks, 'postgresql'
-        # auto and not PostgreSQL: try the sniffed dialect, then the others,
-        # keeping whichever parses the most tables
+        return tables, fks, 'postgresql'
+    if dialecte == 'auto':
+        # PostgreSQL regex parser first, but only trust it when the file isn't
+        # obviously another dialect it would mis-parse (MySQL backtick PKs...)
+        if ressemble_postgres(chemin):
+            tables, fks = analyser_sql(chemin)
+            if tables:
+                return tables, fks, 'postgresql'
+        # otherwise try several sqlglot dialects, keep the most tables
         candidats = list(dict.fromkeys([flairer_dialecte(chemin)] + DIALECTES_ESSAI))
         meilleur = ({}, [], candidats[0])
         for d in candidats:
