@@ -136,6 +136,14 @@ file's header.
 
 ## Changelog
 
+### v0.8.3 — Own the pgmodeler-cli image, reliable .dbm CI (2026-08-28)
+
+- `docker/pgmodeler-cli/` + `image.yml` build and publish
+  `ghcr.io/gheop/pgmodeler-cli` (Fedora 44 + pgModeler 1.2.2, plus a `-node`
+  variant for `container:` jobs); the tag is the pgModeler version baked in
+- The CI `.dbm` job now runs inside that pinned image (fixed version → stable
+  counts) and is blocking instead of best-effort
+
 ### v0.8.2 — Tolerate pgmodeler-cli fix-model segfault (2026-08-28)
 
 - `--fix-model` on pgmodeler-cli 1.2.2 writes the repaired `.dbm` in full,

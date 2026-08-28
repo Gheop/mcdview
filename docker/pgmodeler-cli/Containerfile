@@ -1,0 +1,19 @@
+# Headless pgmodeler-cli on Fedora, used by this repo's CI to test the .dbm
+# path and reused by mcdview-site as the base of its production image.
+# Fedora (not Debian) because Fedora 44 ships pgmodeler 1.2.2, which follows
+# upstream and reads recent .dbm files (Debian trixie is stuck at 1.1.3).
+FROM registry.fedoraproject.org/fedora:44
+
+# The rpm -e must stay in the same RUN as the install: removing packages in a
+# later layer would not shrink the image. The removed packages only serve
+# OpenGL and the graphical theme, useless in offscreen rendering.
+RUN dnf -y install --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
+        pgmodeler python3 \
+    && dnf clean all \
+    && rpm -e --nodeps llvm-libs mesa-dri-drivers gtk3 \
+        adwaita-cursor-theme adwaita-icon-theme glycin-loaders hwdata \
+    && rm -rf /var/cache/libdnf5 /var/log/dnf*
+
+# Qt needs a UTF-8 locale; offscreen: no display inside the container.
+ENV LANG=C.UTF-8 \
+    QT_QPA_PLATFORM=offscreen

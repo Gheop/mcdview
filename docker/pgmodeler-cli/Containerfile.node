@@ -1,0 +1,9 @@
+# Same image plus nodejs, for GitHub Actions `container:` jobs
+# (actions/checkout requires node in the container). BASE is the plain tag
+# built alongside it in the same workflow run.
+ARG BASE=ghcr.io/gheop/pgmodeler-cli:latest
+FROM ${BASE}
+
+RUN dnf -y install --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
+        nodejs \
+    && dnf clean all && rm -rf /var/cache/libdnf5 /var/log/dnf*

@@ -65,18 +65,14 @@ jobs:
         with:
           path: _site
 
-  # .dbm path needs pgmodeler-cli, which isn't reliably packaged on the runner:
-  # best-effort, never blocks a PR. Local pre-commit covers .dbm for real.
+  # .dbm path, tested in the pinned pgmodeler-cli 1.2.2 image (same version as
+  # mcdview-site's production), which carries python3, node (for checkout) and
+  # the pgModeler sample models. Blocking: the version is fixed, counts stable.
   test-dbm:
     runs-on: ubuntu-latest
-    continue-on-error: true
+    container: ghcr.io/gheop/pgmodeler-cli:1.2.2-node
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.13'
-      - name: install pgmodeler (best-effort)
-        run: sudo apt-get update && sudo apt-get install -y pgmodeler
       - name: regression including .dbm samples
         run: ./tests/tester.py --rapide
 

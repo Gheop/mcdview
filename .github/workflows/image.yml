@@ -1,0 +1,65 @@
+name: pgmodeler-cli image
+
+# Builds and publishes ghcr.io/gheop/pgmodeler-cli (plain + -node variant).
+# The tag is the pgModeler version baked into the image (plus latest).
+on:
+  push:
+    branches: [main]
+    paths: ['docker/pgmodeler-cli/**', '.github/workflows/image.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: image-pgmodeler
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/gheop/pgmodeler-cli
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: build base image
+        run: docker build -t "$IMAGE:build" -f docker/pgmodeler-cli/Containerfile docker/pgmodeler-cli
+
+      - name: read the pgModeler version from the image
+        id: ver
+        run: |
+          v=$(docker run --rm "$IMAGE:build" rpm -q --qf '%{VERSION}' pgmodeler)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "pgModeler $v"
+
+      - name: smoke test (fix-model tolerates its post-write segfault)
+        run: |
+          docker run --rm "$IMAGE:build" sh -c '
+            pgmodeler-cli --fix-model --input /usr/share/pgmodeler/samples/pagila.dbm --output /tmp/f.dbm ;
+            test -s /tmp/f.dbm \
+            && pgmodeler-cli --export-to-file --input /tmp/f.dbm --output /tmp/f.sql \
+            && grep -q "CREATE TABLE" /tmp/f.sql'
+
+      - name: build -node variant
+        run: |
+          docker build -t "$IMAGE:build-node" \
+            --build-arg BASE="$IMAGE:build" \
+            -f docker/pgmodeler-cli/Containerfile.node docker/pgmodeler-cli
+          docker run --rm "$IMAGE:build-node" node --version
+
+      - name: log in to ghcr
+        if: github.event_name != 'pull_request'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: tag and push
+        if: github.event_name != 'pull_request'
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          for pair in "build:$V" "build:latest" "build-node:$V-node" "build-node:latest-node"; do
+            docker tag "$IMAGE:${pair%%:*}" "$IMAGE:${pair##*:}"
+            docker push "$IMAGE:${pair##*:}"
+          done
