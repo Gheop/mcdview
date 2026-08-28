@@ -2,6 +2,12 @@
 
 <img src="logo.svg" width="96" align="right" alt="mcdview logo">
 
+[![hosted at mcdview.dev](https://img.shields.io/badge/hosted-mcdview.dev-2563eb)](https://mcdview.dev/)
+[![live demo](https://img.shields.io/badge/demo-live-22c55e)](https://gheop.github.io/mcdview/)
+[![ci](https://github.com/Gheop/mcdview/actions/workflows/ci.yml/badge.svg)](https://github.com/Gheop/mcdview/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
+![no dependencies](https://img.shields.io/badge/dependencies-none-64748b)
+
 Interactive HTML explorer for a PostgreSQL data model. From a DDL file
 (`CREATE TABLE ...`), mcdview generates a self-contained page — no server,
 no dependency — to browse the model: overview of tables grouped by schema,
@@ -143,6 +149,8 @@ file's header.
 
 - Link to the hosted service at [mcdview.dev](https://mcdview.dev/): upload a
   `.sql` or `.dbm` and get a shareable link, no install needed
+- README badges (hosted, demo, CI, license), repository homepage and topics
+  for discoverability
 
 ### v0.8.4 — Rearrange no longer overlaps big tables (2026-08-28)
 
