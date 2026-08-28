@@ -23,6 +23,13 @@ CORPUS = Path(__file__).resolve().parent / 'corpus' / 'github'
 RECHERCHES = [
     ('filename:structure.sql language:SQL', '.sql', b'CREATE TABLE'),
     ('pgmodeler-ver extension:dbm', '.dbm', b'<dbmodel'),
+    # dialect-targeted: the under-tested non-PostgreSQL parsers (each signature
+    # is specific enough to bias toward that dialect's real DDL)
+    ('VARCHAR2 CREATE TABLE language:SQL', '.sql', b'VARCHAR2'),      # Oracle
+    ('NUMBER CREATE TABLE nvarchar language:SQL', '.sql', b'CREATE TABLE'),  # tsql
+    ('ENGINE MergeTree CREATE TABLE language:SQL', '.sql', b'MergeTree'),  # ClickHouse
+    ('CREATE TABLE STORED AS PARQUET language:SQL', '.sql', b'CREATE TABLE'),  # Spark/Hive
+    ('CREATE TABLE cluster by language:SQL', '.sql', b'CREATE TABLE'),  # Snowflake/BigQuery-ish
 ]
 
 
