@@ -289,14 +289,45 @@ function isoler(cle) {
   const garde = new Set([cle, ...voisinage]);
   Object.keys(elems).forEach(c => elems[c].classList.toggle("efface", !garde.has(c)));
   Object.keys(elems).forEach(c => elems[c].classList.toggle("choisie", c === cle));
-  // star: the chosen table keeps its place, neighbours circle around it
+  // star: the chosen table keeps its place, neighbours circle around it.
+  // The radius grows with the table sizes (a big neighbour like a 40-column
+  // table would overlap the centre at a fixed radius) and a final de-overlap
+  // pass, centre kept fixed, guarantees nothing touches.
   const c0 = centre(cle);
-  const rayon = Math.max(360, 120 + voisinage.length * 42);
+  const til = c => { const e = elems[c]; return Math.hypot(e.offsetWidth, e.offsetHeight) / 2; };
+  const rC = til(cle);
+  let rMax = 0, somme = 0;
+  voisinage.forEach(v => { const t = til(v); rMax = Math.max(rMax, t); somme += t; });
+  const rayon = Math.max(360, rC + rMax + 90, somme / Math.PI + rMax);
+  const P = { [cle]: { x: c0.x, y: c0.y, r: rC } };
   voisinage.forEach((v, i) => {
     const a = -Math.PI / 2 + (2 * Math.PI * i) / voisinage.length;
+    P[v] = { x: c0.x + rayon * Math.cos(a), y: c0.y + rayon * Math.sin(a), r: til(v) };
+  });
+  const noeuds = [cle, ...voisinage];
+  for (let passe = 0; passe < 40; passe++) {
+    let colle = false;
+    for (let i = 0; i < noeuds.length; i++) {
+      for (let j = i + 1; j < noeuds.length; j++) {
+        const A = P[noeuds[i]], B = P[noeuds[j]];
+        let ex = A.x - B.x, ey = A.y - B.y;
+        const d = Math.hypot(ex, ey) || 0.01;
+        const dmin = A.r + B.r + 30;
+        if (d < dmin) {
+          const pousse = dmin - d; ex /= d; ey /= d;
+          if (noeuds[i] === cle) { B.x -= ex * pousse; B.y -= ey * pousse; }
+          else if (noeuds[j] === cle) { A.x += ex * pousse; A.y += ey * pousse; }
+          else { A.x += ex * pousse / 2; A.y += ey * pousse / 2; B.x -= ex * pousse / 2; B.y -= ey * pousse / 2; }
+          colle = true;
+        }
+      }
+    }
+    if (!colle) break;
+  }
+  voisinage.forEach(v => {
     const e = elems[v];
-    e.style.left = Math.round(c0.x + rayon * Math.cos(a) * 1.45 - e.offsetWidth / 2) + "px";
-    e.style.top = Math.round(c0.y + rayon * Math.sin(a) - e.offsetHeight / 2) + "px";
+    e.style.left = Math.round(P[v].x - e.offsetWidth / 2) + "px";
+    e.style.top = Math.round(P[v].y - e.offsetHeight / 2) + "px";
   });
   detailler(cle);
   setTimeout(() => { dessinerLiens(); cadrer([...garde]); }, 380);

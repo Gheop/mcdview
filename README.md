@@ -161,6 +161,12 @@ file's header.
 
 ## Changelog
 
+### v0.9.1 — Isolated view no longer overlaps (2026-08-28)
+
+- When isolating a table, the star of related tables now sizes its radius to
+  the tables involved and runs a de-overlap pass (centre kept fixed), so a
+  large neighbour (e.g. a 40-column table) no longer covers the isolated one
+
 ### v0.9.0 — Multi-dialect input via sqlglot (2026-08-28)
 
 - Read MySQL/MariaDB, SQLite and ~15 other dialects through the optional
