@@ -635,6 +635,76 @@ def analyser_mermaid(chemin):
     return tables, fks
 
 
+def analyser_drizzle(chemin):
+    """Parse a Drizzle ORM schema.ts natively (regular enough): each
+    `pgTable("name", { field: type("col").notNull().primaryKey()
+    .references(() => other.col) })` becomes a table; `.references()` gives the
+    foreign keys, resolved against the map of const-variable → table."""
+    src = open(chemin, errors='replace').read()
+    # drop comments so a commented-out table is not parsed (line comments only
+    # at line start, to leave "https://" inside strings alone) and block ones
+    src = re.sub(r'/\*.*?\*/', '', src, flags=re.S)
+    src = re.sub(r'(?m)^\s*//.*$', '', src)
+    tables, fks = {}, []
+    var_table, var_cols = {}, {}   # const var -> table key / {field: column}
+    refs = []                      # (de_key, src_col, target_var, target_field)
+
+    def champs(body):              # split on top-level commas (depth 0)
+        prof, cur, out = 0, '', []
+        for ch in body:
+            if ch in '([{':
+                prof += 1
+            elif ch in ')]}':
+                prof -= 1
+            if ch == ',' and prof == 0:
+                out.append(cur); cur = ''
+            else:
+                cur += ch
+        if cur.strip():
+            out.append(cur)
+        return out
+
+    for m in re.finditer(
+            r'(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:pg|mysql|sqlite)Table\s*\(\s*'
+            r'["\'`]([^"\'`]+)["\'`]\s*,\s*\{', src):
+        var, nom = m.group(1), m.group(2)
+        i, prof = m.end() - 1, 0    # scan balanced braces for the body
+        while i < len(src):
+            prof += (src[i] == '{') - (src[i] == '}')
+            if prof == 0:
+                break
+            i += 1
+        cle = f'public.{nom}'
+        var_table[var] = cle
+        var_cols[var] = {}
+        cols, pk = [], []
+        for entree in champs(src[m.end():i]):
+            cm = re.match(r'\s*(\w+)\s*:\s*(\w+)\s*\(', entree)
+            if not cm:
+                continue
+            champ, typ = cm.groups()
+            sm = re.search(r'''["'`]([^"'`]+)["'`]''', entree)
+            col = sm.group(1) if sm else champ
+            var_cols[var][champ] = col
+            cols.append({'nom': col, 'type': typ,
+                         'nn': '.notNull(' in entree, 'defaut': ''})
+            if '.primaryKey(' in entree:
+                pk.append(col)
+            rm = re.search(r'\.references\(\s*\(\s*\)\s*=>\s*(\w+)\.(\w+)', entree)
+            if rm:
+                refs.append((cle, col, rm.group(1), rm.group(2)))
+        tables[cle] = {'schema': 'public', 'nom': nom, 'cols': cols, 'pk': pk,
+                       'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
+
+    for de, col, tvar, tfield in refs:
+        vers = var_table.get(tvar)
+        if de in tables and vers in tables:
+            fks.append({'de': de, 'col': col, 'vers': vers,
+                        'colcible': var_cols.get(tvar, {}).get(tfield, ''),
+                        'nom': '', 'audit': False})
+    return tables, fks
+
+
 def positions_dbm(chemin, tables):
     root = ET.parse(chemin).getroot()
     couleurs = {}
@@ -812,7 +882,7 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
 
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
-    ap.add_argument('sql', metavar='sql|dbm|dbml|mwb|rb|mmd',
+    ap.add_argument('sql', metavar='sql|dbm|dbml|mwb|rb|mmd|ts',
                     help='SQL DDL, or a .dbm/.dbml/.mwb/.prisma model file')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
@@ -856,6 +926,9 @@ def principal():
     elif source.endswith(('.mmd', '.mermaid', '.md')):
         tables, fks = analyser_mermaid(source)
         dialecte = 'mermaid'
+    elif source.endswith('.ts'):
+        tables, fks = normaliser_casse(*analyser_drizzle(source))
+        dialecte = 'drizzle'
     else:
         tables, fks, dialecte = analyser(source, dialecte)
     if not tables:

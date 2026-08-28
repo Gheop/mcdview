@@ -9,3 +9,4 @@ tests/corpus/prisma/
 tests/corpus/mwb/
 tests/corpus/rails/
 tests/corpus/mermaid/
+tests/corpus/drizzle/

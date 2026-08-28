@@ -23,6 +23,7 @@ CAS = [
     ('modeles/boutique.mwb', None, mcdview.analyser_mwb, 2, 1),  # native, no tool
     ('modeles/boutique.schema.rb', None, mcdview.analyser_schema_rb, 3, 2),  # native
     ('modeles/boutique.mmd', None, mcdview.analyser_mermaid, 3, 2),  # native
+    ('modeles/boutique.schema.ts', None, mcdview.analyser_drizzle, 3, 2),  # native
 ]
 
 

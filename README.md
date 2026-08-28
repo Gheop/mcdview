@@ -37,6 +37,7 @@ a fictional library model (12 tables, 3 schemas).
 ./mcdview.py model.mwb          # MySQL Workbench model (native, no tool)
 ./mcdview.py db/schema.rb       # Rails schema (native, no tool)
 ./mcdview.py diagram.mmd        # Mermaid erDiagram (native, .mmd/.md)
+./mcdview.py schema.ts          # Drizzle ORM schema (native, no tool)
 ```
 
 Then open the generated HTML file in a browser.
@@ -90,8 +91,9 @@ and, when it finds no table, tries several sqlglot dialects and keeps the one
 that parses the most tables; pass `--dialect mysql` (etc.) to force one. Model files are read through an upstream converter (an optional dependency,
 like the SQL dialects): pgModeler `.dbm` via `pgmodeler-cli`,
 dbdiagram.io `.dbml` via `@dbml/cli`, and Prisma `schema.prisma` via the
-`prisma` CLI. MySQL Workbench `.mwb`, Rails `db/schema.rb` and Mermaid `erDiagram`
-(`.mmd`/`.mermaid`/`.md`) are read **natively** (no external tool needed). Other proprietary formats (Navicat,
+`prisma` CLI. MySQL Workbench `.mwb`, Rails `db/schema.rb`, Mermaid `erDiagram`
+(`.mmd`/`.mermaid`/`.md`) and Drizzle ORM `schema.ts` are read **natively**
+(no external tool needed). Other proprietary formats (Navicat,
 ERwin, Oracle SQL Developer Data Modeler…) have no reliable converter: export
 their SQL instead (Workbench-style Forward Engineer), which mcdview reads.
 
@@ -173,6 +175,13 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.18.0 — Drizzle ORM schema.ts input (2026-08-28)
+
+- Read Drizzle ORM `schema.ts` natively: each `pgTable`/`mysqlTable`/
+  `sqliteTable` becomes a table, its `type("col")` fields columns (with
+  `.primaryKey()`/`.notNull()`), and `.references(() => t.col)` the foreign
+  keys; commented-out definitions are ignored
 
 ### v0.17.0 — Mermaid erDiagram input (2026-08-28)
 
