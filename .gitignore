@@ -2,3 +2,4 @@ __pycache__/
 CLAUDE.md
 exemples/*.html
 tests/corpus/
+tests/resultats.tsv

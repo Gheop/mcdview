@@ -54,6 +54,15 @@
   #panneau h4 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase;
     letter-spacing: .04em; opacity: .7; }
   #panneau .vide { opacity: .6; font-style: italic; margin-top: 3em; }
+  #legende { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 6px;
+    flex-wrap: wrap; z-index: 10; max-width: 55%; }
+  #legende .puce { display: flex; gap: 6px; align-items: center; font: inherit;
+    background: var(--voile); color: var(--encre); border: 1px solid var(--bord);
+    border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+    backdrop-filter: blur(4px); }
+  #legende .puce .pt { width: 10px; height: 10px; border-radius: 50%;
+    border: 1px solid #0002; }
+  #legende .puce .nb { opacity: .6; }
   path.lien { stroke: var(--ligne); stroke-width: 1.2; fill: none; opacity: .5; }
   path.lien.vif { stroke: var(--ligne-vive); stroke-width: 2; opacity: 1; }
 </style>
@@ -70,6 +79,7 @@
 <div id="viewport">
   <div id="plan"><svg id="liens"></svg></div>
 </div>
+<div id="legende"></div>
 <div id="panneau"><p class="vide">Cliquer sur une table pour l'isoler avec ses
 tables liées et voir son détail ici.<br><br>Molette : zoom.
 Glisser : déplacer. Échap : vue générale.</p></div>
@@ -102,6 +112,9 @@ function voisins(cle) {
 
 // --- table construction ---
 const dl = document.getElementById("noms");
+// single fragment append: one layout instead of thousands on big models
+const fragTables = document.createDocumentFragment();
+const fragNoms = document.createDocumentFragment();
 D.tables.forEach(t => {
   const cle = t.schema + "." + t.nom;
   const div = document.createElement("div");
@@ -114,15 +127,36 @@ D.tables.forEach(t => {
     t.cols.map(c => "<li>" + (t.pk.includes(c.nom) ? "🔑 " : fkCols.has(c.nom) ? "🔗 " : "") +
       c.nom + "<span class='t'>" + c.type + "</span></li>").join("") + "</ul>";
   div.dataset.cle = cle;
-  plan.appendChild(div);
+  fragTables.appendChild(div);
   elems[cle] = div;
   const o = document.createElement("option");
   o.value = cle;
-  dl.appendChild(o);
+  fragNoms.appendChild(o);
 });
+plan.appendChild(fragTables);
+dl.appendChild(fragNoms);
 Object.keys(elems).forEach(cle => {
   origines[cle] = { x: elems[cle].offsetLeft, y: elems[cle].offsetTop };
 });
+
+// --- schema legend: one chip per schema, click to frame its zone ---
+const legende = document.getElementById("legende");
+const parSchema = {};
+D.tables.forEach(t => { (parSchema[t.schema] = parSchema[t.schema] || []).push(t.schema + "." + t.nom); });
+if (Object.keys(parSchema).length > 1) {
+  Object.keys(parSchema).sort().forEach(s => {
+    const puce = document.createElement("button");
+    puce.className = "puce";
+    puce.title = "cadrer ce schéma";
+    puce.innerHTML = `<span class="pt" style="background:${D.schemas[s] || "#ccc"}"></span>` +
+      `${s} <span class="nb">${parSchema[s].length}</span>`;
+    puce.addEventListener("click", () => {
+      vueGenerale();
+      setTimeout(() => cadrer(parSchema[s]), 400);
+    });
+    legende.appendChild(puce);
+  });
+}
 
 // --- SVG links ---
 function centre(cle) {
@@ -131,18 +165,18 @@ function centre(cle) {
            w: e.offsetWidth, h: e.offsetHeight };
 }
 function dessinerLiens() {
-  svg.innerHTML = "";
+  // built as one markup string: thousands of paths in a single DOM write
   const visibles = new Set(Object.keys(elems).filter(c => !elems[c].classList.contains("efface")));
+  const morceaux = [];
   fksVisibles().forEach(f => {
     if (!visibles.has(f.de) || !visibles.has(f.vers)) return;
     const a = centre(f.de), b = centre(f.vers);
-    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
     const mx = (a.x + b.x) / 2;
-    p.setAttribute("d", `M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`);
-    p.setAttribute("class", "lien" +
-      (focusCle && (f.de === focusCle || f.vers === focusCle) ? " vif" : ""));
-    svg.appendChild(p);
+    const vif = focusCle && (f.de === focusCle || f.vers === focusCle) ? " vif" : "";
+    morceaux.push(`<path class="lien${vif}" d="M ${a.x} ${a.y} C ${mx} ${a.y}, ` +
+      `${mx} ${b.y}, ${b.x} ${b.y}"/>`);
   });
+  svg.innerHTML = morceaux.join("");
 }
 
 // --- pan / zoom ---

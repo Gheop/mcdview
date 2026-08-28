@@ -38,21 +38,27 @@ MOTS_CONTRAINTE = ('CONSTRAINT', 'PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE',
                    'CHECK', 'EXCLUDE', 'LIKE ')
 
 
+RE_COLONNE = re.compile(r'"?(\w+)"?\s+(.+)$')
+RE_NOT_NULL = re.compile(r'\s*\bNOT NULL\b')
+RE_DEFAUT = re.compile(r'\s*\bDEFAULT\s+(.*)$')
+RE_COUPE = re.compile(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT)\b')
+
+
 def analyser_colonne(ligne):
     """One column line → dict, or None if it is not one."""
-    cm = re.match(r'"?(\w+)"?\s+(.+)$', ligne)
+    cm = RE_COLONNE.match(ligne)
     if not cm:
         return None
     nom, reste = cm.groups()
-    nn = bool(re.search(r'\bNOT NULL\b', reste))
-    reste = re.sub(r'\s*\bNOT NULL\b', '', reste)
+    nn = bool(RE_NOT_NULL.search(reste))
+    reste = RE_NOT_NULL.sub('', reste)
     defaut = ''
-    dm = re.search(r'\s*\bDEFAULT\s+(.*)$', reste)
+    dm = RE_DEFAUT.search(reste)
     if dm:
         defaut = dm.group(1).strip()
         reste = reste[:dm.start()]
     # cut what we do not represent (inline REFERENCES, GENERATED, COLLATE...)
-    reste = re.split(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT)\b', reste)[0]
+    reste = RE_COUPE.split(reste)[0]
     return {'nom': nom, 'type': reste.strip(), 'nn': nn, 'defaut': defaut}
 
 
@@ -144,6 +150,16 @@ def analyser_sql(chemin):
     return tables, fks
 
 
+def indice_dialecte(chemin):
+    """A hint appended when no table parses but another dialect shows through."""
+    src = open(chemin, errors='replace').read(300000)
+    if re.search(r'CREATE TABLE[^(]*`', src):
+        return ' (backquoted names: this looks like MySQL DDL, mcdview reads PostgreSQL)'
+    if 'AUTOINCREMENT' in src:
+        return ' (AUTOINCREMENT: this looks like SQLite DDL, mcdview reads PostgreSQL)'
+    return ''
+
+
 def sql_depuis_dbm(chemin):
     """Export a .dbm model to SQL through pgmodeler-cli, return the SQL path.
 
@@ -193,9 +209,12 @@ def placement_auto(tables, fks):
     def ordonner(cles):
         cles = set(cles)
         degre = {c: len(adj[c] & cles) for c in cles}
+        # component starts pre-sorted once: rescanning per component is O(n²)
+        departs = sorted(cles, key=lambda c: (degre[c], c), reverse=True)
         resultat, vus = [], set()
-        while len(vus) < len(cles):
-            depart = max((c for c in cles if c not in vus), key=lambda c: (degre[c], c))
+        for depart in departs:
+            if depart in vus:
+                continue
             file_ = [depart]
             while file_:
                 c = file_.pop(0)
@@ -245,6 +264,7 @@ TRADUCTIONS = {
         '<div class="schema">schéma ': '<div class="schema">schema ',
         '<h4>Référencée par</h4>': '<h4>Referenced by</h4>',
         'aucune table': 'no table',
+        '"cadrer ce schéma"': '"frame this schema"',
     },
 }
 
@@ -257,6 +277,21 @@ def traduire(html, lang):
             sys.exit(f'cannot translate: string missing from the template: {source!r}')
         html = html.replace(source, cible)
     return html
+
+
+def composer_page(tables, fks, titre, lang='fr', couleurs=None):
+    """Assemble the final HTML page from parsed and positioned tables."""
+    couleurs = dict(couleurs or {})
+    for i, s in enumerate(sorted({t['schema'] for t in tables.values()})):
+        couleurs.setdefault(s, PALETTE[i % len(PALETTE)])
+    donnees = {'schemas': couleurs, 'tables': list(tables.values()), 'fks': fks}
+    json_txt = json.dumps(donnees, ensure_ascii=False).replace('</', '<\\/')
+    ici = Path(__file__).parent
+    html = traduire((ici / 'templates' / 'explorateur.html').read_text(), lang)
+    logo = (ici / 'logo.svg').read_text()
+    html = html.replace('__DONNEES__', json_txt).replace('__TITRE__', titre)
+    return html.replace('__LOGO__', logo.replace('width="128" height="128"',
+                                                 'width="22" height="22"'))
 
 
 def principal():
@@ -279,17 +314,14 @@ def principal():
         source = sql_depuis_dbm(source)
     tables, fks = analyser_sql(source)
     if not tables:
-        sys.exit('no table found: the DDL must contain CREATE TABLE statements')
+        sys.exit('no table found: the DDL must contain CREATE TABLE statements'
+                 + indice_dialecte(source))
 
     couleurs = {}
     if args.dbm:
         couleurs = positions_dbm(args.dbm, tables)
     if not args.dbm or all(t['x'] == 0 and t['y'] == 0 for t in tables.values()):
         placement_auto(tables, fks)
-
-    schemas = sorted({t['schema'] for t in tables.values()})
-    for i, s in enumerate(schemas):
-        couleurs.setdefault(s, PALETTE[i % len(PALETTE)])
 
     if args.fk_audit:
         motif = re.compile(args.fk_audit)
@@ -298,16 +330,7 @@ def principal():
 
     titre = args.titre or Path(args.sql).stem
     sortie = args.sortie or str(Path(args.sql).with_suffix('.html'))
-    donnees = {'schemas': couleurs, 'tables': list(tables.values()), 'fks': fks}
-    json_txt = json.dumps(donnees, ensure_ascii=False).replace('</', '<\\/')
-
-    ici = Path(__file__).parent
-    html = (ici / 'templates' / 'explorateur.html').read_text()
-    logo = (ici / 'logo.svg').read_text()
-    html = traduire(html, args.lang)
-    html = html.replace('__DONNEES__', json_txt).replace('__TITRE__', titre)
-    html = html.replace('__LOGO__', logo.replace('width="128" height="128"', 'width="22" height="22"'))
-    Path(sortie).write_text(html)
+    Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs))
     naudit = sum(1 for f in fks if f['audit'])
     print(f'{len(tables)} tables, {len(fks)} FKs'
           + (f' (including {naudit} audit FKs)' if naudit else '') + f' → {sortie}')

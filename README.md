@@ -109,6 +109,19 @@ file's header.
 
 ## Changelog
 
+### v0.6.0 — Schema legend, large-scale campaign (2026-08-28)
+
+- Schema legend: one colored chip per schema (name + table count) in the
+  bottom-left corner, click to frame that schema's zone; hidden when the
+  model has a single schema
+- A clear hint when the input is MySQL or SQLite DDL instead of PostgreSQL
+- Performance: pre-sorted BFS starts (layout of a 5000-table model drops
+  from 894 ms to 56 ms), precompiled column regexes, tables built in one
+  DocumentFragment and links redrawn in a single DOM write
+- Large-scale harness (`tests/moissonner.py`, `tests/grand_banc.py`):
+  hundreds of real-world schemas harvested from GitHub plus synthetic
+  models up to 5000 tables, per-phase timings and DOM validation
+
 ### v0.5.0 — Draggable tables, test bench (2026-08-28)
 
 - Tables can be dragged around the diagram, links redraw live; a table
