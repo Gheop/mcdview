@@ -66,8 +66,8 @@ A `pg_dump -s` dump works as is. Views, functions and data are ignored.
 
 ## Examples
 
-Each example ships as a `.sql` in `exemples/` and its generated page,
-browsable directly:
+Each example ships as a `.sql` in `exemples/`; the browsable pages are
+rebuilt by CI on every push:
 
 | Model | | Contents | Source |
 |---|---|---|---|
