@@ -136,6 +136,13 @@ file's header.
 
 ## Changelog
 
+### v0.8.2 — Tolerate pgmodeler-cli fix-model segfault (2026-08-28)
+
+- `--fix-model` on pgmodeler-cli 1.2.2 writes the repaired `.dbm` in full,
+  then segfaults while freeing the model (memory-layout dependent, systematic
+  in containers). mcdview now judges the repair by the output file, not the
+  exit code, so old `.dbm` models convert inside a container
+
 ### v0.8.1 — CI test pipeline (2026-08-28)
 
 - CI now runs on every push and pull request: Python error linting

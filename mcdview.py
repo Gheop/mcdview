@@ -190,10 +190,14 @@ def sql_depuis_dbm(chemin):
     if r.returncode or not sortie.exists():
         # a .dbm from an older pgModeler often loads only after --fix-model
         repare = coin / 'repare.dbm'
-        rf = subprocess.run(['pgmodeler-cli', '--fix-model', '--input', chemin,
-                             '--output', str(repare), '--silent'],
-                            capture_output=True, text=True)
-        if not rf.returncode and repare.exists():
+        subprocess.run(['pgmodeler-cli', '--fix-model', '--input', chemin,
+                        '--output', str(repare), '--silent'],
+                       capture_output=True, text=True)
+        # pgmodeler-cli 1.2.2 may segfault while freeing the model AFTER the
+        # fixed file is fully written (memory-layout dependent: systematic in
+        # containers, where the environment is tiny), so trust the output
+        # file rather than the exit code; a truncated file fails the export.
+        if repare.exists() and repare.stat().st_size:
             r = exporter(str(repare))
     if r.returncode or not sortie.exists():
         sys.exit(f'pgmodeler-cli export failed:\n{r.stdout}{r.stderr}')
