@@ -576,6 +576,65 @@ def analyser_schema_rb(chemin):
     return tables, fks
 
 
+def analyser_mermaid(chemin):
+    """Parse a Mermaid erDiagram natively (raw .mmd or inside a ```mermaid
+    fence). Entities become tables, their attributes columns (PK marker → key);
+    each relationship becomes an FK from the "many" side (crow's foot) to the
+    "one" side — Mermaid does not name the FK column, so it is left blank."""
+    src = open(chemin, errors='replace').read()
+    d = src.find('erDiagram')
+    if d == -1:
+        return {}, []
+    bloc = src[d + len('erDiagram'):]
+    fin = bloc.find('\n```')
+    if fin != -1:
+        bloc = bloc[:fin]
+
+    tables, fks = {}, []
+
+    def table(nom):
+        nom = nom.strip('"')
+        cle = f'public.{nom}'
+        if cle not in tables:
+            tables[cle] = {'schema': 'public', 'nom': nom, 'cols': [], 'pk': [],
+                           'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
+        return cle
+
+    # entity blocks: NAME { attr* }
+    for m in re.finditer(r'(?:"([^"]+)"|([A-Za-z_][\w-]*))\s*\{(.*?)\}', bloc, re.S):
+        nom = m.group(1) or m.group(2)
+        cle = table(nom)
+        for ligne in m.group(3).splitlines():
+            am = re.match(r'\s*(\S+)\s+(\S+)((?:\s+(?:PK|FK|UK))*)', ligne)
+            if not am:
+                continue
+            typ, cn, cles = am.groups()
+            tables[cle]['cols'].append({'nom': cn, 'type': typ, 'nn': False, 'defaut': ''})
+            if 'PK' in cles:
+                tables[cle]['pk'].append(cn)
+
+    # relationships: A <card>--|..<card> B : label
+    masque = re.sub(r'(?:"[^"]+"|[A-Za-z_][\w-]*)\s*\{.*?\}', '', bloc, flags=re.S)
+    for m in re.finditer(
+            r'(?:"([^"]+)"|([A-Za-z_][\w-]*))\s+([|}o]{1,2})(?:--|\.\.)([|{o]{1,2})\s+'
+            r'(?:"([^"]+)"|([A-Za-z_][\w-]*))', masque):
+        gauche = m.group(1) or m.group(2)
+        droite = m.group(5) or m.group(6)
+        lcard, rcard = m.group(3), m.group(4)
+        # the crow's foot ({ or }) marks the "many" side, which holds the FK
+        if '{' in rcard:
+            enfant, parent = droite, gauche
+        elif '}' in lcard:
+            enfant, parent = gauche, droite
+        else:
+            enfant, parent = droite, gauche
+        de, vers = table(enfant), table(parent)
+        cible = tables[vers]['pk'][0] if tables[vers]['pk'] else ''
+        fks.append({'de': de, 'col': '', 'vers': vers, 'colcible': cible,
+                    'nom': '', 'audit': False})
+    return tables, fks
+
+
 def positions_dbm(chemin, tables):
     root = ET.parse(chemin).getroot()
     couleurs = {}
@@ -753,7 +812,7 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
 
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
-    ap.add_argument('sql', metavar='sql|dbm|dbml|mwb|rb',
+    ap.add_argument('sql', metavar='sql|dbm|dbml|mwb|rb|mmd',
                     help='SQL DDL, or a .dbm/.dbml/.mwb/.prisma model file')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
@@ -794,6 +853,9 @@ def principal():
     elif source.endswith('.rb'):
         tables, fks = normaliser_casse(*analyser_schema_rb(source))
         dialecte = 'rails'
+    elif source.endswith(('.mmd', '.mermaid', '.md')):
+        tables, fks = analyser_mermaid(source)
+        dialecte = 'mermaid'
     else:
         tables, fks, dialecte = analyser(source, dialecte)
     if not tables:

@@ -1,0 +1,18 @@
+erDiagram
+    CLIENT {
+        int id PK
+        string nom
+        string courriel
+    }
+    COMMANDE {
+        int id PK
+        int client_id FK
+        decimal total
+    }
+    LIGNE {
+        int id PK
+        int commande_id FK
+        string produit
+    }
+    CLIENT ||--o{ COMMANDE : passe
+    COMMANDE ||--|{ LIGNE : contient
