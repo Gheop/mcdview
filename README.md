@@ -51,21 +51,37 @@ that table into a hub linked to everything and clutter the graph.
 
 ## What mcdview reads from the DDL
 
-- `CREATE TABLE schema.table (...)`: columns, types, NOT NULL, DEFAULT,
-  `CONSTRAINT ... PRIMARY KEY`;
-- `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY ... REFERENCES ...`;
+- `CREATE TABLE [schema.]table (...)`: columns, types, NOT NULL, DEFAULT
+  (tables without an explicit schema go to `public`);
+- primary keys, inline (`CONSTRAINT ... PRIMARY KEY`) or added afterwards
+  (`ALTER TABLE ... ADD CONSTRAINT ... PRIMARY KEY`, `pg_dump -s` style);
+- `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY ... REFERENCES ...`,
+  including composite keys and targets without an explicit column list
+  (resolved against the target's primary key);
+- partitions (`PARTITION OF`, `ATTACH PARTITION`): hidden from the diagram,
+  their constraints are carried back to the parent table;
 - `COMMENT ON TABLE` and `COMMENT ON COLUMN`.
 
-Tables must be schema-qualified. A qualified `pg_dump -s` dump works.
+A `pg_dump -s` dump works as is. Views, functions and data are ignored.
 
-## Example
+## Examples
 
-`exemples/mediatheque.html` ([live](https://gheop.github.io/mcdview/exemples/mediatheque.html))
-is generated from `exemples/mediatheque.sql`, a fictional library model
-(12 tables, 3 schemas, 21 FKs including 7 audit FKs):
+Each example ships as a `.sql` in `exemples/` and its generated page,
+browsable directly:
+
+| Model | | Contents | Source |
+|---|---|---|---|
+| **Médiathèque** — fictional French library, shows schemas zones, comments and audit FKs | [open](https://gheop.github.io/mcdview/exemples/mediatheque.html) | 12 tables, 3 schemas, 21 FKs | [mediatheque.sql](exemples/mediatheque.sql) |
+| **Pagila** — DVD rental store (the PostgreSQL classic), with a partitioned `payment` table | [open](https://gheop.github.io/mcdview/exemples/pagila.html) | 16 tables, 22 FKs | [Pagila](https://github.com/devrimgunduz/pagila) (BSD) |
+| **Northwind** — trading company, the historic Microsoft sample | [open](https://gheop.github.io/mcdview/exemples/northwind.html) | 14 tables, 13 FKs | [northwind_psql](https://github.com/pthom/northwind_psql) |
+| **Chinook** — digital music store | [open](https://gheop.github.io/mcdview/exemples/chinook.html) | 11 tables, 11 FKs | [chinook-database](https://github.com/lerocha/chinook-database) (MIT) |
+
+The real-world schemas are trimmed to their DDL (no data); each file keeps
+its source and license in a header comment. To regenerate, e.g.:
 
 ```bash
 ./mcdview.py exemples/mediatheque.sql --titre "Médiathèque (démo)" --fk-audit '_idmodificateur_fk$' --lang en
+./mcdview.py exemples/pagila.sql --titre "Pagila (DVD rental)" --lang en
 ```
 
 ## Development
@@ -75,6 +91,16 @@ Plain Python 3, no dependency. All the rendering lives in
 in place of `__DONNEES__`.
 
 ## Changelog
+
+### v0.3.0 — Wider DDL support, real-world examples (2026-08-28)
+
+- The parser now accepts unqualified tables (defaulting to the `public`
+  schema), an opening parenthesis on its own line, primary keys declared
+  via `ALTER TABLE` (`pg_dump -s` style), composite foreign keys, FK targets
+  without a column list, and partitioned tables (partitions are folded into
+  their parent)
+- 3 real-world example models with browsable pages: Pagila, Northwind,
+  Chinook
 
 ### v0.2.0 — English UI (2026-08-28)
 

@@ -31,45 +31,114 @@ CHAR_W, ROW_H, HDR_H = 7.6, 20.5, 34
 GAP_X, GAP_Y, ZONE_GAP, TARGET_H = 120, 70, 300, 2200
 
 
+# mots-clés ouvrant une ligne de contrainte dans un corps de CREATE TABLE
+MOTS_CONTRAINTE = ('CONSTRAINT', 'PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE',
+                   'CHECK', 'EXCLUDE', 'LIKE ')
+
+
+def analyser_colonne(ligne):
+    """Une ligne de colonne → dict, ou None si ce n'en est pas une."""
+    cm = re.match(r'"?(\w+)"?\s+(.+)$', ligne)
+    if not cm:
+        return None
+    nom, reste = cm.groups()
+    nn = bool(re.search(r'\bNOT NULL\b', reste))
+    reste = re.sub(r'\s*\bNOT NULL\b', '', reste)
+    defaut = ''
+    dm = re.search(r'\s*\bDEFAULT\s+(.*)$', reste)
+    if dm:
+        defaut = dm.group(1).strip()
+        reste = reste[:dm.start()]
+    # coupe ce qu'on ne représente pas (REFERENCES inline, GENERATED, COLLATE...)
+    reste = re.split(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT)\b', reste)[0]
+    return {'nom': nom, 'type': reste.strip(), 'nn': nn, 'defaut': defaut}
+
+
 def analyser_sql(chemin):
     src = open(chemin).read()
     tables, fks = {}, []
-    for m in re.finditer(r'CREATE TABLE (\w+)\.(\w+) \(\n(.*?)\n\);', src, re.S):
-        sch, nom, corps = m.groups()
+
+    # CREATE TABLE [schema.]nom ( ... ) [PARTITION BY ... / WITH ...];
+    # la parenthèse ouvrante peut être en fin de ligne ou seule sur la sienne
+    for m in re.finditer(
+            r'CREATE TABLE (?:IF NOT EXISTS )?(?:(\w+)\.)?(\w+)\s*\(\n(.*?)\n\)[^;]*;',
+            src, re.S):
+        sch = m.group(1) or 'public'
+        nom, corps = m.group(2), m.group(3)
         cols, pk = [], []
         for ligne in corps.split('\n'):
             ligne = ligne.strip().rstrip(',')
-            cm = re.match(r'CONSTRAINT \w+ PRIMARY KEY \(([^)]+)\)', ligne)
+            cm = re.match(r'(?:CONSTRAINT \w+ )?PRIMARY KEY\s*\(([^)]+)\)', ligne)
             if cm:
                 pk = [c.strip() for c in cm.group(1).split(',')]
                 continue
-            if ligne.startswith('CONSTRAINT') or not ligne:
+            if not ligne or ligne.startswith('--') or ligne.startswith(MOTS_CONTRAINTE):
                 continue
-            cm = re.match(r'(\w+) (.+?)( NOT NULL)?( DEFAULT .*)?$', ligne)
-            if cm:
-                cols.append({'nom': cm.group(1), 'type': cm.group(2), 'nn': bool(cm.group(3)),
-                             'defaut': (cm.group(4) or '').replace(' DEFAULT ', '')})
+            col = analyser_colonne(ligne)
+            if col:
+                cols.append(col)
         tables[f'{sch}.{nom}'] = {'schema': sch, 'nom': nom, 'cols': cols, 'pk': pk,
                                   'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
-    # tables sans schéma explicite (DDL "CREATE TABLE nom (")
-    for m in re.finditer(r'CREATE TABLE (\w+) \(\n(.*?)\n\);', src, re.S):
-        nom = m.group(1)
-        if not any(t['nom'] == nom for t in tables.values()):
-            pass  # rare : on ne gère que les DDL qualifiés pour l'instant
-    for m in re.finditer(r"COMMENT ON TABLE (\w+)\.(\w+) IS E?'((?:[^']|'')*)'", src):
-        cle = f'{m.group(1)}.{m.group(2)}'
+
+    # partitions : les contraintes portées par une partition remontent au
+    # parent, et les partitions elles-mêmes n'apparaissent pas dans le modèle
+    parent = {}
+    for m in re.finditer(
+            r'CREATE TABLE (?:(\w+)\.)?(\w+) PARTITION OF (?:(\w+)\.)?(\w+)', src):
+        enfant = f"{m.group(1) or 'public'}.{m.group(2)}"
+        parent[enfant] = f"{m.group(3) or 'public'}.{m.group(4)}"
+    for m in re.finditer(
+            r'ALTER TABLE (?:ONLY )?(?:(\w+)\.)?(\w+)\s+ATTACH PARTITION '
+            r'(?:(\w+)\.)?(\w+)', src):
+        enfant = f"{m.group(3) or 'public'}.{m.group(4)}"
+        parent[enfant] = f"{m.group(1) or 'public'}.{m.group(2)}"
+    for enfant in parent:
+        tables.pop(enfant, None)
+
+    def resoudre(cle):
+        while cle in parent:
+            cle = parent[cle]
+        return cle
+
+    # PK déclarées après coup (style pg_dump -s)
+    for m in re.finditer(
+            r'ALTER TABLE (?:ONLY )?(?:(\w+)\.)?(\w+)\s+ADD CONSTRAINT \w+\s+'
+            r'PRIMARY KEY\s*\(([^)]+)\)', src):
+        cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
+        if cle in tables and not tables[cle]['pk']:
+            tables[cle]['pk'] = [c.strip() for c in m.group(3).split(',')]
+
+    for m in re.finditer(r"COMMENT ON TABLE (?:(\w+)\.)?(\w+) IS E?'((?:[^']|'')*)'", src):
+        cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:
             tables[cle]['comment'] = m.group(3).replace("''", "'")
-    for m in re.finditer(r"COMMENT ON COLUMN (\w+)\.(\w+)\.(\w+) IS E?'((?:[^']|'')*)'", src):
-        cle = f'{m.group(1)}.{m.group(2)}'
+    for m in re.finditer(r"COMMENT ON COLUMN (?:(\w+)\.)?(\w+)\.(\w+) IS E?'((?:[^']|'')*)'", src):
+        cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:
             tables[cle]['colcomments'][m.group(3)] = m.group(4).replace("''", "'")
+
+    # FK, y compris composites, cible sans colonnes (= PK de la cible) et
+    # déclarations portées par des partitions (remontées puis dédupliquées)
+    vues = set()
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(\w+)\.(\w+)\s+ADD CONSTRAINT (\w+) FOREIGN KEY \((\w+)\)\s*'
-            r'REFERENCES (\w+)\.(\w+)\s*\((\w+)\)', src):
-        ssch, stab, cname, scol, dsch, dtab, dcol = m.groups()
-        fks.append({'de': f'{ssch}.{stab}', 'col': scol, 'vers': f'{dsch}.{dtab}',
-                    'colcible': dcol, 'nom': cname, 'audit': False})
+            r'ALTER TABLE (?:ONLY )?(?:(\w+)\.)?(\w+)\s+ADD CONSTRAINT (\w+)\s+'
+            r'FOREIGN KEY\s*\(([^)]+)\)\s*REFERENCES (?:(\w+)\.)?(\w+)(?:\s*\(([^)]+)\))?',
+            src):
+        ssch, stab, cname, scols, dsch, dtab, dcols = m.groups()
+        de = resoudre(f"{ssch or 'public'}.{stab}")
+        vers = resoudre(f"{dsch or 'public'}.{dtab}")
+        if de not in tables or vers not in tables:
+            continue
+        sources = [c.strip() for c in scols.split(',')]
+        cibles = ([c.strip() for c in dcols.split(',')] if dcols
+                  else tables[vers]['pk'])
+        for i, scol in enumerate(sources):
+            dcol = cibles[i] if i < len(cibles) else ''
+            if (de, scol, vers, dcol) in vues:
+                continue
+            vues.add((de, scol, vers, dcol))
+            fks.append({'de': de, 'col': scol, 'vers': vers,
+                        'colcible': dcol, 'nom': cname, 'audit': False})
     return tables, fks
 
 
