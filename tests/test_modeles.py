@@ -21,6 +21,7 @@ CAS = [
     ('modeles/boutique.dbml', 'dbml2sql', mcdview.sql_depuis_dbml, 3, 2),
     ('modeles/boutique.prisma', 'prisma', getattr(mcdview, 'sql_depuis_prisma', None), 3, 2),
     ('modeles/boutique.mwb', None, mcdview.analyser_mwb, 2, 1),  # native, no tool
+    ('modeles/boutique.schema.rb', None, mcdview.analyser_schema_rb, 3, 2),  # native
 ]
 
 
