@@ -159,6 +159,132 @@ def analyser_sql(chemin):
     return tables, fks
 
 
+# non-PostgreSQL dialects go through sqlglot (optional dependency). PostgreSQL
+# keeps the built-in regex parser, so the generator stays dependency-free by
+# default; sqlglot only widens support when it is installed.
+DIALECTES = ['auto', 'postgres', 'mysql', 'mariadb', 'sqlite', 'tsql',
+             'oracle', 'duckdb', 'snowflake', 'bigquery', 'redshift',
+             'clickhouse', 'trino', 'spark', 'hive']
+
+
+def flairer_dialecte(chemin):
+    src = open(chemin, errors='replace').read(300000)
+    if 'AUTOINCREMENT' in src:
+        return 'sqlite'
+    if re.search(r'CREATE TABLE[^(]*`', src):
+        return 'mysql'
+    return 'mysql'  # reasonable default for non-PostgreSQL DDL
+
+
+def analyser(chemin, dialecte='auto'):
+    """Parse a DDL file, choosing the parser from the dialect."""
+    if dialecte in ('auto', 'postgres', 'postgresql'):
+        tables, fks = analyser_sql(chemin)
+        if tables or dialecte != 'auto':
+            return tables, fks
+        dialecte = flairer_dialecte(chemin)  # auto found nothing: not PostgreSQL
+    return analyser_sqlglot(chemin, dialecte)
+
+
+def analyser_sqlglot(chemin, dialecte):
+    try:
+        import logging
+        import sqlglot
+        from sqlglot import expressions as exp
+        from sqlglot.errors import ErrorLevel
+        # quiet the per-statement "unsupported syntax, falling back" warnings
+        logging.getLogger('sqlglot').setLevel(logging.ERROR)
+    except ImportError:
+        sys.exit(f'reading {dialecte} DDL needs sqlglot (pip install sqlglot)')
+    try:
+        # IGNORE: a single unparseable statement must not abort the whole model
+        arbre = sqlglot.parse(open(chemin, errors='replace').read(),
+                              read=dialecte, error_level=ErrorLevel.IGNORE)
+    except Exception as e:
+        sys.exit(f'sqlglot could not parse the DDL as {dialecte}: {e}')
+    arbre = [s for s in arbre if s is not None]
+
+    tables, fks = {}, []
+    vues = set()
+
+    def cle(tbl):
+        return f"{tbl.db or 'public'}.{tbl.name}"
+
+    def ajouter_fk(de, cols, ref, nom):
+        cible = ref.find(exp.Table)
+        if not cible:
+            return
+        vers = cle(cible)
+        sch = ref.find(exp.Schema)
+        cibles = [i.name for i in sch.expressions] if sch else []
+        for i, col in enumerate(cols):
+            dcol = cibles[i] if i < len(cibles) else ''
+            if (de, col, vers, dcol) in vues:
+                continue
+            vues.add((de, col, vers, dcol))
+            fks.append({'de': de, 'col': col, 'vers': vers,
+                        'colcible': dcol, 'nom': nom or '', 'audit': False})
+
+    for stmt in arbre:
+        if isinstance(stmt, exp.Create) and stmt.kind == 'TABLE':
+            noeud = stmt.this
+            tbl = noeud.this if isinstance(noeud, exp.Schema) else noeud
+            if not isinstance(tbl, exp.Table):
+                continue
+            k = cle(tbl)
+            cols, pk, colcomments = [], [], {}
+            for d in stmt.find_all(exp.ColumnDef):
+                kinds = [c.kind for c in d.constraints]
+                typ = d.args.get('kind')
+                defc = next((c.this for c in kinds
+                             if isinstance(c, exp.DefaultColumnConstraint)), None)
+                comc = next((c.this for c in kinds
+                             if isinstance(c, exp.CommentColumnConstraint)), None)
+                if any(isinstance(c, exp.PrimaryKeyColumnConstraint) for c in kinds):
+                    pk.append(d.name)
+                for c in kinds:
+                    if isinstance(c, exp.Reference):
+                        ajouter_fk(k, [d.name], c, '')
+                if comc is not None:
+                    colcomments[d.name] = comc.name
+                cols.append({'nom': d.name,
+                             'type': typ.sql(dialect=dialecte) if typ else '',
+                             'nn': any(isinstance(c, exp.NotNullColumnConstraint) for c in kinds),
+                             'defaut': defc.sql(dialect=dialecte) if defc is not None else ''})
+            for p in stmt.find_all(exp.PrimaryKey):
+                noms = [c.name for c in p.expressions]
+                if noms:
+                    pk = noms
+            comment = ''
+            props = stmt.args.get('properties')
+            for p in (props.expressions if props else []):
+                if isinstance(p, exp.SchemaCommentProperty):
+                    comment = p.this.name
+            tables[k] = {'schema': tbl.db or 'public', 'nom': tbl.name, 'cols': cols,
+                         'pk': pk, 'x': 0, 'y': 0, 'comment': comment,
+                         'colcomments': colcomments}
+            for fk in stmt.find_all(exp.ForeignKey):
+                ref = fk.args.get('reference')
+                if ref:
+                    ajouter_fk(k, [c.name for c in fk.expressions], ref, fk.name)
+        elif isinstance(stmt, exp.Alter):
+            src_tbl = stmt.find(exp.Table)
+            if src_tbl:
+                for fk in stmt.find_all(exp.ForeignKey):
+                    ref = fk.args.get('reference')
+                    if ref:
+                        ajouter_fk(cle(src_tbl), [c.name for c in fk.expressions], ref, fk.name)
+
+    # a reference without a column list points at the target's primary key
+    for f in fks:
+        if not f['colcible']:
+            pk = tables.get(f['vers'], {}).get('pk', [])
+            if len(pk) == 1:
+                f['colcible'] = pk[0]
+    fks = [f for f in fks if f['de'] in tables and f['vers'] in tables]
+    return tables, fks
+
+
 def indice_dialecte(chemin):
     """A hint appended when no table parses but another dialect shows through."""
     src = open(chemin, errors='replace').read(300000)
@@ -341,14 +467,18 @@ def principal():
                     help="regex of FK constraint names to tag as audit (hidden by default)")
     ap.add_argument('--lang', default='fr', choices=['fr'] + sorted(TRADUCTIONS),
                     help="language of the page UI (default: fr)")
+    ap.add_argument('--dialect', default='auto', choices=DIALECTES,
+                    help="input SQL dialect (default: auto; non-PostgreSQL needs sqlglot)")
     args = ap.parse_args()
 
     source = args.sql
+    dialecte = args.dialect
     if source.endswith('.dbm'):
         if not args.dbm:
             args.dbm = source  # the model provides its own positions
         source = sql_depuis_dbm(source)
-    tables, fks = analyser_sql(source)
+        dialecte = 'postgres'  # pgmodeler-cli always exports PostgreSQL
+    tables, fks = analyser(source, dialecte)
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements'
                  + indice_dialecte(source))

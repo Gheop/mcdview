@@ -8,11 +8,15 @@
 [![license: MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 ![no dependencies](https://img.shields.io/badge/dependencies-none-64748b)
 
-Interactive HTML explorer for a PostgreSQL data model. From a DDL file
+Interactive HTML explorer for a SQL data model. From a DDL file
 (`CREATE TABLE ...`), mcdview generates a self-contained page — no server,
 no dependency — to browse the model: overview of tables grouped by schema,
 click a table to isolate it with its related tables, field detail panel,
 search box.
+
+PostgreSQL is read out of the box with zero dependencies; MySQL/MariaDB,
+SQLite and ~15 other dialects are read when the optional
+[sqlglot](https://github.com/tobymao/sqlglot) package is installed.
 
 **Try it without installing anything: [mcdview.dev](https://mcdview.dev/)** —
 drop a `.sql` or `.dbm` file and get a shareable link to your model's page.
@@ -62,9 +66,21 @@ In the page:
 | `--dbm FILE` | Reuse table positions from a pgModeler model instead of automatic layout |
 | `--fk-audit REGEX` | Tag as "audit" the FKs whose constraint name matches: hidden by default, shown back with a checkbox |
 | `--lang {fr,en}` | Language of the page UI (default: `fr`) |
+| `--dialect NAME` | Input SQL dialect (default: `auto`); non-PostgreSQL needs `sqlglot` |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
+
+## Dialects
+
+PostgreSQL uses the built-in parser (no dependency). For any other dialect,
+`pip install sqlglot` and mcdview reads it — MySQL/MariaDB, SQLite, SQL Server
+(`tsql`), Oracle, DuckDB, Snowflake, BigQuery, Redshift, ClickHouse, Trino,
+Spark, Hive. `--dialect auto` (the default) uses the PostgreSQL parser first
+and falls back to sqlglot, sniffing the dialect, when it finds no table; pass
+`--dialect mysql` (etc.) to force one. Proprietary binary model files
+(MySQL Workbench `.mwb` and the like) are not read directly — export their
+DDL to `.sql` first; only pgModeler `.dbm` is handled natively.
 
 `--fk-audit` is for models where every table carries audit columns
 (`created_by`, `modified_by`...) pointing to a users table: those FKs turn
@@ -144,6 +160,15 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.9.0 — Multi-dialect input via sqlglot (2026-08-28)
+
+- Read MySQL/MariaDB, SQLite and ~15 other dialects through the optional
+  `sqlglot` backend (PostgreSQL stays dependency-free); `--dialect` flag,
+  `auto` sniffs and falls back. On the harvested corpus, files that produced
+  no page dropped from 257 to 18
+- Dialect fixtures and test (`tests/test_dialectes.py`), sqlglot wired into
+  CI and the pre-commit hook
 
 ### v0.8.5 — Hosted at mcdview.dev (2026-08-28)
 

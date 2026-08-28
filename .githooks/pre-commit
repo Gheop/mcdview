@@ -2,10 +2,12 @@
 # Pre-commit gate. Fast enough to run every time (a few seconds):
 #   1. pinned regression on examples + pgModeler samples
 #   2. security: XSS escaping and ReDoS/DoS budget
-#   3. the whole local .sql corpus, strict (any exception fails the commit)
+#   3. MySQL/SQLite dialects through sqlglot
+#   4. the whole local .sql corpus, strict (any exception fails the commit)
 # The full campaign with .dbm (pgmodeler-cli, minutes) and headless Chrome
 # is manual: ./tests/grand_banc.py --dbm --chrome 12
 set -e
 ./tests/tester.py --rapide
 ./tests/test_securite.py
+./tests/test_dialectes.py
 ./tests/grand_banc.py --strict

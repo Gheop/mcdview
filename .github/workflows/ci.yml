@@ -28,10 +28,14 @@ jobs:
           pipx install ruff
           python -m py_compile mcdview.py tests/*.py
           ruff check --select F,E9 mcdview.py tests/*.py
+      - name: install sqlglot (optional backend for non-PostgreSQL dialects)
+        run: pip install sqlglot
       - name: pinned regression (examples; .dbm samples skipped without pgmodeler-cli)
         run: ./tests/tester.py --rapide
       - name: security (XSS escaping, ReDoS/DoS budget)
         run: ./tests/test_securite.py
+      - name: dialects (MySQL, SQLite via sqlglot)
+        run: ./tests/test_dialectes.py
       - name: corpus campaign (examples), strict
         run: ./tests/grand_banc.py --strict
       - name: generate example pages

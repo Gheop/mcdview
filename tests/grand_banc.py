@@ -91,7 +91,7 @@ def principal():
                     lignes.append((chemin.name, octets, 0, 0, 0, 0, 0, 0,
                                    'refus-pgmodeler: ' + str(e)[:80].replace('\n', ' ')))
                     continue
-            (tables, fks), ms_parse = chrono(mcdview.analyser_sql, source)
+            (tables, fks), ms_parse = chrono(mcdview.analyser, source, 'auto')
             if not tables:
                 stats['sans-table'] += 1
                 lignes.append((chemin.name, octets, 0, 0, ms_parse, 0, 0, 0, 'sans-table'))
