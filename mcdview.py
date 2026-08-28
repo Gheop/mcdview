@@ -521,13 +521,24 @@ def echapper(texte):
             .replace('>', '&gt;').replace('"', '&quot;'))
 
 
+def url_sure(u):
+    """Neutralize dangerous URL schemes (javascript:, data:...) in href values;
+    http(s), mailto, anchors and scheme-less/relative URLs pass through."""
+    if not u:
+        return u
+    schema = re.match(r'\s*([a-z][a-z0-9+.-]*):', u, re.I)
+    if schema and schema.group(1).lower() not in ('http', 'https', 'mailto'):
+        return '#'
+    return u
+
+
 MIMES_LOGO = {'.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
               '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
               '.ico': 'image/x-icon'}
 
 
 def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgresql',
-                  home_url=None, logo_file=None):
+                  home_url=None, logo_file=None, credit=None, credit_url=None):
     """Assemble the final HTML page from parsed and positioned tables."""
     couleurs = dict(couleurs or {})
     for i, s in enumerate(sorted({t['schema'] for t in tables.values()})):
@@ -549,9 +560,18 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
     else:
         logo = logo.replace('width="128" height="128"', 'width="22" height="22"')
     if home_url:
-        logo = (f'<a href="{echapper(home_url)}" style="display:flex" '
-                f'title="{echapper(home_url)}">{logo}</a>')
-    return html.replace('__LOGO__', logo)
+        logo = (f'<a href="{echapper(url_sure(home_url))}" style="display:flex" '
+                f'title="{echapper(url_sure(home_url))}">{logo}</a>')
+    html = html.replace('__LOGO__', logo)
+
+    # optional attribution badge (caller-supplied text, so escaped); empty by
+    # default. mcdview-site passes its own; local/CLI users never see it.
+    badge = ''
+    if credit:
+        texte = echapper(credit)
+        badge = (f'<a href="{echapper(url_sure(credit_url))}" target="_blank" '
+                 f'rel="noopener">{texte}</a>' if credit_url else texte)
+    return html.replace('__CREDIT__', badge)
 
 
 def principal():
@@ -571,6 +591,10 @@ def principal():
                     help="wrap the header logo in a link to this URL")
     ap.add_argument('--logo', default=None, metavar='FILE',
                     help="replace the header logo (svg/png/jpg…, shown 22×22)")
+    ap.add_argument('--credit', default=None, metavar='TEXT',
+                    help="discreet attribution badge, bottom-right (off by default)")
+    ap.add_argument('--credit-url', default=None, metavar='URL',
+                    help="make the --credit badge a link to this URL")
     args = ap.parse_args()
 
     source = args.sql
@@ -599,7 +623,8 @@ def principal():
     titre = args.titre or Path(args.sql).stem
     sortie = args.sortie or str(Path(args.sql).with_suffix('.html'))
     Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs,
-                                          dialecte, args.home_url, args.logo))
+                                          dialecte, args.home_url, args.logo,
+                                          args.credit, args.credit_url))
     naudit = sum(1 for f in fks if f['audit'])
     print(f'{len(tables)} tables, {len(fks)} FKs'
           + (f' (including {naudit} audit FKs)' if naudit else '') + f' → {sortie}')

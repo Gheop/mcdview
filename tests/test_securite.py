@@ -59,6 +59,15 @@ def verifier_xss(echecs):
     if '<script>alert(0)' in mcdview.composer_page(
             tables, fks, '<script>alert(0)</script>', 'en'):
         echecs.append('titre: balise <script> non échappée dans le titre')
+    # caller-supplied credit / logo-link: text escaped, URL schemes neutralized
+    page = mcdview.composer_page(
+        tables, fks, 'x', 'en',
+        home_url='javascript:alert(1)', credit='<b>x</b>',
+        credit_url='javascript:alert(2)')
+    if re.search(r'href="\s*(javascript|data|vbscript):', page, re.I):
+        echecs.append('credit/home_url: schéma d\'URL dangereux dans un href')
+    if '<b>x</b>' in page:
+        echecs.append('credit: texte non échappé')
 
 
 def verifier_dos(echecs):

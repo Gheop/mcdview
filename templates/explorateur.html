@@ -65,6 +65,14 @@
   #legende .puce .pt { width: 10px; height: 10px; border-radius: 50%;
     border: 1px solid #0002; }
   #legende .puce .nb { opacity: .6; }
+  /* attribution badge: fixed bottom-right, inside the diagram area (the detail
+     panel is 340px wide on the right), muted; empty unless --credit is given */
+  #credit { position: fixed; bottom: 12px; right: 352px; z-index: 10;
+    font-size: 11px; opacity: .5; max-width: 40%; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  #credit:empty { display: none; }
+  #credit a { color: var(--encre); text-decoration: none; }
+  #credit a:hover { text-decoration: underline; }
   path.lien { stroke: var(--ligne); stroke-width: 1.2; fill: none; opacity: .5; }
   path.lien.vif { stroke: var(--ligne-vive); stroke-width: 2; opacity: 1; }
 </style>
@@ -84,6 +92,7 @@
   <div id="plan"><svg id="liens"></svg></div>
 </div>
 <div id="legende"></div>
+<div id="credit">__CREDIT__</div>
 <div id="panneau"><p class="vide">Cliquer sur une table pour l'isoler avec ses
 tables liées et voir son détail ici.<br><br>Molette : zoom.
 Glisser : déplacer. Échap : vue générale.</p></div>

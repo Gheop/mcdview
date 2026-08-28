@@ -69,6 +69,8 @@ In the page:
 | `--dialect NAME` | Input SQL dialect (default: `auto`); non-PostgreSQL needs `sqlglot` |
 | `--home-url URL` | Wrap the header logo in a link to this URL |
 | `--logo FILE` | Replace the header logo with this image (svg/png/jpg…, shown 22×22) |
+| `--credit TEXT` | Discreet attribution badge, bottom-right (off by default) |
+| `--credit-url URL` | Make the `--credit` badge a link to this URL |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
@@ -162,6 +164,13 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.12.0 — Attribution badge, safer link URLs (2026-08-28)
+
+- `--credit TEXT` / `--credit-url URL`: a small, muted attribution badge in
+  the bottom-right corner (off by default); text is escaped
+- `--home-url` and `--credit-url` now reject dangerous URL schemes
+  (`javascript:`, `data:`…), keeping only http(s)/mailto/relative links
 
 ### v0.11.0 — SQL Server routing and ALTER ADD COLUMN (2026-08-28)
 
