@@ -3,3 +3,4 @@ CLAUDE.md
 exemples/*.html
 tests/corpus/
 tests/resultats.tsv
+tests/corpus/modeles/

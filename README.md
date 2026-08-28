@@ -32,6 +32,7 @@ a fictional library model (12 tables, 3 schemas).
 ./mcdview.py model.sql
 ./mcdview.py model.sql -o explorer.html --titre "My project"
 ./mcdview.py model.dbm          # pgModeler model (needs pgmodeler-cli)
+./mcdview.py model.dbml         # dbdiagram.io model (needs @dbml/cli)
 ```
 
 Then open the generated HTML file in a browser.
@@ -82,9 +83,10 @@ PostgreSQL uses the built-in parser (no dependency). For any other dialect,
 (`tsql`), Oracle, DuckDB, Snowflake, BigQuery, Redshift, ClickHouse, Trino,
 Spark, Hive. `--dialect auto` (the default) uses the PostgreSQL parser first
 and, when it finds no table, tries several sqlglot dialects and keeps the one
-that parses the most tables; pass `--dialect mysql` (etc.) to force one. Proprietary binary model files
-(MySQL Workbench `.mwb` and the like) are not read directly — export their
-DDL to `.sql` first; only pgModeler `.dbm` is handled natively.
+that parses the most tables; pass `--dialect mysql` (etc.) to force one. Model files are read through an upstream converter (an optional dependency,
+like the SQL dialects): pgModeler `.dbm` via `pgmodeler-cli`, and
+dbdiagram.io `.dbml` via `@dbml/cli`. Proprietary binary formats (MySQL
+Workbench `.mwb`…) are not read directly — export their DDL to `.sql` first.
 
 `--fk-audit` is for models where every table carries audit columns
 (`created_by`, `modified_by`...) pointing to a users table: those FKs turn
@@ -164,6 +166,13 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.13.0 — DBML input (2026-08-28)
+
+- Read dbdiagram.io `.dbml` models (converted to SQL by `@dbml/cli`), the
+  same upstream-converter pattern as `.dbm`
+- The FK parser now also reads unnamed constraints (`ADD FOREIGN KEY ...`
+  without `CONSTRAINT name`), which dbml2sql and some dumps emit
 
 ### v0.12.0 — Attribution badge, safer link URLs (2026-08-28)
 

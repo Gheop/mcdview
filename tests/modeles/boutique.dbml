@@ -1,0 +1,23 @@
+// DBML (dbdiagram.io) fixture — converted to SQL by @dbml/cli (dbml2sql).
+Table client {
+  id integer [primary key]
+  nom varchar [not null]
+  courriel varchar
+}
+
+Table commande {
+  id integer [primary key]
+  client_id integer [not null]
+  total decimal
+  creee_le timestamp
+}
+
+Table ligne {
+  id integer [primary key]
+  commande_id integer [not null]
+  produit varchar
+  quantite integer
+}
+
+Ref: commande.client_id > client.id
+Ref: ligne.commande_id > commande.id

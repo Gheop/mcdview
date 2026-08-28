@@ -155,7 +155,7 @@ def analyser_sql(chemin):
     # and declarations carried by partitions (folded back, then deduplicated)
     vues = set()
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD CONSTRAINT (\w+)\s+'
+            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD (?:CONSTRAINT (\w+)\s+)?'
             r'FOREIGN KEY\s*\(([^)]+)\)\s*REFERENCES (?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?',
             src):
         ssch, stab, cname, scols, dsch, dtab, dcols = m.groups()
@@ -172,7 +172,7 @@ def analyser_sql(chemin):
                 continue
             vues.add((de, scol, vers, dcol))
             fks.append({'de': de, 'col': scol, 'vers': vers,
-                        'colcible': dcol, 'nom': cname, 'audit': False})
+                        'colcible': dcol, 'nom': cname or '', 'audit': False})
     return tables, fks
 
 
@@ -403,6 +403,26 @@ def sql_depuis_dbm(chemin):
     return str(sortie)
 
 
+def sql_depuis_convertisseur(chemin, outil, cmd, format_nom):
+    """Run an external converter that turns a model file into PostgreSQL SQL,
+    return the SQL path. Optional dependency, like pgmodeler-cli for .dbm."""
+    if not shutil.which(outil):
+        sys.exit(f'reading a {format_nom} file requires {outil} in PATH')
+    sortie = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'export.sql'
+    r = subprocess.run([a.format(entree=chemin, sortie=str(sortie)) for a in cmd],
+                       capture_output=True, text=True)
+    if r.returncode or not sortie.exists() or not sortie.stat().st_size:
+        sys.exit(f'{outil} failed to convert the {format_nom} file:\n{r.stdout}{r.stderr}')
+    return str(sortie)
+
+
+def sql_depuis_dbml(chemin):
+    """Convert a dbdiagram.io .dbml model to SQL through @dbml/cli (dbml2sql)."""
+    return sql_depuis_convertisseur(
+        chemin, 'dbml2sql',
+        ['dbml2sql', '{entree}', '--postgres', '-o', '{sortie}'], 'DBML')
+
+
 def positions_dbm(chemin, tables):
     root = ET.parse(chemin).getroot()
     couleurs = {}
@@ -580,8 +600,8 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
 
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
-    ap.add_argument('sql', metavar='sql|dbm',
-                    help='PostgreSQL DDL file (CREATE TABLE...) or pgModeler .dbm model')
+    ap.add_argument('sql', metavar='sql|dbm|dbml',
+                    help='SQL DDL, pgModeler .dbm, or dbdiagram.io .dbml model')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
     ap.add_argument('--dbm', help='pgModeler model to reuse table positions from')
@@ -608,6 +628,9 @@ def principal():
             args.dbm = source  # the model provides its own positions
         source = sql_depuis_dbm(source)
         dialecte = 'postgres'  # pgmodeler-cli always exports PostgreSQL
+    elif source.endswith('.dbml'):
+        source = sql_depuis_dbml(source)
+        dialecte = 'postgres'  # dbml2sql emits PostgreSQL
     tables, fks, dialecte = analyser(source, dialecte)
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements'

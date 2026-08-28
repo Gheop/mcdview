@@ -30,12 +30,16 @@ jobs:
           ruff check --select F,E9 mcdview.py tests/*.py
       - name: install sqlglot (optional backend for non-PostgreSQL dialects)
         run: pip install sqlglot
+      - name: install model-file converters (DBML)
+        run: npm install -g @dbml/cli
       - name: pinned regression (examples; .dbm samples skipped without pgmodeler-cli)
         run: ./tests/tester.py --rapide
       - name: security (XSS escaping, ReDoS/DoS budget)
         run: ./tests/test_securite.py
       - name: dialects (MySQL, SQLite via sqlglot)
         run: ./tests/test_dialectes.py
+      - name: model formats (DBML via dbml2sql)
+        run: ./tests/test_modeles.py
       - name: content invariants (no empty types, phantom PKs, dangling FKs)
         run: ./tests/test_invariants.py --strict
       - name: corpus campaign (examples), strict
