@@ -4,3 +4,4 @@ exemples/*.html
 tests/corpus/
 tests/resultats.tsv
 tests/corpus/modeles/
+*.log
