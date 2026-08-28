@@ -167,8 +167,9 @@ file's header.
 
 ### v0.12.0 — Attribution badge, safer link URLs (2026-08-28)
 
-- `--credit TEXT` / `--credit-url URL`: a small, muted attribution badge in
-  the bottom-right corner (off by default); text is escaped
+- `--credit TEXT` / `--credit-url URL`: a slanted rubber-stamp attribution
+  badge (mcdview logo + text) in the bottom-right corner, off by default;
+  text escaped, optional link
 - `--home-url` and `--credit-url` now reject dangerous URL schemes
   (`javascript:`, `data:`…), keeping only http(s)/mailto/relative links
 

@@ -65,14 +65,20 @@
   #legende .puce .pt { width: 10px; height: 10px; border-radius: 50%;
     border: 1px solid #0002; }
   #legende .puce .nb { opacity: .6; }
-  /* attribution badge: fixed bottom-right, inside the diagram area (the detail
-     panel is 340px wide on the right), muted; empty unless --credit is given */
-  #credit { position: fixed; bottom: 12px; right: 352px; z-index: 10;
-    font-size: 11px; opacity: .5; max-width: 40%; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; }
+  /* attribution badge as a slanted rubber stamp, fixed bottom-right inside the
+     diagram area (the detail panel is 340px wide on the right); empty unless
+     --credit is given. Muted ink so it reads on light and dark themes */
+  #credit { position: fixed; bottom: 22px; right: 366px; z-index: 10;
+    --encre-tampon: #c0261b; transform: rotate(-7deg); }
+  @media (prefers-color-scheme: dark) { #credit { --encre-tampon: #e5675c; } }
   #credit:empty { display: none; }
-  #credit a { color: var(--encre); text-decoration: none; }
-  #credit a:hover { text-decoration: underline; }
+  #credit > a, #credit > span { color: var(--encre-tampon); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: .12em;
+    border: 2px solid var(--encre-tampon); border-radius: 4px;
+    padding: 3px 9px 3px 7px; opacity: .6; }
+  #credit img { opacity: .85; }
+  #credit > a:hover { opacity: .9; }
   path.lien { stroke: var(--ligne); stroke-width: 1.2; fill: none; opacity: .5; }
   path.lien.vif { stroke: var(--ligne-vive); stroke-width: 2; opacity: 1; }
 </style>

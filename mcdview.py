@@ -564,13 +564,17 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
                 f'title="{echapper(url_sure(home_url))}">{logo}</a>')
     html = html.replace('__LOGO__', logo)
 
-    # optional attribution badge (caller-supplied text, so escaped); empty by
-    # default. mcdview-site passes its own; local/CLI users never see it.
+    # optional attribution stamp: the mcdview logo + caller-supplied text
+    # (escaped), empty by default. The logo goes in as a data-URI <img> (no id
+    # clash with the header SVG). mcdview-site passes its own; CLI users don't.
     badge = ''
     if credit:
-        texte = echapper(credit)
+        b64 = base64.b64encode((ici / 'logo.svg').read_bytes()).decode()
+        contenu = (f'<img src="data:image/svg+xml;base64,{b64}" width="18" '
+                   f'height="18" alt=""><b>{echapper(credit)}</b>')
         badge = (f'<a href="{echapper(url_sure(credit_url))}" target="_blank" '
-                 f'rel="noopener">{texte}</a>' if credit_url else texte)
+                 f'rel="noopener">{contenu}</a>' if credit_url
+                 else f'<span>{contenu}</span>')
     return html.replace('__CREDIT__', badge)
 
 
