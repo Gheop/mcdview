@@ -102,6 +102,11 @@ run; `tests/rapatrier.sh` fetches big real-world schemas (GitLab, Discourse)
 into a local, uncommitted corpus for stress testing. Enable the quick
 pre-commit check with `git config core.hooksPath .githooks`.
 
+## License
+
+[MIT](LICENSE). The example schemas keep their own licenses, noted in each
+file's header.
+
 ## Changelog
 
 ### v0.5.0 — Draggable tables, test bench (2026-08-28)
