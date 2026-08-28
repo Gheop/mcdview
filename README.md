@@ -77,8 +77,8 @@ PostgreSQL uses the built-in parser (no dependency). For any other dialect,
 `pip install sqlglot` and mcdview reads it — MySQL/MariaDB, SQLite, SQL Server
 (`tsql`), Oracle, DuckDB, Snowflake, BigQuery, Redshift, ClickHouse, Trino,
 Spark, Hive. `--dialect auto` (the default) uses the PostgreSQL parser first
-and falls back to sqlglot, sniffing the dialect, when it finds no table; pass
-`--dialect mysql` (etc.) to force one. Proprietary binary model files
+and, when it finds no table, tries several sqlglot dialects and keeps the one
+that parses the most tables; pass `--dialect mysql` (etc.) to force one. Proprietary binary model files
 (MySQL Workbench `.mwb` and the like) are not read directly — export their
 DDL to `.sql` first; only pgModeler `.dbm` is handled natively.
 
@@ -160,6 +160,13 @@ regression, the security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.9.4 — Auto-dialect tries several parsers (2026-08-28)
+
+- When PostgreSQL yields no table, `--dialect auto` now tries several sqlglot
+  dialects and keeps the one parsing the most tables, instead of guessing a
+  single one — recovers files that were mis-detected (a 28-table model was
+  read as the wrong dialect and dropped entirely)
 
 ### v0.9.3 — Square overview for huge schemas (2026-08-28)
 

@@ -176,18 +176,31 @@ def flairer_dialecte(chemin):
     return 'mysql'  # reasonable default for non-PostgreSQL DDL
 
 
+# auto tries these sqlglot dialects (after the sniffed guess) and keeps the
+# one that yields the most tables — one file is often only valid in one of them
+DIALECTES_ESSAI = ['mysql', 'sqlite', 'postgres', 'tsql', 'oracle', 'clickhouse', 'duckdb']
+
+
 def analyser(chemin, dialecte='auto'):
     """Parse a DDL file. Returns (tables, fks, effective_dialect)."""
     if dialecte in ('auto', 'postgres', 'postgresql'):
         tables, fks = analyser_sql(chemin)
         if tables or dialecte != 'auto':
             return tables, fks, 'postgresql'
-        dialecte = flairer_dialecte(chemin)  # auto found nothing: not PostgreSQL
+        # auto and not PostgreSQL: try the sniffed dialect, then the others,
+        # keeping whichever parses the most tables
+        candidats = list(dict.fromkeys([flairer_dialecte(chemin)] + DIALECTES_ESSAI))
+        meilleur = ({}, [], candidats[0])
+        for d in candidats:
+            t, f = analyser_sqlglot(chemin, d, strict=False)
+            if len(t) > len(meilleur[0]):
+                meilleur = (t, f, d)
+        return meilleur
     tables, fks = analyser_sqlglot(chemin, dialecte)
     return tables, fks, dialecte
 
 
-def analyser_sqlglot(chemin, dialecte):
+def analyser_sqlglot(chemin, dialecte, strict=True):
     try:
         import logging
         import sqlglot
@@ -196,12 +209,16 @@ def analyser_sqlglot(chemin, dialecte):
         # quiet the per-statement "unsupported syntax, falling back" warnings
         logging.getLogger('sqlglot').setLevel(logging.ERROR)
     except ImportError:
+        if not strict:
+            return {}, []
         sys.exit(f'reading {dialecte} DDL needs sqlglot (pip install sqlglot)')
     try:
         # IGNORE: a single unparseable statement must not abort the whole model
         arbre = sqlglot.parse(open(chemin, errors='replace').read(),
                               read=dialecte, error_level=ErrorLevel.IGNORE)
     except Exception as e:
+        if not strict:
+            return {}, []
         sys.exit(f'sqlglot could not parse the DDL as {dialecte}: {e}')
     arbre = [s for s in arbre if s is not None]
 
