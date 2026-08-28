@@ -87,8 +87,11 @@ and, when it finds no table, tries several sqlglot dialects and keeps the one
 that parses the most tables; pass `--dialect mysql` (etc.) to force one. Model files are read through an upstream converter (an optional dependency,
 like the SQL dialects): pgModeler `.dbm` via `pgmodeler-cli`,
 dbdiagram.io `.dbml` via `@dbml/cli`, and Prisma `schema.prisma` via the
-`prisma` CLI. Proprietary binary formats (MySQL
-Workbench `.mwb`…) are not read directly — export their DDL to `.sql` first.
+`prisma` CLI. Proprietary binary model formats (MySQL Workbench `.mwb`, Navicat, ERwin,
+Oracle SQL Developer Data Modeler…) are not read directly — there is no
+reliable headless converter for them. Export their SQL instead (in MySQL
+Workbench: Database → Forward Engineer, or File → Export → Forward Engineer
+SQL CREATE Script); the resulting `.sql` is read like any other DDL.
 
 `--fk-audit` is for models where every table carries audit columns
 (`created_by`, `modified_by`...) pointing to a users table: those FKs turn
