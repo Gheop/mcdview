@@ -388,11 +388,19 @@ def placement_auto(tables, fks):
 
     zone_x = 40.0
     for sch in zones:
+        cles_sch = ordonner(par_schema[sch])
+        dims = {c: taille(tables[c]) for c in cles_sch}
+        # column height aimed at a roughly square zone, so a schema with many
+        # tables does not stretch into an unreadable 40:1 horizontal band;
+        # max() keeps small schemas at the original TARGET_H
+        haut_totale = sum(h + GAP_Y for w, h in dims.values())
+        larg_moy = sum(w + GAP_X for w, h in dims.values()) / len(dims)
+        cible_h = max(TARGET_H, (haut_totale * larg_moy) ** 0.5)
         col_x, col_w, y = zone_x, 0.0, 40.0
         max_x = zone_x
-        for cle in ordonner(par_schema[sch]):
-            w, h = taille(tables[cle])
-            if y > 40 and y + h > TARGET_H:
+        for cle in cles_sch:
+            w, h = dims[cle]
+            if y > 40 and y + h > cible_h:
                 col_x += col_w + GAP_X
                 col_w, y = 0.0, 40.0
             tables[cle]['x'], tables[cle]['y'] = round(col_x), round(y)

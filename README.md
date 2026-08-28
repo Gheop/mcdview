@@ -161,6 +161,13 @@ file's header.
 
 ## Changelog
 
+### v0.9.3 — Square overview for huge schemas (2026-08-28)
+
+- The automatic layout now sizes each schema's column height for a roughly
+  square zone, so a large single-schema model no longer stretches into an
+  unreadable horizontal band (a 1066-table model went from a 41:1 strip to
+  1.4:1); small models are unchanged
+
 ### v0.9.2 — Dialect polish (2026-08-28)
 
 - The detected dialect is shown in the toolbar counter for non-PostgreSQL
