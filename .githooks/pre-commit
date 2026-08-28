@@ -11,4 +11,6 @@ set -e
 ./tests/test_securite.py
 ./tests/test_dialectes.py
 ./tests/test_invariants.py --strict
-./tests/grand_banc.py --strict
+# bounded sample: the local corpus can be thousands of files; a crash-gate on
+# a few hundred is enough here, the full sweep is manual / CI runs examples
+./tests/grand_banc.py --strict --limite 300

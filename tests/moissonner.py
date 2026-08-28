@@ -71,7 +71,9 @@ def principal():
                 if cible.exists():
                     continue
                 contenu = gh_api(item['url'])
-                if not contenu or not contenu.get('download_url'):
+                # the content API returns a list for a path that resolved to a
+                # directory; skip anything that is not a single file object
+                if not isinstance(contenu, dict) or not contenu.get('download_url'):
                     continue
                 try:
                     octets = telecharger(contenu['download_url'])
