@@ -17,7 +17,10 @@ Usage:
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
@@ -141,6 +144,24 @@ def analyser_sql(chemin):
     return tables, fks
 
 
+def sql_depuis_dbm(chemin):
+    """Export a .dbm model to SQL through pgmodeler-cli, return the SQL path.
+
+    pgModeler resolves its <relationship> elements (which generate implicit
+    columns and FKs) at export time, so delegating beats parsing the XML.
+    """
+    if not shutil.which('pgmodeler-cli'):
+        sys.exit('reading a .dbm requires pgmodeler-cli in PATH '
+                 '(or export the SQL yourself: pgmodeler-cli --export-to-file)')
+    sortie = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'export.sql'
+    r = subprocess.run(['pgmodeler-cli', '--export-to-file', '--input', chemin,
+                        '--output', str(sortie), '--silent'],
+                       capture_output=True, text=True)
+    if r.returncode or not sortie.exists():
+        sys.exit(f'pgmodeler-cli export failed:\n{r.stdout}{r.stderr}')
+    return str(sortie)
+
+
 def positions_dbm(chemin, tables):
     root = ET.parse(chemin).getroot()
     couleurs = {}
@@ -240,7 +261,8 @@ def traduire(html, lang):
 
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
-    ap.add_argument('sql', help='PostgreSQL DDL file (CREATE TABLE...)')
+    ap.add_argument('sql', metavar='sql|dbm',
+                    help='PostgreSQL DDL file (CREATE TABLE...) or pgModeler .dbm model')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
     ap.add_argument('--dbm', help='pgModeler model to reuse table positions from')
@@ -250,7 +272,12 @@ def principal():
                     help="language of the page UI (default: fr)")
     args = ap.parse_args()
 
-    tables, fks = analyser_sql(args.sql)
+    source = args.sql
+    if source.endswith('.dbm'):
+        if not args.dbm:
+            args.dbm = source  # the model provides its own positions
+        source = sql_depuis_dbm(source)
+    tables, fks = analyser_sql(source)
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements')
 

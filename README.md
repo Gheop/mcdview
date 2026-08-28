@@ -18,9 +18,14 @@ a fictional library model (12 tables, 3 schemas).
 ```bash
 ./mcdview.py model.sql
 ./mcdview.py model.sql -o explorer.html --titre "My project"
+./mcdview.py model.dbm          # pgModeler model (needs pgmodeler-cli)
 ```
 
 Then open the generated HTML file in a browser.
+
+A `.dbm` input needs `pgmodeler-cli` in the PATH: mcdview delegates the
+SQL generation to it (pgModeler resolves its relationships at export time),
+and reuses the table positions drawn in the model.
 
 In the page:
 
@@ -91,6 +96,15 @@ Plain Python 3, no dependency. All the rendering lives in
 in place of `__DONNEES__`.
 
 ## Changelog
+
+### v0.4.0 — pgModeler .dbm input, CI-built pages (2026-08-28)
+
+- A `.dbm` pgModeler model can be passed directly as input: the SQL is
+  produced by `pgmodeler-cli` and the table positions drawn in the model
+  are reused
+- The example pages are rebuilt by GitHub Actions on every push instead of
+  being committed
+- Code comments, docstrings and CLI output translated to English
 
 ### v0.3.0 — Wider DDL support, real-world examples (2026-08-28)
 
