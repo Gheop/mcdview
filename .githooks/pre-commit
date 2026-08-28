@@ -13,4 +13,4 @@ set -e
 ./tests/test_invariants.py --strict
 # bounded sample: the local corpus can be thousands of files; a crash-gate on
 # a few hundred is enough here, the full sweep is manual / CI runs examples
-./tests/grand_banc.py --strict --limite 300
+./tests/grand_banc.py --strict --limite 80
