@@ -1258,8 +1258,9 @@ def vers_mermaid(tables, fks):
 
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
-    ap.add_argument('sql', nargs='?', metavar='sql|dbm|dbml|mwb|rb|mmd|ts',
-                    help='SQL DDL, or a .dbm/.dbml/.mwb/.prisma/.ts/.mmd model (omit with --db)')
+    ap.add_argument('sql', nargs='*', metavar='sql|dbm|dbml|mwb|rb|mmd|ts',
+                    help='one or more model files (merged into one model); '
+                         'omit with --db')
     ap.add_argument('--db', metavar='URL',
                     help='dump a live database schema instead (postgresql://… or '
                          'mysql://…). CLI ONLY — never expose on a public service (SSRF)')
@@ -1307,7 +1308,7 @@ def surveiller(args, ap):
     dependency — and swallows a transient parse error so a mid-edit save does
     not stop the loop."""
     import time
-    fichiers = [f for f in (args.sql, args.diff, args.dbm) if f]
+    fichiers = list(args.sql) + [f for f in (args.diff, args.dbm) if f]
     print(f'watching {", ".join(fichiers)} (Ctrl-C to stop)…')
     empreinte = {f: os.path.getmtime(f) for f in fichiers if os.path.exists(f)}
     try:
@@ -1333,13 +1334,39 @@ def generer(args, ap):
     else:
         if not args.sql:
             ap.error('provide a model file, or --db URL to read a live database')
-        source = args.sql
-        nom_defaut = Path(args.sql).stem
-        sortie_defaut = str(Path(args.sql).with_suffix('.html'))
-        # a .dbm carries its own table positions: reuse them unless overridden
-        if source.endswith('.dbm') and not args.dbm:
+        source = args.sql[0]
+        nom_defaut = Path(source).stem
+        sortie_defaut = str(Path(source).with_suffix('.html'))
+        # a single .dbm carries its own table positions: reuse them
+        if len(args.sql) == 1 and source.endswith('.dbm') and not args.dbm:
             args.dbm = source
-        tables, fks, dialecte = charger(source, args.dialect)
+        # several files are merged into one model (a schema split across files).
+        # Plain SQL/dialect files are concatenated and parsed together, so a FK
+        # pointing from one file to a table in another still resolves; special
+        # formats (.dbm/.dbml/…) are parsed each and merged (a cross-file FK to
+        # a different file may not resolve).
+        speciales = ('.dbm', '.dbml', '.prisma', '.mwb', '.rb',
+                     '.mmd', '.mermaid', '.md', '.ts')
+        if len(args.sql) == 1:
+            tables, fks, dialecte = charger(source, args.dialect)
+        elif all(not f.endswith(speciales) for f in args.sql):
+            combine = '\n\n'.join(open(f, errors='replace').read() for f in args.sql)
+            tmp = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'merged.sql'
+            tmp.write_text(combine)
+            tables, fks, dialecte = analyser(str(tmp), args.dialect)
+        else:
+            tables, fks, dialecte = {}, [], 'auto'
+            vus = set()
+            for f in args.sql:
+                tt, ff, dd = charger(f, args.dialect)
+                tables.update(tt)
+                for lien in ff:
+                    cle = (lien['de'], lien['col'], lien['vers'], lien['colcible'])
+                    if cle not in vus:
+                        vus.add(cle)
+                        fks.append(lien)
+                if dd != 'auto':
+                    dialecte = dd
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements'
                  + indice_dialecte(source))

@@ -59,12 +59,28 @@ def principal():
     if t['public.d']['pk'] != ['a', 'b']:
         echecs.append(f'PK composite table-level: {t["public.d"]["pk"]}')
 
+    # several input files are merged into one model, cross-file FKs resolved
+    import subprocess
+    with tempfile.TemporaryDirectory() as td:
+        Path(td, 'a.sql').write_text('CREATE TABLE client (\n id serial PRIMARY KEY\n);')
+        Path(td, 'b.sql').write_text(
+            'CREATE TABLE commande (\n id serial PRIMARY KEY,\n client_id integer\n);\n'
+            'ALTER TABLE ONLY commande ADD CONSTRAINT fk '
+            'FOREIGN KEY (client_id) REFERENCES client(id);')
+        out = Path(td, 'm.html')
+        r = subprocess.run(
+            [sys.executable, str(RACINE / 'mcdview.py'),
+             str(Path(td, 'a.sql')), str(Path(td, 'b.sql')), '-o', str(out)],
+            capture_output=True, text=True)
+        if '2 tables, 1 FKs' not in r.stdout:
+            echecs.append(f'merge multi-fichiers: {r.stdout.strip()!r} (attendu 2 tables, 1 FK)')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:
             print('  !', e)
         sys.exit(1)
-    print('parser : PK inline OK, aucun PK fantôme (DEFAULT/CHECK/commentaire)')
+    print('parser : PK inline, pas de PK fantôme, merge multi-fichiers OK')
 
 
 if __name__ == '__main__':
