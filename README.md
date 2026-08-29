@@ -192,6 +192,9 @@ file's header.
   becomes optional; the page title defaults to the database name.
 - MySQL passwords go through the `MYSQL_PWD` environment variable, never on
   the process command line.
+- FK constraint names are now recovered on the MySQL/sqlglot path (they hang
+  off the wrapping `CONSTRAINT` node), so `--fk-audit` works on MySQL and
+  MariaDB models too.
 - **Command-line only.** This feature must not be exposed on a public
   service: it would let a caller make the process connect to any host it can
   reach (SSRF). The hosted site keeps taking uploaded files only.

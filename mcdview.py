@@ -281,6 +281,13 @@ def analyser_sqlglot(chemin, dialecte, strict=True):
     def cle(tbl):
         return f"{tbl.db or 'public'}.{tbl.name}"
 
+    def nom_fk(fk):
+        # a named inline FK carries its name on the wrapping Constraint node,
+        # not on the ForeignKey itself
+        if not fk.name and isinstance(fk.parent, exp.Constraint):
+            return fk.parent.name
+        return fk.name
+
     def ajouter_fk(de, cols, ref, nom):
         cible = ref.find(exp.Table)
         if not cible:
@@ -340,14 +347,14 @@ def analyser_sqlglot(chemin, dialecte, strict=True):
             for fk in stmt.find_all(exp.ForeignKey):
                 ref = fk.args.get('reference')
                 if ref:
-                    ajouter_fk(k, [c.name for c in fk.expressions], ref, fk.name)
+                    ajouter_fk(k, [c.name for c in fk.expressions], ref, nom_fk(fk))
         elif isinstance(stmt, exp.Alter):
             src_tbl = stmt.find(exp.Table)
             if src_tbl:
                 for fk in stmt.find_all(exp.ForeignKey):
                     ref = fk.args.get('reference')
                     if ref:
-                        ajouter_fk(cle(src_tbl), [c.name for c in fk.expressions], ref, fk.name)
+                        ajouter_fk(cle(src_tbl), [c.name for c in fk.expressions], ref, nom_fk(fk))
 
     # a reference without a column list points at the target's primary key
     for f in fks:
