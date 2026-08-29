@@ -53,6 +53,10 @@
   #panneau tr.d-del td.ty, #panneau tr.d-del td strong { text-decoration: line-through; }
   #panneau tr.d-del td { background: #ef44442e; }
   #panneau .was { text-decoration: line-through; opacity: .6; }
+  #panneau .ixrow { padding: 1px 4px; border-radius: 3px; }
+  #panneau .ixrow.d-add { background: #22c55e2e; }
+  #panneau .ixrow.d-del { background: #ef444e2e; text-decoration: line-through; }
+  #panneau .ixrow.d-mod { background: #f59e0b2e; }
   #panneau tr.cible td:first-child { border-left: 3px solid var(--ligne-vive); }
   #legdiff { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
     display: none; gap: 14px; align-items: center; background: var(--voile);
@@ -756,6 +760,12 @@ function detailler(cle) {
         `<td class="ty">${c.avant ? `<span class="was">${ech(c.avant)}</span> → ` : ""}` +
         `${ech(c.type)}${c.nn ? " NN" : ""}</td></tr>`;
     }).join("") + `</table>` +
+    ((t.index && t.index.length)
+      ? `<h4>Index</h4>` + t.index.map(ix =>
+          `<div class="${ix.diff ? DCLS[ix.diff] + " ixrow" : "ixrow"}">` +
+          `${ix.unique ? "🔒 " : ""}<span class="ty">${ech(ix.cols.join(", "))}</span></div>`
+        ).join("")
+      : "") +
     `<h4>Référencée par</h4>` +
     (entrants.length
       ? entrants.map(f => `${lienTable(f.de)} <span class="ty">(${f.col})</span>`).join("<br>")

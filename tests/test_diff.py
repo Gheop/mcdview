@@ -107,6 +107,15 @@ def principal():
     if r['counts']['foreign_keys']['added'] != 1:
         echecs.append('résumé: FK ajoutée non comptée')
 
+    # index diff: an index added on one side is counted and tagged
+    iv = "CREATE TABLE public.p (\n id serial PRIMARY KEY,\n e text\n);"
+    ip = iv + "\nCREATE UNIQUE INDEX p_e ON public.p (e);"
+    with tempfile.TemporaryDirectory() as td:
+        it, iff = mcdview.comparer(modele(iv, td, 'iv.sql'), modele(ip, td, 'ip.sql'))
+    ir = mcdview.resume_diff(it, iff)
+    if ir['counts']['indexes']['added'] != 1:
+        echecs.append(f'index diff: {ir["counts"]["indexes"]} (attendu added=1)')
+
     # rename detection: a table renamed (same column set) is not remove+add,
     # and a FK untouched apart from the rename stays unchanged
     av = "CREATE TABLE utilisateur (\n id serial PRIMARY KEY,\n nom text,\n mail text\n);\n"

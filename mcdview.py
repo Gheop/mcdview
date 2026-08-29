@@ -73,14 +73,17 @@ def analyser_colonne(ligne):
     return nouvelle_colonne(nom, reste.strip().rstrip(',').strip(), nn, defaut)
 
 
-def nouvelle_table(schema, nom, cols=None, pk=None, comment='', colcomments=None):
+def nouvelle_table(schema, nom, cols=None, pk=None, comment='', colcomments=None,
+                   index=None):
     """The table record every parser produces and composer_page consumes — one
-    place to evolve its shape (x/y are filled in later by the layout)."""
+    place to evolve its shape (x/y are filled in later by the layout). `index`
+    holds unique/index constraints as {'nom', 'cols', 'unique'} (PostgreSQL)."""
     return {'schema': schema, 'nom': nom,
             'cols': cols if cols is not None else [],
             'pk': pk if pk is not None else [],
             'x': 0, 'y': 0, 'comment': comment,
-            'colcomments': colcomments if colcomments is not None else {}}
+            'colcomments': colcomments if colcomments is not None else {},
+            'index': index if index is not None else []}
 
 
 def nouvelle_colonne(nom, typ, nn=False, defaut=''):
@@ -190,6 +193,24 @@ def analyser_sql(chemin):
         col = analyser_colonne(f"{m.group(3)} {m.group(4).strip()}")
         if cle in tables and col and col['nom'] not in {c['nom'] for c in tables[cle]['cols']}:
             tables[cle]['cols'].append(col)
+
+    # indexes and unique constraints (pg_dump emits CREATE [UNIQUE] INDEX;
+    # ALTER TABLE ADD CONSTRAINT ... UNIQUE covers unique keys)
+    for m in re.finditer(
+            r'CREATE\s+(UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF NOT EXISTS\s+)?'
+            r'"?(\w+)"?\s+ON\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?[^(;]*\(([^)]+)\)', src):
+        cle = resoudre(f"{m.group(3) or 'public'}.{m.group(4)}")
+        if cle in tables:
+            tables[cle]['index'].append(
+                {'nom': m.group(2), 'cols': identifiants(m.group(5)),
+                 'unique': bool(m.group(1))})
+    for m in re.finditer(
+            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD CONSTRAINT '
+            r'"?(\w+)"?\s+UNIQUE\s*\(([^)]+)\)', src):
+        cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
+        if cle in tables:
+            tables[cle]['index'].append(
+                {'nom': m.group(3), 'cols': identifiants(m.group(4)), 'unique': True})
 
     for m in re.finditer(r"COMMENT ON TABLE (?:\"?(\w+)\"?\.)?\"?(\w+)\"? IS E?'((?:[^']|'')*)'", src):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
@@ -959,6 +980,7 @@ TRADUCTIONS = {
         '"trop de tables pour réorganiser ("': '"too many tables to rearrange ("',
         '<div class="schema">schéma ': '<div class="schema">schema ',
         '<h4>Référencée par</h4>': '<h4>Referenced by</h4>',
+        '<h4>Index</h4>': '<h4>Indexes</h4>',
         'aucune table': 'no table',
         '"cadrer ce schéma"': '"frame this schema"',
         '"add">ajoutée<': '"add">added<',
@@ -1144,6 +1166,20 @@ def comparer(vieux, neuf):
                     col['avant'] = oc['type']  # previous type: "numeric → bigint"
             change = change or 'diff' in col
             t['cols'].append(col)
+        # indexes/unique constraints, matched by name
+        aidx = {i['nom']: i for i in (anc['index'] if anc else [])}
+        nidx = {i['nom']: i for i in (nou['index'] if nou else [])}
+        for nom in list(nidx) + [n for n in aidx if n not in nidx]:
+            oi, ni = aidx.get(nom), nidx.get(nom)
+            ix = dict(ni or oi)
+            if ni and not oi:
+                ix['diff'] = 'ajoute'
+            elif oi and not ni:
+                ix['diff'] = 'supprime'
+            elif oi != ni:
+                ix['diff'] = 'modifie'
+            change = change or 'diff' in ix
+            t['index'].append(ix)
         if 'diff' not in t and change:
             t['diff'] = 'modifie'
         tables[cle] = t
@@ -1178,6 +1214,7 @@ def resume_diff(tables, fks, baseline=None):
     ct = {'added': 0, 'removed': 0, 'changed': 0, 'unchanged': 0}
     cc = {'added': 0, 'removed': 0, 'changed': 0}
     cf = {'added': 0, 'removed': 0}
+    ci = {'added': 0, 'removed': 0, 'changed': 0}
     liste_tables = []
     for t in tables.values():
         st = trad.get(t.get('diff'), 'unchanged')
@@ -1197,6 +1234,13 @@ def resume_diff(tables, fks, baseline=None):
                     d['was'] = c['avant']
                 cols.append(d)
             entree['columns'] = cols
+            idx = [{'name': i['nom'], 'columns': i['cols'], 'unique': i['unique'],
+                    'status': trad[i['diff']]}
+                   for i in t['index'] if i.get('diff')]
+            for i in idx:
+                ci[i['status']] += 1
+            if idx:
+                entree['indexes'] = idx
         if st != 'unchanged':
             liste_tables.append(entree)
     liste_fks = []
@@ -1208,7 +1252,7 @@ def resume_diff(tables, fks, baseline=None):
         liste_fks.append({'from': f['de'], 'column': f['col'], 'to': f['vers'],
                           'to_column': f['colcible'], 'status': s})
     return {'diff': True, 'baseline': baseline,
-            'counts': {'tables': ct, 'columns': cc, 'foreign_keys': cf},
+            'counts': {'tables': ct, 'columns': cc, 'foreign_keys': cf, 'indexes': ci},
             'tables': liste_tables, 'foreign_keys': liste_fks}
 
 

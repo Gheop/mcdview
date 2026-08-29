@@ -59,6 +59,15 @@ def principal():
     if t['public.d']['pk'] != ['a', 'b']:
         echecs.append(f'PK composite table-level: {t["public.d"]["pk"]}')
 
+    # indexes and unique constraints are extracted
+    t = tables_de(
+        'CREATE TABLE public.e (\n id serial PRIMARY KEY,\n email text\n);\n'
+        'CREATE UNIQUE INDEX e_email ON public.e (email);\n'
+        'CREATE INDEX e_id ON public.e (id);')
+    idx = {i['nom']: i for i in t['public.e']['index']}
+    if idx.get('e_email', {}).get('unique') is not True or idx.get('e_id', {}).get('unique') is not False:
+        echecs.append(f'index: extraction inattendue ({list(idx)})')
+
     # several input files are merged into one model, cross-file FKs resolved
     import subprocess
     with tempfile.TemporaryDirectory() as td:
