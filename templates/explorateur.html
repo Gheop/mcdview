@@ -61,6 +61,10 @@
   #legdiff.on { display: flex; }
   #legdiff span::before { content: ""; display: inline-block; width: 11px; height: 11px;
     border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  #minimap { position: fixed; right: 12px; bottom: 12px; z-index: 9; display: none;
+    background: var(--voile); border: 1px solid var(--bord); border-radius: 6px;
+    cursor: pointer; backdrop-filter: blur(4px); }
+  #minimap.on { display: block; }
   #legdiff .add::before { background: #22c55e; }
   #legdiff .mod::before { background: #f59e0b; }
   #legdiff .del::before { background: #ef4444; }
@@ -136,6 +140,7 @@
 <div id="viewport">
   <div id="plan"><svg id="liens"></svg></div>
 </div>
+<canvas id="minimap" width="200" height="140" title="cliquer pour naviguer"></canvas>
 <div id="legende"></div>
 <div id="legdiff"><span class="add">ajoutée</span><span class="mod">modifiée</span><span class="del">supprimée</span><button id="filtreTouchees" type="button"></button></div>
 <div id="credit">__CREDIT__</div>
@@ -335,7 +340,48 @@ function rendre() {
     plan.classList.toggle("compact", compact);
     dessinerLiens();
   }
+  dessinerMinimap();
 }
+
+// --- minimap: a thumbnail of the whole model with the viewport rectangle,
+// shown on bigger models; click to recenter there ---
+const miniCanvas = document.getElementById("minimap");
+const miniCtx = miniCanvas.getContext("2d");
+const MINI_ACTIVE = D.tables.length >= 25;
+if (MINI_ACTIVE) miniCanvas.classList.add("on");
+function dessinerMinimap() {
+  if (!MINI_ACTIVE) return;
+  const W = miniCanvas.width, H = miniCanvas.height, pad = 6;
+  let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+  Object.values(elems).forEach(e => {
+    bx0 = Math.min(bx0, e.offsetLeft); by0 = Math.min(by0, e.offsetTop);
+    bx1 = Math.max(bx1, e.offsetLeft + e.offsetWidth);
+    by1 = Math.max(by1, e.offsetTop + e.offsetHeight);
+  });
+  const s = Math.min((W - 2 * pad) / (bx1 - bx0 || 1), (H - 2 * pad) / (by1 - by0 || 1));
+  const ox = pad - bx0 * s, oy = pad - by0 * s;
+  miniCtx.clearRect(0, 0, W, H);
+  Object.entries(elems).forEach(([cle, e]) => {
+    if (e.classList.contains("efface")) return;
+    miniCtx.fillStyle = D.schemas[parCle[cle].schema] || "#9aa3ad";
+    miniCtx.fillRect(e.offsetLeft * s + ox, e.offsetTop * s + oy,
+                     Math.max(1, e.offsetWidth * s), Math.max(1, e.offsetHeight * s));
+  });
+  const vx0 = -x / k, vy0 = -y / k;
+  miniCtx.strokeStyle = getComputedStyle(document.documentElement)
+    .getPropertyValue("--ligne-vive") || "#0b74c4";
+  miniCtx.lineWidth = 1.5;
+  miniCtx.strokeRect(vx0 * s + ox, vy0 * s + oy,
+                     vp.clientWidth / k * s, vp.clientHeight / k * s);
+  miniCanvas._map = { s, ox, oy };
+}
+miniCanvas.addEventListener("click", e => {
+  const m = miniCanvas._map; if (!m) return;
+  const r = miniCanvas.getBoundingClientRect();
+  const mx = (e.clientX - r.left - m.ox) / m.s, my = (e.clientY - r.top - m.oy) / m.s;
+  x = vp.clientWidth / 2 - mx * k; y = vp.clientHeight / 2 - my * k;
+  rendre();
+});
 function cadrer(cles) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   cles.forEach(c => {
