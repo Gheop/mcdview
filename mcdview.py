@@ -1033,6 +1033,8 @@ def comparer(vieux, neuf):
                 col['diff'] = 'supprime'
             elif oc != ncc:
                 col['diff'] = 'modifie'
+                if oc['type'] != ncc['type']:
+                    col['avant'] = oc['type']  # previous type: "numeric → bigint"
             change = change or 'diff' in col
             t['cols'].append(col)
         if 'diff' not in t and change:
@@ -1053,6 +1055,46 @@ def comparer(vieux, neuf):
     return tables, fks
 
 
+def resume_diff(tables, fks, baseline=None):
+    """A machine-readable summary of a comparer() result, for a caller (like a
+    hosting service) that wants change counts and a change list without parsing
+    the HTML. English status names: added / removed / changed."""
+    trad = {'ajoute': 'added', 'supprime': 'removed', 'modifie': 'changed'}
+    ct = {'added': 0, 'removed': 0, 'changed': 0, 'unchanged': 0}
+    cc = {'added': 0, 'removed': 0, 'changed': 0}
+    cf = {'added': 0, 'removed': 0}
+    liste_tables = []
+    for t in tables.values():
+        st = trad.get(t.get('diff'), 'unchanged')
+        ct[st] += 1
+        entree = {'table': f"{t['schema']}.{t['nom']}", 'status': st}
+        if st == 'changed':  # column-level detail only where the table persists
+            cols = []
+            for c in t['cols']:
+                if not c.get('diff'):
+                    continue
+                s = trad[c['diff']]
+                cc[s] += 1
+                d = {'name': c['nom'], 'status': s, 'type': c['type']}
+                if 'avant' in c:
+                    d['was'] = c['avant']
+                cols.append(d)
+            entree['columns'] = cols
+        if st != 'unchanged':
+            liste_tables.append(entree)
+    liste_fks = []
+    for f in fks:
+        if not f.get('diff'):
+            continue
+        s = trad[f['diff']]
+        cf[s] += 1
+        liste_fks.append({'from': f['de'], 'column': f['col'], 'to': f['vers'],
+                          'to_column': f['colcible'], 'status': s})
+    return {'diff': True, 'baseline': baseline,
+            'counts': {'tables': ct, 'columns': cc, 'foreign_keys': cf},
+            'tables': liste_tables, 'foreign_keys': liste_fks}
+
+
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
     ap.add_argument('sql', nargs='?', metavar='sql|dbm|dbml|mwb|rb|mmd|ts',
@@ -1063,6 +1105,8 @@ def principal():
     ap.add_argument('--diff', metavar='BASELINE',
                     help='compare against an older model (any supported format): '
                          'tables/columns/FKs added, removed or changed are colored')
+    ap.add_argument('--summary', metavar='FILE',
+                    help='with --diff: also write a JSON summary of the changes to FILE')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
     ap.add_argument('--dbm', help='pgModeler model to reuse table positions from')
@@ -1122,7 +1166,12 @@ def principal():
     Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs,
                                           dialecte, args.home_url, args.logo,
                                           args.credit, args.credit_url, bool(args.diff)))
+    if args.summary and not args.diff:
+        ap.error('--summary only applies with --diff')
     if args.diff:
+        if args.summary:
+            resume = resume_diff(tables, fks, args.diff)
+            Path(args.summary).write_text(json.dumps(resume, ensure_ascii=False, indent=2))
         nt = [t for t in tables.values() if t.get('diff')]
         cpt = {s: sum(t.get('diff') == s for t in tables.values())
                for s in ('ajoute', 'supprime', 'modifie')}

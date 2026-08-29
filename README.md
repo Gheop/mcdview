@@ -95,6 +95,7 @@ In the page:
 | `--credit-url URL` | Make the `--credit` badge a link to this URL |
 | `--db URL` | Read a live database's schema instead of a file (`postgresql://…` via `pg_dump`, `mysql://…` via `mysqldump`); CLI only |
 | `--diff BASELINE` | Compare against an older model (any supported format); added/removed/changed tables, columns and FKs are colored |
+| `--summary FILE` | With `--diff`: also write a JSON summary of the changes (counts + change list) to `FILE` |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
@@ -198,6 +199,14 @@ security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.20.2 — JSON diff summary (2026-08-29)
+
+- `--summary FILE` (with `--diff`) writes a machine-readable JSON summary of
+  the changes: per-category counts (tables/columns/FKs added, removed,
+  changed) and the change list, with the previous type kept for retyped
+  columns (`"was": "numeric(10,2)"`). Lets a caller show change badges or a
+  version timeline without parsing the HTML.
 
 ### v0.20.1 — Diff legend counts and "touched only" filter (2026-08-29)
 

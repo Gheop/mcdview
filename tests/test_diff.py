@@ -95,6 +95,18 @@ def principal():
     if 'id="filtreTouchees"' not in html:
         echecs.append('le bouton de filtre "touchées" manque de la page diff')
 
+    # JSON summary for the hosting service
+    r = mcdview.resume_diff(tables, fks, 'old.sql')
+    ct = r['counts']['tables']
+    if (ct['added'], ct['removed'], ct['changed']) != (1, 1, 2):
+        echecs.append(f'résumé: comptes tables {ct} inattendus')
+    prod = next((t for t in r['tables'] if t['table'] == 'public.commande'), None)
+    total = next((c for c in (prod['columns'] if prod else []) if c['name'] == 'total'), None)
+    if not total or total.get('was') != 'numeric':  # numeric → bigint
+        echecs.append(f'résumé: type précédent de commande.total manquant ({total})')
+    if r['counts']['foreign_keys']['added'] != 1:
+        echecs.append('résumé: FK ajoutée non comptée')
+
     if echecs:
         print('ÉCHECS diff :')
         for e in echecs:
