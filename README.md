@@ -48,8 +48,9 @@ Then open the generated HTML file in a browser.
 any supported format) and colors the result: tables, columns and foreign keys
 that were **added** show green, **removed** ones red and struck through
 (kept on the diagram so you can see what went), **changed** ones amber. A
-legend appears at the bottom. Handy for reviewing a migration before running
-it.
+legend appears at the bottom with per-category counts and a "N touched"
+button that hides the unchanged tables to frame just what moved. Handy for
+reviewing a migration before running it.
 
 `--db` reads the schema straight from a running database instead of a file:
 `postgresql://…` shells out to `pg_dump -s`, `mysql://…` to `mysqldump
@@ -197,6 +198,12 @@ security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.20.1 — Diff legend counts and "touched only" filter (2026-08-29)
+
+- The diff legend now shows how many tables were added, changed and removed,
+  and a "N touched" button hides the unchanged tables to frame just the ones
+  that moved. "Overview" / Escape brings everything back.
 
 ### v0.20.0 — Schema diff (2026-08-29)
 

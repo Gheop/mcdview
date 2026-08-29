@@ -92,6 +92,8 @@ def principal():
     html = mcdview.composer_page(tables, fks, 'x', 'en', mode_diff=True)
     if '"diff": true' not in html:
         echecs.append('la page ne signale pas le mode diff')
+    if 'id="filtreTouchees"' not in html:
+        echecs.append('le bouton de filtre "touchées" manque de la page diff')
 
     if echecs:
         print('ÉCHECS diff :')

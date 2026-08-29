@@ -902,6 +902,7 @@ TRADUCTIONS = {
         '"add">ajoutée<': '"add">added<',
         '"mod">modifiée<': '"mod">changed<',
         '"del">supprimée<': '"del">removed<',
+        'const MOT = "touchées";': 'const MOT = "touched";',
     },
 }
 

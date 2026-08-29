@@ -54,6 +54,11 @@
   #legdiff .add::before { background: #22c55e; }
   #legdiff .mod::before { background: #f59e0b; }
   #legdiff .del::before { background: #ef4444; }
+  #legdiff b { margin-left: 4px; }
+  #legdiff button { margin-left: 6px; padding: 2px 10px; border: 1px solid var(--bord);
+    border-radius: 12px; background: var(--panneau); color: var(--encre); cursor: pointer;
+    font-size: 12px; }
+  #legdiff button.actif { background: var(--ligne-vive); color: #fff; border-color: var(--ligne-vive); }
   #hud { position: fixed; top: 12px; left: 12px; display: flex; gap: 8px;
     align-items: center; background: var(--voile); backdrop-filter: blur(4px);
     padding: 7px 12px; border-radius: 8px; z-index: 10; border: 1px solid var(--bord); }
@@ -121,7 +126,7 @@
   <div id="plan"><svg id="liens"></svg></div>
 </div>
 <div id="legende"></div>
-<div id="legdiff"><span class="add">ajoutée</span><span class="mod">modifiée</span><span class="del">supprimée</span></div>
+<div id="legdiff"><span class="add">ajoutée</span><span class="mod">modifiée</span><span class="del">supprimée</span><button id="filtreTouchees" type="button"></button></div>
 <div id="credit">__CREDIT__</div>
 <div id="panneau"><p class="vide">Cliquer sur une table pour l'isoler avec ses
 tables liées et voir son détail ici.<br><br>Molette : zoom.
@@ -137,6 +142,7 @@ const btnRetour = document.getElementById("vueGenerale");
 const ckAudit = document.getElementById("voirAudit");
 const parCle = {}, elems = {}, origines = {};
 let focusCle = null, survolCle = null, x = 0, y = 0, k = 1;
+let filtreTouchees = false;  // diff: show only added/removed/changed tables
 
 D.tables.forEach(t => { parCle[t.schema + "." + t.nom] = t; });
 
@@ -192,7 +198,26 @@ D.tables.forEach(t => {
 });
 plan.appendChild(fragTables);
 dl.appendChild(fragNoms);
-if (D.diff) document.getElementById("legdiff").classList.add("on");
+if (D.diff) {
+  const leg = document.getElementById("legdiff");
+  leg.classList.add("on");
+  const cpt = { ajoute: 0, supprime: 0, modifie: 0 };
+  D.tables.forEach(t => { if (t.diff) cpt[t.diff]++; });
+  leg.querySelector(".add").insertAdjacentHTML("beforeend", "<b>" + cpt.ajoute + "</b>");
+  leg.querySelector(".mod").insertAdjacentHTML("beforeend", "<b>" + cpt.modifie + "</b>");
+  leg.querySelector(".del").insertAdjacentHTML("beforeend", "<b>" + cpt.supprime + "</b>");
+  const MOT = "touchées";
+  const btnFiltre = document.getElementById("filtreTouchees");
+  btnFiltre.textContent = (cpt.ajoute + cpt.supprime + cpt.modifie) + " " + MOT;
+  btnFiltre.addEventListener("click", () => {
+    filtreTouchees = !filtreTouchees;
+    btnFiltre.classList.toggle("actif", filtreTouchees);
+    focusCle = null; btnRetour.hidden = true;
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+    Object.keys(elems).forEach(c => elems[c].classList.remove("choisie"));
+    appliquerFiltreTouchees();
+  });
+}
 Object.keys(elems).forEach(cle => {
   origines[cle] = { x: elems[cle].offsetLeft, y: elems[cle].offsetTop };
 });
@@ -379,6 +404,9 @@ function isoler(cle) {
 }
 function vueGenerale() {
   focusCle = null;
+  filtreTouchees = false;  // overview always shows everything
+  const bf = document.getElementById("filtreTouchees");
+  if (bf) bf.classList.remove("actif");
   if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   btnRetour.hidden = true;
   Object.keys(elems).forEach(c => {
@@ -387,6 +415,21 @@ function vueGenerale() {
     elems[c].style.top = origines[c].y + "px";
   });
   setTimeout(() => { dessinerLiens(); cadrer(Object.keys(elems)); }, 380);
+  svg.innerHTML = "";
+}
+// diff filter: hide (or reveal) the unchanged tables and frame what remains,
+// resetting positions so it reads as an overview of the touched tables
+function appliquerFiltreTouchees() {
+  const cibles = [];
+  D.tables.forEach(t => {
+    const cle = t.schema + "." + t.nom, e = elems[cle];
+    e.style.left = origines[cle].x + "px";
+    e.style.top = origines[cle].y + "px";
+    const montre = !filtreTouchees || !!t.diff;
+    e.classList.toggle("efface", !montre);
+    if (montre) cibles.push(cle);
+  });
+  setTimeout(() => { dessinerLiens(); cadrer(cibles.length ? cibles : Object.keys(elems)); }, 380);
   svg.innerHTML = "";
 }
 btnRetour.addEventListener("click", vueGenerale);
