@@ -173,9 +173,14 @@ every pgModeler sample model, checks pinned table/FK counts and times each
 run; `tests/grand_banc.py` runs the whole local corpus (`--strict` fails on
 any exception, `--dbm` adds the pgModeler models, `--chrome N` DOM-validates
 N sampled pages); `tests/rapatrier.sh`, `tests/moissonner.py` and
-`tests/generer_synthetique.py` fill the local, uncommitted corpus. The
-pre-commit hook (`git config core.hooksPath .githooks`) runs the pinned
-regression, the security suite and the strict corpus campaign.
+`tests/generer_synthetique.py` fill the local, uncommitted corpus.
+`tests/test_dialectes.py` parses committed non-PostgreSQL fixtures, including
+`tests/dialectes/boutique.mariadb.sql` — a frozen `mysqldump --no-data` dump
+(backtick quoting, named inline `CONSTRAINT` FKs, a composite primary key)
+that pins the exact SQL a `--db mysql://…` run feeds the parser, so the
+`--db` path stays covered without a live server. The pre-commit hook
+(`git config core.hooksPath .githooks`) runs the pinned regression, the
+security suite and the strict corpus campaign.
 
 ## License
 
