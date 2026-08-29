@@ -80,15 +80,18 @@ erDiagram
 
 - **Explore any model.** Overview grouped by schema, click a table to isolate
   it with its neighbours, field detail (types, NOT NULL, DEFAULT, PK 🔑,
-  clickable FK 🔗, comments), search by table *or column*, drag to rearrange
-  (links follow live), force-directed relayout, `#schema.table` permalinks.
-  One HTML file, works offline.
+  clickable FK 🔗, indexes, comments), search by table *or column*, drag to
+  rearrange (links follow live, positions remembered), force-directed relayout,
+  a minimap and level-of-detail for big models, light/dark toggle, SVG export,
+  `#schema.table` permalinks, keyboard shortcuts (`/` search, `r` rearrange,
+  Esc overview). One HTML file, works offline.
 - **Eight input formats.** PostgreSQL and ~15 dialects (MySQL/MariaDB, SQLite,
   SQL Server, Oracle…) via [sqlglot](https://github.com/tobymao/sqlglot);
   pgModeler `.dbm`, dbdiagram.io `.dbml`, Prisma, MySQL Workbench `.mwb`,
   Rails `db/schema.rb`, Mermaid `erDiagram`, Drizzle `schema.ts`.
 - **Diff two versions.** `--diff old` colors what was added, removed and
-  changed, detects renames, and can write a JSON summary (see below).
+  changed (tables, columns, foreign keys, indexes), detects renames, and can
+  write a JSON summary (see below).
 - **Mermaid export.** `--to-mermaid` for a diagram that renders in any
   Markdown file.
 - **Live database.** `--db postgresql://…` / `mysql://…` reads a running
@@ -282,6 +285,24 @@ security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.23.0 — Big-model UX, SVG export, richer diff (2026-08-29)
+
+- **Big models:** a level-of-detail mode (table names only when zoomed out), a
+  clickable **minimap**, and header-only table nodes above 800 tables (≈20×
+  fewer DOM nodes) make a 1000+ table schema usable.
+- **SVG export:** a toolbar button downloads the diagram as a portable SVG for
+  docs and slides.
+- **Diff:** indexes and unique constraints are now diffed too (shown in the
+  panel, counted in the JSON summary); renames are detected by column overlap,
+  not just an exact match.
+- **Multiple input files** are merged into one model (`mcdview a.sql b.sql`),
+  cross-file foreign keys resolved.
+- **Quality of life:** dragged/rearranged positions are remembered
+  (localStorage), a light/dark toggle, keyboard shortcuts (`/`, `r`, Esc), and
+  `--watch` to regenerate the page on every save.
+- Indexes and unique constraints (`CREATE [UNIQUE] INDEX`, `ADD CONSTRAINT …
+  UNIQUE`) are parsed and shown in the detail panel.
 
 ### v0.22.2 — Security and correctness audit (2026-08-29)
 
