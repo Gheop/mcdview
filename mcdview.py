@@ -32,7 +32,7 @@ PALETTE = ['#cdebc5', '#d6e6f5', '#a8d8b9', '#f5e3c8', '#e8d5f0',
 
 # automatic-layout metrics (same orders of magnitude as the CSS rendering)
 CHAR_W, ROW_H, HDR_H = 7.6, 20.5, 34
-GAP_X, GAP_Y, ZONE_GAP, TARGET_H = 120, 70, 300, 2200
+GAP_X, GAP_Y, ZONE_GAP = 120, 70, 300
 
 
 # keywords opening a constraint line inside a CREATE TABLE body
@@ -856,12 +856,13 @@ def placement_auto(tables, fks):
     for sch in zones:
         cles_sch = ordonner(par_schema[sch])
         dims = {c: taille(tables[c]) for c in cles_sch}
-        # column height aimed at a roughly square zone, so a schema with many
-        # tables does not stretch into an unreadable 40:1 horizontal band;
-        # max() keeps small schemas at the original TARGET_H
+        # column height aimed at a roughly square zone (√area), so a schema
+        # neither stretches into an unreadable 40:1 band nor stacks a handful
+        # of small tables into a tall single column. A low floor keeps a
+        # 2-3 table schema compact instead of over-splitting it.
         haut_totale = sum(h + GAP_Y for w, h in dims.values())
         larg_moy = sum(w + GAP_X for w, h in dims.values()) / len(dims)
-        cible_h = max(TARGET_H, (haut_totale * larg_moy) ** 0.5)
+        cible_h = max(650, (haut_totale * larg_moy) ** 0.5)
         col_x, col_w, y = zone_x, 0.0, 40.0
         max_x = zone_x
         for cle in cles_sch:

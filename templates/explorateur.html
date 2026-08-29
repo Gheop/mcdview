@@ -44,6 +44,7 @@
   #panneau tr.d-mod td { background: #f59e0b2e; }
   #panneau tr.d-del td.ty, #panneau tr.d-del td strong { text-decoration: line-through; }
   #panneau tr.d-del td { background: #ef44442e; }
+  #panneau .was { text-decoration: line-through; opacity: .6; }
   #legdiff { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
     display: none; gap: 14px; align-items: center; background: var(--voile);
     backdrop-filter: blur(4px); padding: 6px 14px; border-radius: 8px; z-index: 10;
@@ -565,7 +566,8 @@ function detailler(cle) {
       const def = c.defaut ? `<div class="ccom">= ${ech(c.defaut)}</div>` : "";
       const dc = c.diff ? ` class="${DCLS[c.diff]}"` : "";
       return `<tr${dc}><td class="ic">${ic}</td><td><strong>${ech(c.nom)}</strong>${cible}${com}${def}</td>` +
-        `<td class="ty">${ech(c.type)}${c.nn ? " NN" : ""}</td></tr>`;
+        `<td class="ty">${c.avant ? `<span class="was">${ech(c.avant)}</span> → ` : ""}` +
+        `${ech(c.type)}${c.nn ? " NN" : ""}</td></tr>`;
     }).join("") + `</table>` +
     `<h4>Référencée par</h4>` +
     (entrants.length
