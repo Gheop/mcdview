@@ -67,7 +67,21 @@ def analyser_colonne(ligne):
         reste = reste[:dm.start()]
     # cut what we do not represent (inline REFERENCES, GENERATED, COLLATE...)
     reste = RE_COUPE.split(reste)[0]
-    return {'nom': nom, 'type': reste.strip(), 'nn': nn, 'defaut': defaut}
+    return nouvelle_colonne(nom, reste.strip(), nn, defaut)
+
+
+def nouvelle_table(schema, nom, cols=None, pk=None, comment='', colcomments=None):
+    """The table record every parser produces and composer_page consumes — one
+    place to evolve its shape (x/y are filled in later by the layout)."""
+    return {'schema': schema, 'nom': nom,
+            'cols': cols if cols is not None else [],
+            'pk': pk if pk is not None else [],
+            'x': 0, 'y': 0, 'comment': comment,
+            'colcomments': colcomments if colcomments is not None else {}}
+
+
+def nouvelle_colonne(nom, typ, nn=False, defaut=''):
+    return {'nom': nom, 'type': typ, 'nn': nn, 'defaut': defaut}
 
 
 def analyser_sql(chemin):
@@ -102,8 +116,7 @@ def analyser_sql(chemin):
             col = analyser_colonne(ligne)
             if col:
                 cols.append(col)
-        tables[f'{sch}.{nom}'] = {'schema': sch, 'nom': nom, 'cols': cols, 'pk': pk,
-                                  'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
+        tables[f'{sch}.{nom}'] = nouvelle_table(sch, nom, cols, pk)
 
     # partitions: constraints carried by a partition are folded back into
     # the parent, and the partitions themselves do not appear in the model
@@ -341,9 +354,8 @@ def analyser_sqlglot(chemin, dialecte, strict=True):
             for p in (props.expressions if props else []):
                 if isinstance(p, exp.SchemaCommentProperty):
                     comment = p.this.name
-            tables[k] = {'schema': tbl.db or 'public', 'nom': tbl.name, 'cols': cols,
-                         'pk': pk, 'x': 0, 'y': 0, 'comment': comment,
-                         'colcomments': colcomments}
+            tables[k] = nouvelle_table(tbl.db or 'public', tbl.name, cols, pk,
+                                       comment, colcomments)
             for fk in stmt.find_all(exp.ForeignKey):
                 ref = fk.args.get('reference')
                 if ref:
@@ -560,8 +572,8 @@ def analyser_mwb(chemin):
             for c in objets(t, 'columns'):
                 cn = txt(c, 'name')
                 col_par_id[c.get('id')] = (cn, cle)
-                cols.append({'nom': cn, 'type': type_colonne(c),
-                             'nn': txt(c, 'isNotNull') == '1', 'defaut': txt(c, 'defaultValue')})
+                cols.append(nouvelle_colonne(cn, type_colonne(c),
+                            txt(c, 'isNotNull') == '1', txt(c, 'defaultValue')))
             pk = []
             for idx in objets(t, 'indices'):
                 if txt(idx, 'isPrimary') == '1':
@@ -569,8 +581,7 @@ def analyser_mwb(chemin):
                         rc = txt(ic, 'referencedColumn')
                         if rc in col_par_id:
                             pk.append(col_par_id[rc][0])
-            tables[cle] = {'schema': schema, 'nom': nom, 'cols': cols, 'pk': pk,
-                           'x': 0, 'y': 0, 'comment': txt(t, 'comment'), 'colcomments': {}}
+            tables[cle] = nouvelle_table(schema, nom, cols, pk, txt(t, 'comment'))
 
     for fk in racine.iter('value'):
         if fk.get('struct-name') != 'db.mysql.ForeignKey':
@@ -619,8 +630,7 @@ def analyser_schema_rb(chemin):
             mpk = re.search(r'primary_key:\s*["\']([^"\']+)["\']', opts)
             pkn = mpk.group(1) if mpk else 'id'
             mid = re.search(r'\bid:\s*:(\w+)', opts)
-            cols.append({'nom': pkn, 'type': mid.group(1) if mid else 'bigint',
-                         'nn': True, 'defaut': ''})
+            cols.append(nouvelle_colonne(pkn, mid.group(1) if mid else 'bigint', True))
             pk = [pkn]
         for cm in re.finditer(r'\b' + re.escape(var) + r'\.(\w+)\s+["\'"]([^"\'"]+)["\'"]([^\n]*)', corps):
             typ, cn, reste = cm.groups()
@@ -629,14 +639,12 @@ def analyser_schema_rb(chemin):
             defc = re.search(r'default:\s*("[^"]*"|\'[^\']*\'|[^,\n]+)', reste)
             defaut = defc.group(1).strip('\'"') if defc else ''
             if typ in ('references', 'belongs_to'):
-                cols.append({'nom': cn + '_id', 'type': 'bigint',
-                             'nn': 'null: false' in reste, 'defaut': ''})
+                cols.append(nouvelle_colonne(cn + '_id', 'bigint', 'null: false' in reste))
                 if 'polymorphic: true' in reste:
-                    cols.append({'nom': cn + '_type', 'type': 'string', 'nn': False, 'defaut': ''})
+                    cols.append(nouvelle_colonne(cn + '_type', 'string'))
             else:
-                cols.append({'nom': cn, 'type': typ, 'nn': 'null: false' in reste, 'defaut': defaut})
-        tables[cle] = {'schema': 'public', 'nom': nom, 'cols': cols, 'pk': pk,
-                       'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
+                cols.append(nouvelle_colonne(cn, typ, 'null: false' in reste, defaut))
+        tables[cle] = nouvelle_table('public', nom, cols, pk)
     for m in re.finditer(r'add_foreign_key\s+["\']([^"\']+)["\'],\s*["\']([^"\']+)["\']([^\n]*)', src):
         det, verst, reste = m.groups()
         mc = re.search(r'column:\s*["\']([^"\']+)["\']', reste)
@@ -672,8 +680,7 @@ def analyser_mermaid(chemin):
         nom = nom.strip('"')
         cle = f'public.{nom}'
         if cle not in tables:
-            tables[cle] = {'schema': 'public', 'nom': nom, 'cols': [], 'pk': [],
-                           'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
+            tables[cle] = nouvelle_table('public', nom)
         return cle
 
     # entity blocks: NAME {\n attr* }. The opening brace must be followed by a
@@ -694,7 +701,7 @@ def analyser_mermaid(chemin):
             if not am:
                 continue
             typ, cn, cles, commentaire = am.groups()
-            tables[cle]['cols'].append({'nom': cn, 'type': typ, 'nn': False, 'defaut': ''})
+            tables[cle]['cols'].append(nouvelle_colonne(cn, typ))
             if 'PK' in cles:
                 tables[cle]['pk'].append(cn)
             if commentaire:
@@ -773,15 +780,13 @@ def analyser_drizzle(chemin):
             sm = re.search(r'''["'`]([^"'`]+)["'`]''', entree)
             col = sm.group(1) if sm else champ
             var_cols[var][champ] = col
-            cols.append({'nom': col, 'type': typ,
-                         'nn': '.notNull(' in entree, 'defaut': ''})
+            cols.append(nouvelle_colonne(col, typ, '.notNull(' in entree))
             if '.primaryKey(' in entree:
                 pk.append(col)
             rm = re.search(r'\.references\(\s*\(\s*\)\s*=>\s*(\w+)\.(\w+)', entree)
             if rm:
                 refs.append((cle, col, rm.group(1), rm.group(2)))
-        tables[cle] = {'schema': 'public', 'nom': nom, 'cols': cols, 'pk': pk,
-                       'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
+        tables[cle] = nouvelle_table('public', nom, cols, pk)
 
     for de, col, tvar, tfield in refs:
         vers = var_table.get(tvar)
@@ -1027,7 +1032,7 @@ def principal():
             tables, fks = normaliser_casse(*analyser_schema_rb(source))
             dialecte = 'rails'
         elif source.endswith(('.mmd', '.mermaid', '.md')):
-            tables, fks = analyser_mermaid(source)
+            tables, fks = normaliser_casse(*analyser_mermaid(source))
             dialecte = 'mermaid'
         elif source.endswith('.ts'):
             tables, fks = normaliser_casse(*analyser_drizzle(source))
