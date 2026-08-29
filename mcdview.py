@@ -44,6 +44,7 @@ RE_COLONNE = re.compile(r'"?(\w+)"?\s+(.+)$')
 RE_NOT_NULL = re.compile(r'\s*\bNOT NULL\b')
 RE_DEFAUT = re.compile(r'\s*\bDEFAULT\s+(.*)$')
 RE_COUPE = re.compile(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT|PRIMARY|UNIQUE|CHECK)\b')
+RE_PK_TABLE = re.compile(r'(?:CONSTRAINT "?\w+"? )?PRIMARY KEY\s*\(([^)]+)\)')
 
 
 def identifiants(liste):
@@ -65,9 +66,10 @@ def analyser_colonne(ligne):
     if dm:
         defaut = dm.group(1).strip()
         reste = reste[:dm.start()]
+    reste = re.sub(r'--.*$', '', reste)  # an inline comment is not part of the type
     # cut what we do not represent (inline REFERENCES, GENERATED, COLLATE...)
     reste = RE_COUPE.split(reste)[0]
-    return nouvelle_colonne(nom, reste.strip(), nn, defaut)
+    return nouvelle_colonne(nom, reste.strip().rstrip(',').strip(), nn, defaut)
 
 
 def nouvelle_table(schema, nom, cols=None, pk=None, comment='', colcomments=None):
@@ -82,6 +84,33 @@ def nouvelle_table(schema, nom, cols=None, pk=None, comment='', colcomments=None
 
 def nouvelle_colonne(nom, typ, nn=False, defaut=''):
     return {'nom': nom, 'type': typ, 'nn': nn, 'defaut': defaut}
+
+
+def nouvelle_fk(de, col, vers, colcible, nom=''):
+    """The foreign-key record every parser produces (one line from `de.col` to
+    `vers.colcible`); `nom` is the constraint name, used only by --fk-audit."""
+    return {'de': de, 'col': col, 'vers': vers, 'colcible': colcible,
+            'nom': nom, 'audit': False}
+
+
+RE_LITTERAL = re.compile(r"'(?:[^']|'')*'")
+RE_COMMENTAIRE = re.compile(r'--.*$')
+RE_CHECK = re.compile(r'\bCHECK\s*\([^)]*\)', re.I)
+RE_PK_MOT = re.compile(r'\bPRIMARY\s+KEY\b', re.I)
+
+
+def colonne_declare_pk(ligne):
+    """True if a column line carries a column-level PRIMARY KEY constraint.
+    String literals, inline comments and CHECK(...) expressions are stripped
+    first, so a DEFAULT 'PRIMARY KEY', a `-- primary key` note or a
+    CHECK (x <> 'PRIMARY KEY') never counts as one. Cheap substring guard
+    first: the vast majority of column lines have no PRIMARY KEY at all."""
+    if 'primary' not in ligne.lower():
+        return False
+    s = RE_LITTERAL.sub('', ligne)     # drop '...' string literals
+    s = RE_COMMENTAIRE.sub('', s)      # drop an inline comment
+    s = RE_CHECK.sub('', s)            # drop CHECK(...)
+    return bool(RE_PK_MOT.search(s))
 
 
 def analyser_sql(chemin):
@@ -107,7 +136,7 @@ def analyser_sql(chemin):
         cols, pk = [], []
         for ligne in corps.split('\n'):
             ligne = ligne.strip().rstrip(',')
-            cm = re.match(r'(?:CONSTRAINT "?\w+"? )?PRIMARY KEY\s*\(([^)]+)\)', ligne)
+            cm = RE_PK_TABLE.match(ligne) if 'PRIMARY' in ligne else None
             if cm:
                 pk = identifiants(cm.group(1))
                 continue
@@ -116,9 +145,9 @@ def analyser_sql(chemin):
             col = analyser_colonne(ligne)
             if col:
                 # a column-level PRIMARY KEY ("id serial PRIMARY KEY") is not a
-                # separate constraint line, so catch it here (RE_COUPE already
-                # kept it out of the type)
-                if re.search(r'\bPRIMARY KEY\b', ligne):
+                # separate constraint line; catch it here, but only as a real
+                # constraint (not a literal/comment/CHECK saying "PRIMARY KEY")
+                if colonne_declare_pk(ligne):
                     pk.append(col['nom'])
                 cols.append(col)
         tables[f'{sch}.{nom}'] = nouvelle_table(sch, nom, cols, pk)
@@ -190,8 +219,7 @@ def analyser_sql(chemin):
             if (de, scol, vers, dcol) in vues:
                 continue
             vues.add((de, scol, vers, dcol))
-            fks.append({'de': de, 'col': scol, 'vers': vers,
-                        'colcible': dcol, 'nom': cname or '', 'audit': False})
+            fks.append(nouvelle_fk(de, scol, vers, dcol, cname or ''))
     return tables, fks
 
 
@@ -209,9 +237,7 @@ def flairer_dialecte(chemin):
         return 'sqlite'
     if re.search(r'\[\w+\]\s+\w', src):
         return 'tsql'
-    if re.search(r'CREATE TABLE[^(]*`', src):
-        return 'mysql'
-    return 'mysql'  # reasonable default for non-PostgreSQL DDL
+    return 'mysql'  # backticks or anything else: MySQL is the sensible default
 
 
 # auto tries these sqlglot dialects (after the sniffed guess) and keeps the
@@ -318,8 +344,7 @@ def analyser_sqlglot(chemin, dialecte, strict=True):
             if (de, col, vers, dcol) in vues:
                 continue
             vues.add((de, col, vers, dcol))
-            fks.append({'de': de, 'col': col, 'vers': vers,
-                        'colcible': dcol, 'nom': nom or '', 'audit': False})
+            fks.append(nouvelle_fk(de, col, vers, dcol, nom or ''))
 
     for stmt in arbre:
         if isinstance(stmt, exp.Create) and stmt.kind == 'TABLE':
@@ -347,9 +372,10 @@ def analyser_sqlglot(chemin, dialecte, strict=True):
                 # lowercase to match the PostgreSQL parser's output, but keep
                 # string literals intact (ENUM('Active') must not become 'active')
                 type_txt = brut if "'" in brut else brut.lower()
-                cols.append({'nom': d.name, 'type': type_txt,
-                             'nn': any(isinstance(c, exp.NotNullColumnConstraint) for c in kinds),
-                             'defaut': defc.sql(dialect=dialecte) if defc is not None else ''})
+                cols.append(nouvelle_colonne(
+                    d.name, type_txt,
+                    any(isinstance(c, exp.NotNullColumnConstraint) for c in kinds),
+                    defc.sql(dialect=dialecte) if defc is not None else ''))
             for p in stmt.find_all(exp.PrimaryKey):
                 noms = [c.name for c in p.expressions]
                 if noms:
@@ -415,9 +441,14 @@ def parser_xml(donnees):
     file never legitimately carries one, and it is the vector for the
     entity-expansion ("billion laughs") and external-entity (XXE) attacks that
     Python's stdlib XML parser does not defend against on its own."""
-    if b'<!DOCTYPE' in donnees[:65536] or b'<!ENTITY' in donnees[:65536]:
+    # scan the whole buffer, not just the head: a large leading comment could
+    # otherwise push the DOCTYPE past a fixed window
+    if b'<!DOCTYPE' in donnees or b'<!ENTITY' in donnees:
         sys.exit('refusing an XML document that declares a DTD or entities')
-    return ET.fromstring(donnees)
+    try:
+        return ET.fromstring(donnees)
+    except ET.ParseError as e:
+        sys.exit(f'malformed model XML: {e}')
 
 
 def sql_depuis_dbm(chemin):
@@ -527,7 +558,11 @@ def analyser_mwb(chemin):
     (a column's type, a PK's columns, an FK's endpoints) are id links resolved
     against every object's `id` attribute.
     """
-    with zipfile.ZipFile(chemin) as z:
+    try:
+        z = zipfile.ZipFile(chemin)
+    except zipfile.BadZipFile:
+        sys.exit('not a MySQL Workbench file (.mwb must be a zip archive)')
+    with z:
         try:
             info = z.getinfo('document.mwb.xml')
         except KeyError:
@@ -602,8 +637,7 @@ def analyser_mwb(chemin):
             dcol, vers = col_par_id.get(dsts[i] if i < len(dsts) else None, ('', cible_tbl))
             vers = vers or cible_tbl
             if de in tables and vers in tables:
-                fks.append({'de': de, 'col': scol, 'vers': vers,
-                            'colcible': dcol, 'nom': nom, 'audit': False})
+                fks.append(nouvelle_fk(de, scol, vers, dcol, nom))
     return tables, fks
 
 
@@ -624,11 +658,16 @@ def analyser_schema_rb(chemin):
     `add_foreign_key "from", "to"` defaults its column to <singular(to)>_id."""
     src = open(chemin, errors='replace').read()
     tables, fks = {}, []
-    for m in re.finditer(
-            r'create_table\s+["\']([^"\']+)["\']\s*(,[^\n]*?)?\s+do\s*\|(\w+)\|\n(.*?)\n\s*end',
-            src, re.S):
-        nom, opts, var, corps = m.groups()
-        opts = opts or ''
+    # opener + string-search for the block's `end` (not a lazy `.*?` spanning to
+    # `end`, which backtracks on many unterminated create_table openers)
+    RE_CT = re.compile(r'create_table\s+["\']([^"\']+)["\']\s*(,[^\n]*)?\s+do\s*\|(\w+)\|')
+    RE_FIN = re.compile(r'\n[ \t]*end\b')
+    for m in RE_CT.finditer(src):
+        f = RE_FIN.search(src, m.end())
+        if not f:
+            continue
+        nom, opts, var = m.group(1), m.group(2) or '', m.group(3)
+        corps = src[m.end():f.start()]
         cle = f'public.{nom}'
         cols, pk = [], []
         if 'id: false' not in opts:
@@ -657,8 +696,7 @@ def analyser_schema_rb(chemin):
         mp = re.search(r'primary_key:\s*["\']([^"\']+)["\']', reste)
         de, vers = f'public.{det}', f'public.{verst}'
         if de in tables and vers in tables:
-            fks.append({'de': de, 'col': col, 'vers': vers,
-                        'colcible': mp.group(1) if mp else 'id', 'nom': '', 'audit': False})
+            fks.append(nouvelle_fk(de, col, vers, mp.group(1) if mp else 'id'))
     return tables, fks
 
 
@@ -691,12 +729,24 @@ def analyser_mermaid(chemin):
     # entity blocks: NAME {\n attr* }. The opening brace must be followed by a
     # newline: a crow's-foot cardinality (o{, }o) also contains a brace but is
     # followed by the related entity's name on the same line, and must not be
-    # mistaken for an entity block.
-    RE_BLOC = r'(?:"([^"]+)"|([A-Za-z_][\w-]*))\s*\{[ \t]*\r?\n(.*?)\}'
-    for m in re.finditer(RE_BLOC, bloc, re.S):
-        nom = m.group(1) or m.group(2)
-        cle = table(nom)
-        for ligne in m.group(3).splitlines():
+    # mistaken for an entity block. The body runs to the next '}' found by
+    # string search (not a lazy `.*?`, which backtracks catastrophically on many
+    # openers with no closer). Blocks are stripped out to leave `masque` for the
+    # relationship scan — both in one pass.
+    # identifier runs are length-bounded so finditer cannot backtrack O(n²) on
+    # a long non-matching run (a crafted .mmd/.md is untrusted input)
+    RE_OUVRE = re.compile(r'(?:"([^"]{1,255})"|([A-Za-z_][\w-]{0,127}))[ \t]*\{[ \t]*\r?\n')
+    reste_masque, pos = [], 0
+    for m in RE_OUVRE.finditer(bloc):
+        if m.start() < pos:               # opener inside a block already consumed
+            continue
+        ferme = bloc.find('}', m.end())
+        if ferme == -1:                   # unterminated block: not a real entity
+            continue
+        reste_masque.append(bloc[pos:m.start()])
+        pos = ferme + 1
+        cle = table(m.group(1) or m.group(2))
+        for ligne in bloc[m.end():ferme].splitlines():
             if re.match(r'\s*direction\s+\w+\s*$', ligne):  # layout directive
                 continue
             # type name [PK[, FK…]] ["free-text comment"] — keys may be
@@ -711,12 +761,21 @@ def analyser_mermaid(chemin):
                 tables[cle]['pk'].append(cn)
             if commentaire:
                 tables[cle]['colcomments'][cn] = commentaire
+    reste_masque.append(bloc[pos:])
 
-    # relationships: A <card>--|..<card> B : label
-    masque = re.sub(RE_BLOC, '', bloc, flags=re.S)
-    for m in re.finditer(
-            r'(?:"([^"]+)"|([A-Za-z_][\w-]*))\s+([|}o]{1,2})(?:--|\.\.)([|{o]{1,2})\s+'
-            r'(?:"([^"]+)"|([A-Za-z_][\w-]*))', masque):
+    # relationships: A <card>--|..<card> B : label. One per line in Mermaid, so
+    # scan line by line and skip any line without a connector — a long crafted
+    # line then costs nothing instead of backtracking the identifier run.
+    RE_REL = re.compile(
+        r'(?:"([^"]{1,255})"|([A-Za-z_][\w-]{0,127}))\s+([|}o]{1,2})(?:--|\.\.)([|{o]{1,2})\s+'
+        r'(?:"([^"]{1,255})"|([A-Za-z_][\w-]{0,127}))')
+    masque = ''.join(reste_masque)
+    for ligne in masque.splitlines():
+        if '--' not in ligne and '..' not in ligne:
+            continue
+        m = RE_REL.search(ligne)
+        if not m:
+            continue
         gauche = m.group(1) or m.group(2)
         droite = m.group(5) or m.group(6)
         lcard, rcard = m.group(3), m.group(4)
@@ -729,8 +788,7 @@ def analyser_mermaid(chemin):
             enfant, parent = droite, gauche
         de, vers = table(enfant), table(parent)
         cible = tables[vers]['pk'][0] if tables[vers]['pk'] else ''
-        fks.append({'de': de, 'col': '', 'vers': vers, 'colcible': cible,
-                    'nom': '', 'audit': False})
+        fks.append(nouvelle_fk(de, '', vers, cible))
     return tables, fks
 
 
@@ -756,7 +814,8 @@ def analyser_drizzle(chemin):
             elif ch in ')]}':
                 prof -= 1
             if ch == ',' and prof == 0:
-                out.append(cur); cur = ''
+                out.append(cur)
+                cur = ''
             else:
                 cur += ch
         if cur.strip():
@@ -796,9 +855,7 @@ def analyser_drizzle(chemin):
     for de, col, tvar, tfield in refs:
         vers = var_table.get(tvar)
         if de in tables and vers in tables:
-            fks.append({'de': de, 'col': col, 'vers': vers,
-                        'colcible': var_cols.get(tvar, {}).get(tfield, ''),
-                        'nom': '', 'audit': False})
+            fks.append(nouvelle_fk(de, col, vers, var_cols.get(tvar, {}).get(tfield, '')))
     return tables, fks
 
 
@@ -934,7 +991,11 @@ def url_sure(u):
     http(s), mailto, anchors and scheme-less/relative URLs pass through."""
     if not u:
         return u
-    schema = re.match(r'\s*([a-z][a-z0-9+.-]*):', u, re.I)
+    # browsers strip tab/CR/LF and trim control chars before resolving a URL,
+    # which can re-form a "java\tscript:" scheme past a naive check; remove them
+    # first so the scheme test sees the real scheme
+    u = re.sub(r'[\x00-\x20\x7f]', '', u)
+    schema = re.match(r'([a-z][a-z0-9+.-]*):', u, re.I)
     if schema and schema.group(1).lower() not in ('http', 'https', 'mailto'):
         return '#'
     return u

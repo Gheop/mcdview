@@ -8,6 +8,7 @@
 # is manual: ./tests/grand_banc.py --dbm --chrome 12
 set -e
 ./tests/tester.py --rapide
+./tests/test_parser.py
 ./tests/test_securite.py
 ./tests/test_dialectes.py
 ./tests/test_invariants.py --strict

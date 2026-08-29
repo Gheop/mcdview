@@ -151,7 +151,7 @@ D.tables.forEach(t => { parCle[t.schema + "." + t.nom] = t; });
 // injected model strings (names, types, comments) must never become markup
 function ech(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 document.getElementById("compte").textContent =
   D.tables.length + " tables · " + D.fks.length + " FK" +
@@ -177,6 +177,7 @@ const fragTables = document.createDocumentFragment();
 const fragNoms = document.createDocumentFragment();
 const parColonne = {};      // "table.col" and bare "col" -> {cle, col} for search
 let colonneCible = null;    // a column to highlight after the search isolates its table
+const colonnesEnAuto = D.tables.length <= 300;  // suggest columns only on small models
 const fkColsPar = {};
 D.fks.forEach(f => { (fkColsPar[f.de] = fkColsPar[f.de] || new Set()).add(f.col); });
 const DCLS = { ajoute: "d-add", supprime: "d-del", modifie: "d-mod" };
@@ -187,7 +188,7 @@ D.tables.forEach(t => {
   div.style.left = t.x + "px";
   div.style.top = t.y + "px";
   const fkCols = fkColsPar[cle] || new Set();
-  div.innerHTML = "<h3 style='background:" + (D.schemas[t.schema] || "#ccc") + "'>" +
+  div.innerHTML = "<h3 style='background:" + ech(D.schemas[t.schema] || "#ccc") + "'>" +
     ech(t.nom) + "</h3><ul>" +
     t.cols.map(c => "<li" + (c.diff ? " class='" + DCLS[c.diff] + "'" : "") + ">" +
       (t.pk.includes(c.nom) ? "🔑 " : fkCols.has(c.nom) ? "🔗 " : "") +
@@ -200,12 +201,17 @@ D.tables.forEach(t => {
   o.value = cle;
   fragNoms.appendChild(o);
   t.cols.forEach(c => {
+    // the index (typed "table.col" or a bare column name resolves to a table)
+    // stays cheap for any size; the datalist <option> per column would be a
+    // ×10 node blow-up on a big model, so only suggest columns on small ones
     parColonne[(t.nom + "." + c.nom).toLowerCase()] = { cle, col: c.nom };
     const seul = c.nom.toLowerCase();
     if (!(seul in parColonne)) parColonne[seul] = { cle, col: c.nom };
-    const oc = document.createElement("option");
-    oc.value = t.nom + "." + c.nom;
-    fragNoms.appendChild(oc);
+    if (colonnesEnAuto) {
+      const oc = document.createElement("option");
+      oc.value = t.nom + "." + c.nom;
+      fragNoms.appendChild(oc);
+    }
   });
 });
 plan.appendChild(fragTables);

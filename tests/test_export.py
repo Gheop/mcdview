@@ -3,6 +3,7 @@
 back to the same tables. Round-trips the committed examples (SQL → Mermaid →
 parse) and checks the table count survives. Exits non-zero on a mismatch."""
 import importlib.util
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -32,12 +33,20 @@ def principal():
             echecs.append(f'{nom}: {len(rt)} tables après round-trip != {len(tables)}')
         print(f'{"FAIL" if any(nom in e for e in echecs) else "ok  "} {nom}: '
               f'{len(tables)} tables → Mermaid → {len(rt)} tables, {len(rf)} FKs')
+    # the CLI flag prints the erDiagram to stdout
+    r = subprocess.run(
+        [sys.executable, str(RACINE / 'mcdview.py'),
+         str(RACINE / 'exemples' / 'chinook.sql'), '--to-mermaid'],
+        capture_output=True, text=True)
+    if r.returncode or not r.stdout.startswith('erDiagram'):
+        echecs.append(f'--to-mermaid CLI: sortie inattendue ({r.stdout[:40]!r})')
+
     if echecs:
         print('\nÉCHECS export Mermaid :')
         for e in echecs:
             print('  !', e)
         sys.exit(1)
-    print('\nexport Mermaid : erDiagram valide, tables préservées au round-trip')
+    print('\nexport Mermaid : erDiagram valide (fonction + CLI), round-trip OK')
 
 
 if __name__ == '__main__':

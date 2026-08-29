@@ -68,6 +68,19 @@ def verifier_xss(echecs):
         echecs.append('credit/home_url: schéma d\'URL dangereux dans un href')
     if '<b>x</b>' in page:
         echecs.append('credit: texte non échappé')
+    # URL schemes obfuscated with tab/newline/control chars (browsers strip
+    # them and re-form the scheme) must be neutralized to '#'
+    for u in ['java\tscript:alert(1)', 'java\nscript:alert(1)',
+              '\x01javascript:alert(1)', 'jav\rascript:alert(1)', 'DATA:text/html,x']:
+        if mcdview.url_sure(u) != '#':
+            echecs.append(f'url_sure: schéma obfusqué non neutralisé: {u!r}')
+    # a hostile schema fill-color (from a .dbm) must be escaped in the island —
+    # it is injected into innerHTML at runtime, so no raw < may reach it
+    couleur = mcdview.composer_page(
+        tables, fks, 'x', 'en', couleurs={'public': "#000'><script>alert(9)</script>"})
+    ilot = ilot_json(couleur)
+    if '<' in ilot:
+        echecs.append('couleur schéma: "<" brut dans le JSON injecté (XSS possible)')
 
 
 def verifier_dos(echecs):
@@ -94,6 +107,35 @@ def verifier_dos(echecs):
             ms = (time.perf_counter() - t0) * 1000
             etat = 'OK ' if ms < BUDGET_MS else 'LENT'
             print(f'  {etat} {nom:24s} {chemin.stat().st_size // 1024:5d} KiB {ms:7.0f} ms')
+            if ms >= BUDGET_MS:
+                echecs.append(f'{nom}: {ms:.0f} ms > budget {BUDGET_MS} ms (DoS)')
+
+
+def verifier_dos_natifs(echecs):
+    """The native parsers reachable from an upload (.mmd/.md, .rb) must respect
+    the same DoS budget — their block extraction used to backtrack on crafted
+    input. Bombs are generated here, too big to commit."""
+    cas = [
+        ('mermaid openers', mcdview.analyser_mermaid, '.mmd',
+         'erDiagram\n' + 'E {\n' * 200 + 'A' * 60000),
+        ('mermaid ligne géante', mcdview.analyser_mermaid, '.mmd',
+         'erDiagram\n' + 'A' * 200000 + ' ||--o{ B'),
+        ('rails openers', mcdview.analyser_schema_rb, '.rb',
+         'create_table "t" do |t|\n' * 3000 + 'A' * 60000),
+    ]
+    with tempfile.TemporaryDirectory() as td:
+        for nom, fn, ext, contenu in cas:
+            p = Path(td) / (re.sub(r'\W', '_', nom) + ext)
+            p.write_text(contenu)
+            t0 = time.perf_counter()
+            try:
+                fn(str(p))
+            except Exception as e:
+                echecs.append(f'{nom}: exception {e!r}')
+                continue
+            ms = (time.perf_counter() - t0) * 1000
+            print(f'  {"OK " if ms < BUDGET_MS else "LENT"} {nom:24s} '
+                  f'{p.stat().st_size // 1024:5d} KiB {ms:7.0f} ms')
             if ms >= BUDGET_MS:
                 echecs.append(f'{nom}: {ms:.0f} ms > budget {BUDGET_MS} ms (DoS)')
 
@@ -168,6 +210,7 @@ def principal():
     echecs = []
     verifier_xss(echecs)
     verifier_dos(echecs)
+    verifier_dos_natifs(echecs)
     verifier_uploads(echecs)
     if echecs:
         print('\nÉCHECS sécurité :')

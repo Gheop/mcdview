@@ -282,6 +282,29 @@ file's header.
 
 ## Changelog
 
+### v0.22.2 — Security and correctness audit (2026-08-29)
+
+- **XSS fix:** a schema fill-color from a `.dbm` was injected into the page
+  unescaped — a hostile model could run script in a viewer's browser. The
+  color is now escaped like all other model data (and `ech()` now escapes
+  single quotes too, closing attribute-breakout).
+- **ReDoS fix:** the Mermaid and Rails block extraction backtracked
+  catastrophically on crafted input (a ~20 KB `.mmd` took ~18 s); both now use
+  a bounded string search, and the DoS-budget test covers every parser, not
+  just PostgreSQL.
+- **Phantom-PK fix:** a `DEFAULT 'PRIMARY KEY'`, a `CHECK` or an inline comment
+  mentioning the words no longer marks a column as a primary key (regression
+  from the inline-PK support).
+- **Hardening:** `url_sure` now strips tab/newline/control chars before the
+  scheme check (`java\tscript:` is neutralized); the XML DTD guard scans the
+  whole document; malformed `.mwb`/`.dbm` inputs exit cleanly instead of
+  dumping a traceback.
+- **Perf:** the primary-key regexes are precompiled and guarded (~130 ms off a
+  5000-table parse); the column search suggests columns only on models under
+  300 tables (avoids a ×10 datalist blow-up).
+- Internals: a `nouvelle_fk` factory joins `nouvelle_table`/`nouvelle_colonne`;
+  new `tests/test_parser.py`; dead code removed.
+
 ### v0.22.1 — Inline primary keys, revamped README (2026-08-29)
 
 - The PostgreSQL parser now recognises a column-level primary key
