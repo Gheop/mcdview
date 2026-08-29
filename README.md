@@ -189,6 +189,12 @@ file's header.
 
 ## Changelog
 
+### v0.19.1 — Links follow tables during "rearrange" (2026-08-29)
+
+- "Rearrange" now redraws the FK links on every frame while the tables glide
+  to their new positions, instead of leaving them behind and snapping them
+  into place once the CSS transition ends.
+
 ### v0.19.0 — Read a live database via --db (2026-08-28)
 
 - `--db postgresql://…` / `--db mysql://…`: dump a running database's schema

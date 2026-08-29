@@ -463,10 +463,14 @@ function reorganiser() {
     e.style.top = Math.round(py[i] - e.offsetHeight / 2) + "px";
     if (!focusCle) origines[c] = { x: e.offsetLeft, y: e.offsetTop };
   });
-  setTimeout(() => {
-    dessinerLiens(); cadrer(cles);
-    btnReorg.disabled = D.tables.length > REORG_MAX;
-  }, 380);
+  // the tables glide to their new spot over the .35s CSS transition; redraw
+  // the links every frame so they follow instead of snapping at the end
+  const t0 = performance.now();
+  (function suivre() {
+    dessinerLiens();
+    if (performance.now() - t0 < 380) requestAnimationFrame(suivre);
+    else { cadrer(cles); btnReorg.disabled = D.tables.length > REORG_MAX; }
+  })();
 }
 btnReorg.addEventListener("click", reorganiser);
 
