@@ -1082,22 +1082,37 @@ def comparer(vieux, neuf):
     vt, vf = vieux
     nt, nf = neuf
 
-    # rename detection: pair an old-only table with a new-only table sharing
-    # the exact set of column names (≥2 columns, to avoid matching trivial
-    # tables by accident). Each side is used at most once.
+    # rename detection: pair an old-only table with a new-only table by column
+    # overlap. An exact set match wins first; then the best Jaccard overlap
+    # above a threshold, so a table renamed AND edited is still caught. Each
+    # side is used at most once, best pairs first.
     def signature(t):
         return frozenset(c['nom'] for c in t['cols'])
+    news = [c for c in nt if c not in vt]
+    olds = [c for c in vt if c not in nt]
     renomme = {}                       # new_key -> old_key
-    pris = set()
-    for nk in [c for c in nt if c not in vt]:
-        sig = signature(nt[nk])
-        if len(sig) < 2:
+    paires = []                        # (score, new_key, old_key)
+    for nk in news:
+        sn = signature(nt[nk])
+        if len(sn) < 2:
             continue
-        for ok in [c for c in vt if c not in nt and c not in pris]:
-            if signature(vt[ok]) == sig:
-                renomme[nk] = ok
-                pris.add(ok)
-                break
+        for ok in olds:
+            so = signature(vt[ok])
+            if len(so) < 2:
+                continue
+            inter = len(sn & so)
+            if not inter:
+                continue
+            jac = inter / len(sn | so)
+            # 1.0 (exact) or a strong overlap with ≥2 shared columns
+            if jac == 1.0 or (jac >= 0.6 and inter >= 2):
+                paires.append((jac, nk, ok))
+    pris_new, pris_old = set(), set()
+    for jac, nk, ok in sorted(paires, key=lambda p: -p[0]):
+        if nk not in pris_new and ok not in pris_old:
+            renomme[nk] = ok
+            pris_new.add(nk)
+            pris_old.add(ok)
     old_renomme = set(renomme.values())
 
     tables = {}

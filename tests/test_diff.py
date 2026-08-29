@@ -122,6 +122,16 @@ def principal():
     if not noms.get('client') or noms['client'].get('renomme_de') != 'utilisateur':
         echecs.append('rename: client devrait porter renomme_de=utilisateur')
 
+    # rename by similarity: a table renamed AND edited (one column changed) is
+    # still matched when the column overlap is strong enough
+    av2 = "CREATE TABLE membre (\n id serial PRIMARY KEY,\n nom text,\n mail text,\n age integer\n);"
+    ap2 = "CREATE TABLE compte (\n id serial PRIMARY KEY,\n nom text,\n mail text,\n tel text\n);"
+    with tf.TemporaryDirectory() as td:
+        r2 = mcdview.comparer(modele(av2, td, 'a.sql'), modele(ap2, td, 'b.sql'))[0]
+    noms2 = {t['nom']: t for t in r2.values()}
+    if 'membre' in noms2 or noms2.get('compte', {}).get('renomme_de') != 'membre':
+        echecs.append('rename similarité: compte devrait être renommé de membre')
+
     if echecs:
         print('ÉCHECS diff :')
         for e in echecs:
