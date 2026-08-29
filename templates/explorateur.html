@@ -36,6 +36,9 @@
   .table ul { margin: 0; padding: 3px 10px 5px; list-style: none; }
   .table li { white-space: nowrap; line-height: 1.45; color: var(--encre); }
   .table li .t { opacity: .55; font-size: 12px; margin-left: 6px; }
+  /* level-of-detail: zoomed far out, show table names only (see rendre()) */
+  #plan.compact .table ul { display: none; }
+  #plan.compact .table h3 { border-radius: 5px; }
   /* schema diff coloring: only --diff pages carry these classes */
   .table.d-add { box-shadow: 0 0 0 2px #22c55e, 0 1px 4px #0002; }
   .table.d-mod { box-shadow: 0 0 0 2px #f59e0b, 0 1px 4px #0002; }
@@ -321,7 +324,18 @@ plan.addEventListener("mouseleave", () => {
 });
 
 // --- pan / zoom ---
-function rendre() { plan.style.transform = `translate(${x}px, ${y}px) scale(${k})`; }
+let estCompact = false;
+function rendre() {
+  plan.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
+  // zoomed far out, the column lists are an unreadable blur: hide them and
+  // show table names only. Toggling changes table heights, so redraw the links.
+  const compact = k < 0.4;
+  if (compact !== estCompact) {
+    estCompact = compact;
+    plan.classList.toggle("compact", compact);
+    dessinerLiens();
+  }
+}
 function cadrer(cles) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   cles.forEach(c => {
