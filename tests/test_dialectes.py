@@ -14,14 +14,21 @@ spec = importlib.util.spec_from_file_location('mcdview', RACINE / 'mcdview.py')
 mcdview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mcdview)
 
-# fichier : (dialecte, tables, fks, {table: pk})
+# fichier : (dialecte, tables, fks, {table: pk}, {fk cols → nom attendu})
 CAS = {
     'dialectes/boutique.mysql.sql': ('auto', 3, 2, {
-        'public.client': ['id'], 'public.commande': ['id'], 'public.ligne': ['id']}),
+        'public.client': ['id'], 'public.commande': ['id'], 'public.ligne': ['id']}, {}),
+    # real `mysqldump --no-data` output: backtick quoting, named inline
+    # CONSTRAINT FKs, composite PK. Locks the FK-name recovery on the sqlglot
+    # path (the exact SQL a `--db mysql://…` dump feeds the parser).
+    'dialectes/boutique.mariadb.sql': ('auto', 3, 2, {
+        'public.client': ['id'], 'public.commande': ['id'],
+        'public.ligne': ['commande_id', 'produit']},
+        {'client_id': 'fk_cmd_client', 'commande_id': 'fk_ligne_cmd'}),
     'dialectes/notes.sqlite.sql': ('auto', 4, 3, {
-        'public.note_etiquette': ['note_id', 'etiquette_id']}),
+        'public.note_etiquette': ['note_id', 'etiquette_id']}, {}),
     'dialectes/ventes.tsql.sql': ('auto', 2, 1, {
-        'dbo.Customer': ['CustomerID'], 'dbo.Order': ['OrderID']}),
+        'dbo.Customer': ['CustomerID'], 'dbo.Order': ['OrderID']}, {}),
 }
 
 
@@ -32,13 +39,17 @@ def principal():
         print('sqlglot absent: dialects test skipped (optional dependency)')
         return
     echecs = []
-    for rel, (dialecte, nt, nf, pks) in CAS.items():
+    for rel, (dialecte, nt, nf, pks, noms_fk) in CAS.items():
         chemin = RACINE / 'tests' / rel
         tables, fks, _ = mcdview.analyser(str(chemin), dialecte)
         if len(tables) != nt:
             echecs.append(f'{rel}: {len(tables)} tables != {nt}')
         if len(fks) != nf:
             echecs.append(f'{rel}: {len(fks)} FKs != {nf}')
+        for col, nom in noms_fk.items():
+            trouve = next((f['nom'] for f in fks if f['col'] == col), None)
+            if trouve != nom:
+                echecs.append(f'{rel}: FK {col} nom = {trouve!r} != {nom!r}')
         for cle, pk in pks.items():
             if cle not in tables:
                 echecs.append(f'{rel}: table {cle} absente')
