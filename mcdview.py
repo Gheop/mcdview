@@ -639,21 +639,30 @@ def analyser_mermaid(chemin):
                            'x': 0, 'y': 0, 'comment': '', 'colcomments': {}}
         return cle
 
-    # entity blocks: NAME { attr* }
-    for m in re.finditer(r'(?:"([^"]+)"|([A-Za-z_][\w-]*))\s*\{(.*?)\}', bloc, re.S):
+    # entity blocks: NAME {\n attr* }. The opening brace must be followed by a
+    # newline: a crow's-foot cardinality (o{, }o) also contains a brace but is
+    # followed by the related entity's name on the same line, and must not be
+    # mistaken for an entity block.
+    RE_BLOC = r'(?:"([^"]+)"|([A-Za-z_][\w-]*))\s*\{[ \t]*\r?\n(.*?)\}'
+    for m in re.finditer(RE_BLOC, bloc, re.S):
         nom = m.group(1) or m.group(2)
         cle = table(nom)
         for ligne in m.group(3).splitlines():
-            am = re.match(r'\s*(\S+)\s+(\S+)((?:\s+(?:PK|FK|UK))*)', ligne)
+            # type name [PK[, FK…]] ["free-text comment"] — keys may be
+            # comma-separated, the trailing quoted comment is optional
+            am = re.match(r'\s*(\S+)\s+(\S+)((?:[\s,]+(?:PK|FK|UK))*)'
+                          r'\s*(?:"([^"]*)")?', ligne)
             if not am:
                 continue
-            typ, cn, cles = am.groups()
+            typ, cn, cles, commentaire = am.groups()
             tables[cle]['cols'].append({'nom': cn, 'type': typ, 'nn': False, 'defaut': ''})
             if 'PK' in cles:
                 tables[cle]['pk'].append(cn)
+            if commentaire:
+                tables[cle]['colcomments'][cn] = commentaire
 
     # relationships: A <card>--|..<card> B : label
-    masque = re.sub(r'(?:"[^"]+"|[A-Za-z_][\w-]*)\s*\{.*?\}', '', bloc, flags=re.S)
+    masque = re.sub(RE_BLOC, '', bloc, flags=re.S)
     for m in re.finditer(
             r'(?:"([^"]+)"|([A-Za-z_][\w-]*))\s+([|}o]{1,2})(?:--|\.\.)([|{o]{1,2})\s+'
             r'(?:"([^"]+)"|([A-Za-z_][\w-]*))', masque):
