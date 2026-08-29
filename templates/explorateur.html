@@ -31,6 +31,29 @@
   .table ul { margin: 0; padding: 3px 10px 5px; list-style: none; }
   .table li { white-space: nowrap; line-height: 1.45; color: var(--encre); }
   .table li .t { opacity: .55; font-size: 12px; margin-left: 6px; }
+  /* schema diff coloring: only --diff pages carry these classes */
+  .table.d-add { box-shadow: 0 0 0 2px #22c55e, 0 1px 4px #0002; }
+  .table.d-mod { box-shadow: 0 0 0 2px #f59e0b, 0 1px 4px #0002; }
+  .table.d-del { box-shadow: 0 0 0 2px #ef4444, 0 1px 4px #0002; opacity: .6; }
+  .table li.d-add { background: #22c55e2e; }
+  .table li.d-mod { background: #f59e0b2e; }
+  .table li.d-del { background: #ef44442e; text-decoration: line-through; }
+  .lien.d-add { stroke: #22c55e; }
+  .lien.d-del { stroke: #ef4444; stroke-dasharray: 5 4; }
+  #panneau tr.d-add td { background: #22c55e2e; }
+  #panneau tr.d-mod td { background: #f59e0b2e; }
+  #panneau tr.d-del td.ty, #panneau tr.d-del td strong { text-decoration: line-through; }
+  #panneau tr.d-del td { background: #ef44442e; }
+  #legdiff { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: none; gap: 14px; align-items: center; background: var(--voile);
+    backdrop-filter: blur(4px); padding: 6px 14px; border-radius: 8px; z-index: 10;
+    border: 1px solid var(--bord); font-size: 12px; color: var(--encre); }
+  #legdiff.on { display: flex; }
+  #legdiff span::before { content: ""; display: inline-block; width: 11px; height: 11px;
+    border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  #legdiff .add::before { background: #22c55e; }
+  #legdiff .mod::before { background: #f59e0b; }
+  #legdiff .del::before { background: #ef4444; }
   #hud { position: fixed; top: 12px; left: 12px; display: flex; gap: 8px;
     align-items: center; background: var(--voile); backdrop-filter: blur(4px);
     padding: 7px 12px; border-radius: 8px; z-index: 10; border: 1px solid var(--bord); }
@@ -98,6 +121,7 @@
   <div id="plan"><svg id="liens"></svg></div>
 </div>
 <div id="legende"></div>
+<div id="legdiff"><span class="add">ajoutée</span><span class="mod">modifiée</span><span class="del">supprimée</span></div>
 <div id="credit">__CREDIT__</div>
 <div id="panneau"><p class="vide">Cliquer sur une table pour l'isoler avec ses
 tables liées et voir son détail ici.<br><br>Molette : zoom.
@@ -145,16 +169,18 @@ const fragTables = document.createDocumentFragment();
 const fragNoms = document.createDocumentFragment();
 const fkColsPar = {};
 D.fks.forEach(f => { (fkColsPar[f.de] = fkColsPar[f.de] || new Set()).add(f.col); });
+const DCLS = { ajoute: "d-add", supprime: "d-del", modifie: "d-mod" };
 D.tables.forEach(t => {
   const cle = t.schema + "." + t.nom;
   const div = document.createElement("div");
-  div.className = "table";
+  div.className = "table" + (t.diff ? " " + DCLS[t.diff] : "");
   div.style.left = t.x + "px";
   div.style.top = t.y + "px";
   const fkCols = fkColsPar[cle] || new Set();
   div.innerHTML = "<h3 style='background:" + (D.schemas[t.schema] || "#ccc") + "'>" +
     ech(t.nom) + "</h3><ul>" +
-    t.cols.map(c => "<li>" + (t.pk.includes(c.nom) ? "🔑 " : fkCols.has(c.nom) ? "🔗 " : "") +
+    t.cols.map(c => "<li" + (c.diff ? " class='" + DCLS[c.diff] + "'" : "") + ">" +
+      (t.pk.includes(c.nom) ? "🔑 " : fkCols.has(c.nom) ? "🔗 " : "") +
       ech(c.nom) + "<span class='t'>" + ech(c.type) + "</span></li>").join("") + "</ul>";
   if (t.comment) div.title = t.comment;
   div.dataset.cle = cle;
@@ -166,6 +192,7 @@ D.tables.forEach(t => {
 });
 plan.appendChild(fragTables);
 dl.appendChild(fragNoms);
+if (D.diff) document.getElementById("legdiff").classList.add("on");
 Object.keys(elems).forEach(cle => {
   origines[cle] = { x: elems[cle].offsetLeft, y: elems[cle].offsetTop };
 });
@@ -205,7 +232,8 @@ function dessinerLiens() {
     const mx = (a.x + b.x) / 2;
     const vif = ((focusCle && (f.de === focusCle || f.vers === focusCle)) ||
                  (survolCle && (f.de === survolCle || f.vers === survolCle))) ? " vif" : "";
-    morceaux.push(`<path class="lien${vif}" d="M ${a.x} ${a.y} C ${mx} ${a.y}, ` +
+    const dcls = f.diff ? " " + DCLS[f.diff] : "";
+    morceaux.push(`<path class="lien${vif}${dcls}" d="M ${a.x} ${a.y} C ${mx} ${a.y}, ` +
       `${mx} ${b.y}, ${b.x} ${b.y}"/>`);
   });
   svg.innerHTML = morceaux.join("");
@@ -492,7 +520,8 @@ function detailler(cle) {
       const cible = fkDe[c.nom] ? ` → ${lienTable(fkDe[c.nom])}` : "";
       const com = t.colcomments[c.nom] ? `<div class="ccom">${ech(t.colcomments[c.nom])}</div>` : "";
       const def = c.defaut ? `<div class="ccom">= ${ech(c.defaut)}</div>` : "";
-      return `<tr><td class="ic">${ic}</td><td><strong>${ech(c.nom)}</strong>${cible}${com}${def}</td>` +
+      const dc = c.diff ? ` class="${DCLS[c.diff]}"` : "";
+      return `<tr${dc}><td class="ic">${ic}</td><td><strong>${ech(c.nom)}</strong>${cible}${com}${def}</td>` +
         `<td class="ty">${ech(c.type)}${c.nn ? " NN" : ""}</td></tr>`;
     }).join("") + `</table>` +
     `<h4>Référencée par</h4>` +

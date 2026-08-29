@@ -42,6 +42,8 @@ jobs:
         run: ./tests/test_modeles.py
       - name: content invariants (no empty types, phantom PKs, dangling FKs)
         run: ./tests/test_invariants.py --strict
+      - name: schema diff (added/removed/changed tagging)
+        run: ./tests/test_diff.py
       - name: corpus campaign (examples), strict
         run: ./tests/grand_banc.py --strict
       - name: generate example pages

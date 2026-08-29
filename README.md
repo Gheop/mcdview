@@ -39,9 +39,17 @@ a fictional library model (12 tables, 3 schemas).
 ./mcdview.py diagram.mmd        # Mermaid erDiagram (native, .mmd/.md)
 ./mcdview.py schema.ts          # Drizzle ORM schema (native, no tool)
 ./mcdview.py --db postgresql://user:pw@host/db   # dump a live database (CLI only)
+./mcdview.py new.sql --diff old.sql              # compare two versions of a model
 ```
 
 Then open the generated HTML file in a browser.
+
+`--diff BASELINE` compares the main model against an older one (each may be
+any supported format) and colors the result: tables, columns and foreign keys
+that were **added** show green, **removed** ones red and struck through
+(kept on the diagram so you can see what went), **changed** ones amber. A
+legend appears at the bottom. Handy for reviewing a migration before running
+it.
 
 `--db` reads the schema straight from a running database instead of a file:
 `postgresql://…` shells out to `pg_dump -s`, `mysql://…` to `mysqldump
@@ -85,6 +93,7 @@ In the page:
 | `--credit TEXT` | Discreet attribution badge, bottom-right (off by default) |
 | `--credit-url URL` | Make the `--credit` badge a link to this URL |
 | `--db URL` | Read a live database's schema instead of a file (`postgresql://…` via `pg_dump`, `mysql://…` via `mysqldump`); CLI only |
+| `--diff BASELINE` | Compare against an older model (any supported format); added/removed/changed tables, columns and FKs are colored |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
@@ -188,6 +197,17 @@ security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.20.0 — Schema diff (2026-08-29)
+
+- `--diff BASELINE` compares the model against an older version (any supported
+  format on either side) and colors the diagram: tables, columns and foreign
+  keys that were added (green), removed (red, struck through, kept on the
+  diagram), or changed (amber). A legend shows the key. Useful to review a
+  migration visually before applying it.
+- Internals: the seven parsers now share a single `charger()` dispatch and the
+  `nouvelle_table` / `nouvelle_colonne` factories, so every format flows
+  through the same code — which is what makes the diff work across all of them.
 
 ### v0.19.3 — Harden the untrusted-upload surface (2026-08-29)
 

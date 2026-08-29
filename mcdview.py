@@ -899,6 +899,9 @@ TRADUCTIONS = {
         '<h4>Référencée par</h4>': '<h4>Referenced by</h4>',
         'aucune table': 'no table',
         '"cadrer ce schéma"': '"frame this schema"',
+        '"add">ajoutée<': '"add">added<',
+        '"mod">modifiée<': '"mod">changed<',
+        '"del">supprimée<': '"del">removed<',
     },
 }
 
@@ -935,13 +938,14 @@ MIMES_LOGO = {'.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg'
 
 
 def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgresql',
-                  home_url=None, logo_file=None, credit=None, credit_url=None):
+                  home_url=None, logo_file=None, credit=None, credit_url=None,
+                  mode_diff=False):
     """Assemble the final HTML page from parsed and positioned tables."""
     couleurs = dict(couleurs or {})
     for i, s in enumerate(sorted({t['schema'] for t in tables.values()})):
         couleurs.setdefault(s, PALETTE[i % len(PALETTE)])
     donnees = {'schemas': couleurs, 'tables': list(tables.values()), 'fks': fks,
-               'dialecte': dialecte}
+               'dialecte': dialecte, 'diff': mode_diff}
     # '<' escaped in the JSON: no '</script>' or '<!--' can leak from the data
     json_txt = json.dumps(donnees, ensure_ascii=False).replace('<', '\\u003c')
     ici = Path(__file__).parent
@@ -975,6 +979,79 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
     return html.replace('__CREDIT__', badge)
 
 
+def charger(source, dialect='auto'):
+    """Parse any supported model file into (tables, fks, dialect). Converter
+    formats (.dbm/.dbml/.prisma) are turned into SQL first; the others are
+    native. One dispatch, reused by the main input and the --diff baseline."""
+    if source.endswith('.dbm'):
+        tables, fks, _ = analyser(sql_depuis_dbm(source), 'postgres')
+        return tables, fks, 'postgres'
+    if source.endswith('.dbml'):
+        tables, fks, _ = analyser(sql_depuis_dbml(source), 'postgres')
+        return tables, fks, 'postgres'
+    if source.endswith('.prisma'):
+        return analyser(sql_depuis_prisma(source), 'auto')
+    if source.endswith('.mwb'):
+        return (*normaliser_casse(*analyser_mwb(source)), 'mysql')
+    if source.endswith('.rb'):
+        return (*normaliser_casse(*analyser_schema_rb(source)), 'rails')
+    if source.endswith(('.mmd', '.mermaid', '.md')):
+        return (*normaliser_casse(*analyser_mermaid(source)), 'mermaid')
+    if source.endswith('.ts'):
+        return (*normaliser_casse(*analyser_drizzle(source)), 'drizzle')
+    return analyser(source, dialect)
+
+
+def comparer(vieux, neuf):
+    """Merge an old and a new (tables, fks) into a single model where every
+    table, column and FK carries a `diff` status: 'ajoute' (in the new only),
+    'supprime' (in the old only), 'modifie' (changed), or none (identical). The
+    new definition wins for a changed item; removed items are kept so the page
+    can show them struck through."""
+    vt, vf = vieux
+    nt, nf = neuf
+    tables = {}
+    for cle in list(nt) + [c for c in vt if c not in nt]:
+        anc, nou = vt.get(cle), nt.get(cle)
+        base = nou or anc
+        t = nouvelle_table(base['schema'], base['nom'], pk=list(base['pk']),
+                           comment=base['comment'], colcomments=dict(base['colcomments']))
+        if nou and not anc:
+            t['diff'] = 'ajoute'
+        elif anc and not nou:
+            t['diff'] = 'supprime'
+        acols = {c['nom']: c for c in (anc['cols'] if anc else [])}
+        ncols = {c['nom']: c for c in (nou['cols'] if nou else [])}
+        change = False
+        for nom in list(ncols) + [n for n in acols if n not in ncols]:
+            oc, ncc = acols.get(nom), ncols.get(nom)
+            col = dict(ncc or oc)
+            if ncc and not oc:
+                col['diff'] = 'ajoute'
+            elif oc and not ncc:
+                col['diff'] = 'supprime'
+            elif oc != ncc:
+                col['diff'] = 'modifie'
+            change = change or 'diff' in col
+            t['cols'].append(col)
+        if 'diff' not in t and change:
+            t['diff'] = 'modifie'
+        tables[cle] = t
+
+    def cle_fk(f):
+        return (f['de'], f['col'], f['vers'], f['colcible'])
+    anciens, nouveaux = {cle_fk(f): f for f in vf}, {cle_fk(f): f for f in nf}
+    fks = []
+    for k in list(nouveaux) + [x for x in anciens if x not in nouveaux]:
+        f = dict(nouveaux.get(k) or anciens[k])
+        if k in nouveaux and k not in anciens:
+            f['diff'] = 'ajoute'
+        elif k in anciens and k not in nouveaux:
+            f['diff'] = 'supprime'
+        fks.append(f)
+    return tables, fks
+
+
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
     ap.add_argument('sql', nargs='?', metavar='sql|dbm|dbml|mwb|rb|mmd|ts',
@@ -982,6 +1059,9 @@ def principal():
     ap.add_argument('--db', metavar='URL',
                     help='dump a live database schema instead (postgresql://… or '
                          'mysql://…). CLI ONLY — never expose on a public service (SSRF)')
+    ap.add_argument('--diff', metavar='BASELINE',
+                    help='compare against an older model (any supported format): '
+                         'tables/columns/FKs added, removed or changed are colored')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
     ap.add_argument('--dbm', help='pgModeler model to reuse table positions from')
@@ -1010,38 +1090,20 @@ def principal():
         if not args.sql:
             ap.error('provide a model file, or --db URL to read a live database')
         source = args.sql
-        dialecte = args.dialect
         nom_defaut = Path(args.sql).stem
         sortie_defaut = str(Path(args.sql).with_suffix('.html'))
-        if source.endswith('.dbm'):
-            if not args.dbm:
-                args.dbm = source  # the model provides its own positions
-            source = sql_depuis_dbm(source)
-            dialecte = 'postgres'  # pgmodeler-cli always exports PostgreSQL
-        elif source.endswith('.dbml'):
-            source = sql_depuis_dbml(source)
-            dialecte = 'postgres'  # dbml2sql emits PostgreSQL
-        elif source.endswith('.prisma'):
-            source = sql_depuis_prisma(source)
-            # keep 'auto': prisma emits SQL in the schema's provider dialect
-            # (postgres, mysql, sqlite, sqlserver), which auto detects
-        if source.endswith('.mwb'):
-            tables, fks = normaliser_casse(*analyser_mwb(source))
-            dialecte = 'mysql'
-        elif source.endswith('.rb'):
-            tables, fks = normaliser_casse(*analyser_schema_rb(source))
-            dialecte = 'rails'
-        elif source.endswith(('.mmd', '.mermaid', '.md')):
-            tables, fks = normaliser_casse(*analyser_mermaid(source))
-            dialecte = 'mermaid'
-        elif source.endswith('.ts'):
-            tables, fks = normaliser_casse(*analyser_drizzle(source))
-            dialecte = 'drizzle'
-        else:
-            tables, fks, dialecte = analyser(source, dialecte)
+        # a .dbm carries its own table positions: reuse them unless overridden
+        if source.endswith('.dbm') and not args.dbm:
+            args.dbm = source
+        tables, fks, dialecte = charger(source, args.dialect)
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements'
                  + indice_dialecte(source))
+
+    if args.diff:
+        vieux = charger(args.diff, args.dialect)[:2]
+        tables, fks = comparer(vieux, (tables, fks))
+        args.dbm = None  # the merged model has removed tables: auto-layout it
 
     couleurs = {}
     if args.dbm:
@@ -1058,10 +1120,18 @@ def principal():
     sortie = args.sortie or sortie_defaut
     Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs,
                                           dialecte, args.home_url, args.logo,
-                                          args.credit, args.credit_url))
-    naudit = sum(1 for f in fks if f['audit'])
-    print(f'{len(tables)} tables, {len(fks)} FKs'
-          + (f' (including {naudit} audit FKs)' if naudit else '') + f' → {sortie}')
+                                          args.credit, args.credit_url, bool(args.diff)))
+    if args.diff:
+        nt = [t for t in tables.values() if t.get('diff')]
+        cpt = {s: sum(t.get('diff') == s for t in tables.values())
+               for s in ('ajoute', 'supprime', 'modifie')}
+        print(f'diff vs {args.diff}: {cpt["ajoute"]} tables added, '
+              f'{cpt["supprime"]} removed, {cpt["modifie"]} changed'
+              f' ({len(nt)} of {len(tables)} touched) → {sortie}')
+    else:
+        naudit = sum(1 for f in fks if f['audit'])
+        print(f'{len(tables)} tables, {len(fks)} FKs'
+              + (f' (including {naudit} audit FKs)' if naudit else '') + f' → {sortie}')
 
 
 if __name__ == '__main__':
