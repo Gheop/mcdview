@@ -189,6 +189,17 @@ file's header.
 
 ## Changelog
 
+### v0.19.2 — Fuller Mermaid erDiagram parsing (2026-08-29)
+
+- A crow's-foot cardinality (`o{`, `}o`) is no longer mistaken for an entity
+  block, which previously invented a phantom one-letter table.
+- Attribute comments (`int id PK "SERIAL"`) become column comments, shown in
+  the detail panel; `%%` comment lines and a `direction` directive inside an
+  entity block are ignored instead of read as columns; comma-separated
+  attribute keys (`PK, FK`) are accepted.
+- Validated on 113 real erDiagram files (raw `.mmd` and inside Markdown
+  fences): 918 tables, 1002 FKs, zero bogus columns.
+
 ### v0.19.1 — Links follow tables during "rearrange" (2026-08-29)
 
 - "Rearrange" now redraws the FK links on every frame while the tables glide

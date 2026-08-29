@@ -628,6 +628,9 @@ def analyser_mermaid(chemin):
     fin = bloc.find('\n```')
     if fin != -1:
         bloc = bloc[:fin]
+    # %% starts a comment to end of line, anywhere; strip it before parsing so a
+    # `%% note` line is not read as a `type name` attribute (bogus column)
+    bloc = re.sub(r'%%.*', '', bloc)
 
     tables, fks = {}, []
 
@@ -648,6 +651,8 @@ def analyser_mermaid(chemin):
         nom = m.group(1) or m.group(2)
         cle = table(nom)
         for ligne in m.group(3).splitlines():
+            if re.match(r'\s*direction\s+\w+\s*$', ligne):  # layout directive
+                continue
             # type name [PK[, FK…]] ["free-text comment"] — keys may be
             # comma-separated, the trailing quoted comment is optional
             am = re.match(r'\s*(\S+)\s+(\S+)((?:[\s,]+(?:PK|FK|UK))*)'

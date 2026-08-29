@@ -1,8 +1,11 @@
 erDiagram
+    %% exercises %% comments, a layout directive, comma-separated keys and a
+    %% quoted attribute comment (all must not become bogus columns)
+    direction LR
     CLIENT {
-        int id PK
+        int id PK "SERIAL"
         string nom
-        string courriel
+        string courriel "nullable"
     }
     COMMANDE {
         int id PK
@@ -10,9 +13,8 @@ erDiagram
         decimal total
     }
     LIGNE {
-        int id PK
-        int commande_id FK
-        string produit
+        int commande_id PK, FK
+        string produit PK
     }
     CLIENT ||--o{ COMMANDE : passe
     COMMANDE ||--|{ LIGNE : contient
