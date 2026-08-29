@@ -134,6 +134,7 @@
   <button id="vueGenerale" hidden>← vue générale (Échap)</button>
   <button id="reorganiser" title="réétaler les tables pour dégager les liens">⇄ réorganiser</button>
   <button id="theme" title="thème clair / sombre">◐</button>
+  <button id="exportSvg" title="exporter le diagramme en SVG">⬇ SVG</button>
   <label id="labelAudit"><input type="checkbox" id="voirAudit"> FK d'audit</label>
   <span id="compte"></span>
 </div>
@@ -677,6 +678,55 @@ function reorganiser() {
   })();
 }
 btnReorg.addEventListener("click", reorganiser);
+
+// --- export the visible diagram as a portable SVG (native shapes + text, no
+// dependency; the page is the user's own file, so a blob download works) ---
+function exporterSVG() {
+  const pad = 24, vis = Object.keys(elems).filter(c => !elems[c].classList.contains("efface"));
+  if (!vis.length) return;
+  let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+  vis.forEach(c => {
+    const e = elems[c];
+    bx0 = Math.min(bx0, e.offsetLeft); by0 = Math.min(by0, e.offsetTop);
+    bx1 = Math.max(bx1, e.offsetLeft + e.offsetWidth);
+    by1 = Math.max(by1, e.offsetTop + e.offsetHeight);
+  });
+  const W = Math.round(bx1 - bx0 + 2 * pad), H = Math.round(by1 - by0 + 2 * pad);
+  const ox = pad - bx0, oy = pad - by0, visSet = new Set(vis), p = [];
+  p.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" ` +
+    `viewBox="0 0 ${W} ${H}" font-family="ui-sans-serif,system-ui,sans-serif">`);
+  p.push(`<rect width="${W}" height="${H}" fill="#f4f4f6"/>`);
+  fksVisibles().forEach(f => {
+    if (!visSet.has(f.de) || !visSet.has(f.vers)) return;
+    const a = centre(f.de), b = centre(f.vers);
+    const ax = a.x + ox, ay = a.y + oy, bx = b.x + ox, by = b.y + oy, mx = (ax + bx) / 2;
+    p.push(`<path d="M ${ax} ${ay} C ${mx} ${ay}, ${mx} ${by}, ${bx} ${by}" ` +
+      `fill="none" stroke="#9aa3ad" stroke-width="1.2"/>`);
+  });
+  vis.forEach(c => {
+    const e = elems[c], t = parCle[c], w = e.offsetWidth;
+    const X = Math.round(e.offsetLeft + ox), Y = Math.round(e.offsetTop + oy);
+    const fkc = fkColsPar[c] || new Set();
+    p.push(`<g transform="translate(${X} ${Y})">`);
+    p.push(`<rect width="${w}" height="${e.offsetHeight}" rx="6" fill="#ffffff" stroke="#d5d8dd"/>`);
+    p.push(`<path d="M0 6 a6 6 0 0 1 6 -6 h${w - 12} a6 6 0 0 1 6 6 v20 h-${w} z" ` +
+      `fill="${ech(D.schemas[t.schema] || '#ccc')}"/>`);
+    p.push(`<text x="9" y="17" font-weight="bold" font-size="13" fill="#1c1e22">${ech(t.nom)}</text>`);
+    t.cols.forEach((col, i) => {
+      const mk = t.pk.includes(col.nom) ? "🔑 " : fkc.has(col.nom) ? "🔗 " : "";
+      p.push(`<text x="10" y="${42 + i * 20.5}" font-size="12.5" fill="#1c1e22">` +
+        `${ech(mk + col.nom)}<tspan fill="#8b93a0" font-size="11"> ${ech(col.type)}</tspan></text>`);
+    });
+    p.push(`</g>`);
+  });
+  p.push(`</svg>`);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([p.join("")], { type: "image/svg+xml" }));
+  a.download = (document.title.replace(/[^\w.-]+/g, "_") || "mcdview") + ".svg";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+document.getElementById("exportSvg").addEventListener("click", exporterSVG);
 
 // --- detail panel ---
 function lienTable(cle) {
