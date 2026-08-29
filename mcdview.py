@@ -17,6 +17,7 @@ Usage:
 import argparse
 import base64
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -510,7 +511,6 @@ def sql_depuis_prisma(chemin):
     """Convert a Prisma schema to SQL through `prisma migrate diff` (writes to
     stdout). A dummy DATABASE_URL is set so `url = env(...)` schemas resolve;
     no database is contacted (--from-empty diffs against an empty datamodel)."""
-    import os
     env = dict(os.environ, DATABASE_URL='postgresql://u:p@localhost:5432/d')
     return sql_depuis_convertisseur(
         chemin, 'prisma',
@@ -522,7 +522,6 @@ def sql_depuis_db(url):
     """Dump a live database's schema to SQL (CLI only). SECURITY: never expose
     this on a public service — it makes the process connect to any database the
     caller names, including internal ones (SSRF). Returns (sql_path, dialect)."""
-    import os
     env = dict(os.environ)
     if url.startswith(('postgres://', 'postgresql://')):
         outil = 'pg_dump'
@@ -1272,6 +1271,9 @@ def principal():
     ap.add_argument('--to-mermaid', action='store_true',
                     help='output a Mermaid erDiagram (paste in a .md; GitHub/GitLab '
                          'render it) instead of the HTML page; to -o if given, else stdout')
+    ap.add_argument('--watch', action='store_true',
+                    help='regenerate the page whenever the input file changes '
+                         '(Ctrl-C to stop); file input only')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
     ap.add_argument('--dbm', help='pgModeler model to reuse table positions from')
@@ -1290,7 +1292,39 @@ def principal():
     ap.add_argument('--credit-url', default=None, metavar='URL',
                     help="make the --credit badge a link to this URL")
     args = ap.parse_args()
+    if args.summary and not args.diff:
+        ap.error('--summary only applies with --diff')
 
+    generer(args, ap)
+    if args.watch:
+        if args.db or args.to_mermaid or not args.sql:
+            ap.error('--watch needs a model file (not --db or --to-mermaid)')
+        surveiller(args, ap)
+
+
+def surveiller(args, ap):
+    """Regenerate on every change to the input file(s). Polls mtimes — no
+    dependency — and swallows a transient parse error so a mid-edit save does
+    not stop the loop."""
+    import time
+    fichiers = [f for f in (args.sql, args.diff, args.dbm) if f]
+    print(f'watching {", ".join(fichiers)} (Ctrl-C to stop)…')
+    empreinte = {f: os.path.getmtime(f) for f in fichiers if os.path.exists(f)}
+    try:
+        while True:
+            time.sleep(0.5)
+            actuel = {f: os.path.getmtime(f) for f in fichiers if os.path.exists(f)}
+            if actuel != empreinte:
+                empreinte = actuel
+                try:
+                    generer(args, ap)
+                except SystemExit as e:  # a bad mid-edit save: report, keep going
+                    print(f'  (skipped: {e})')
+    except KeyboardInterrupt:
+        print('\nstopped.')
+
+
+def generer(args, ap):
     if args.db:
         source, dialecte = sql_depuis_db(args.db)
         tables, fks, dialecte = analyser(source, dialecte)
@@ -1340,8 +1374,6 @@ def principal():
     Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs,
                                           dialecte, args.home_url, args.logo,
                                           args.credit, args.credit_url, bool(args.diff)))
-    if args.summary and not args.diff:
-        ap.error('--summary only applies with --diff')
     if args.diff:
         if args.summary:
             resume = resume_diff(tables, fks, args.diff)

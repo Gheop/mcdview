@@ -178,6 +178,7 @@ In the page:
 | `--diff BASELINE` | Compare against an older model (any supported format); added/removed/changed tables, columns and FKs are colored |
 | `--summary FILE` | With `--diff`: also write a JSON summary of the changes (counts + change list) to `FILE` |
 | `--to-mermaid` | Output a Mermaid `erDiagram` (paste in a `.md`; GitHub/GitLab render it) instead of the HTML page |
+| `--watch` | Regenerate the page whenever the input file changes (Ctrl-C to stop); file input only |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
