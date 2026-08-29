@@ -8,9 +8,14 @@
   :root { color-scheme: light dark;
     --fond: #f4f4f6; --encre: #1c1e22; --panneau: #ffffff; --bord: #d5d8dd;
     --ligne: #9aa3ad; --ligne-vive: #0b74c4; --voile: #ffffffcc; }
-  @media (prefers-color-scheme: dark) { :root {
+  /* dark palette: from prefers-color-scheme when the viewer has not chosen,
+     and from an explicit data-theme="dark" (the toggle) which always wins */
+  @media (prefers-color-scheme: dark) { :root:not([data-theme]) {
     --fond: #1e2126; --encre: #e8eaed; --panneau: #262a30; --bord: #3a3f47;
     --ligne: #566070; --ligne-vive: #4aa8e8; --voile: #1e2126cc; } }
+  :root[data-theme="dark"] {
+    --fond: #1e2126; --encre: #e8eaed; --panneau: #262a30; --bord: #3a3f47;
+    --ligne: #566070; --ligne-vive: #4aa8e8; --voile: #1e2126cc; }
   html, body { margin: 0; height: 100%; overflow: hidden;
     background: var(--fond); color: var(--encre);
     font-family: system-ui, sans-serif; font-size: 14px; }
@@ -121,6 +126,7 @@
   <datalist id="noms"></datalist>
   <button id="vueGenerale" hidden>← vue générale (Échap)</button>
   <button id="reorganiser" title="réétaler les tables pour dégager les liens">⇄ réorganiser</button>
+  <button id="theme" title="thème clair / sombre">◐</button>
   <label id="labelAudit"><input type="checkbox" id="voirAudit"> FK d'audit</label>
   <span id="compte"></span>
 </div>
@@ -239,6 +245,28 @@ if (D.diff) {
 Object.keys(elems).forEach(cle => {
   origines[cle] = { x: elems[cle].offsetLeft, y: elems[cle].offsetTop };
 });
+// remember dragged/rearranged positions per model (localStorage, per-viewer,
+// best-effort — wrapped so private mode or a full quota never breaks the page)
+const CLE_POS = "mcdview:pos:" + (() => {
+  let h = 0; const s = Object.keys(elems).sort().join("|");
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36) + "." + Object.keys(elems).length;
+})();
+function sauverPositions() {
+  try { localStorage.setItem(CLE_POS, JSON.stringify(origines)); } catch (e) { /* ignore */ }
+}
+(function restaurerPositions() {
+  let pos = null;
+  try { pos = JSON.parse(localStorage.getItem(CLE_POS)); } catch (e) { return; }
+  if (!pos) return;
+  Object.keys(elems).forEach(cle => {
+    if (pos[cle] && typeof pos[cle].x === "number") {
+      origines[cle] = pos[cle];
+      elems[cle].style.left = pos[cle].x + "px";
+      elems[cle].style.top = pos[cle].y + "px";
+    }
+  });
+})();
 
 // --- schema legend: one chip per schema, click to frame its zone ---
 const legende = document.getElementById("legende");
@@ -358,6 +386,7 @@ vp.addEventListener("pointerup", e => {
       // moved in the overview: the new position becomes the home position
       const cle = fini.table.dataset.cle;
       origines[cle] = { x: fini.table.offsetLeft, y: fini.table.offsetTop };
+      sauverPositions();
     }
   }
   if (!fini.bouge) {
@@ -451,7 +480,32 @@ function appliquerFiltreTouchees() {
   svg.innerHTML = "";
 }
 btnRetour.addEventListener("click", vueGenerale);
-document.addEventListener("keydown", e => { if (e.key === "Escape") vueGenerale(); });
+const champRecherche = document.getElementById("cherche");
+document.addEventListener("keydown", e => {
+  if (e.target === champRecherche && e.key !== "Escape") return;  // let typing through
+  if (e.key === "Escape") { vueGenerale(); champRecherche.blur(); }
+  else if (e.key === "/") { e.preventDefault(); champRecherche.focus(); champRecherche.select(); }
+  else if (e.key === "r" && !btnReorg.disabled) reorganiser();
+});
+
+// theme toggle: cycle system → light → dark, remembered per viewer
+const btnTheme = document.getElementById("theme");
+(function initTheme() {
+  let choix = null;
+  try { choix = localStorage.getItem("mcdview:theme"); } catch (e) { /* ignore */ }
+  if (choix === "light" || choix === "dark") document.documentElement.dataset.theme = choix;
+})();
+btnTheme.addEventListener("click", () => {
+  const ordre = ["", "light", "dark"];
+  const actuel = document.documentElement.dataset.theme || "";
+  const suivant = ordre[(ordre.indexOf(actuel) + 1) % ordre.length];
+  if (suivant) document.documentElement.dataset.theme = suivant;
+  else delete document.documentElement.dataset.theme;
+  try {
+    if (suivant) localStorage.setItem("mcdview:theme", suivant);
+    else localStorage.removeItem("mcdview:theme");
+  } catch (e) { /* ignore */ }
+});
 vp.addEventListener("dblclick", () => { vueGenerale(); cadrer(Object.keys(elems)); });
 
 // --- force-directed relayout: spread tables so FK links overlap less ---
@@ -552,6 +606,7 @@ function reorganiser() {
     e.style.top = Math.round(py[i] - e.offsetHeight / 2) + "px";
     if (!focusCle) origines[c] = { x: e.offsetLeft, y: e.offsetTop };
   });
+  if (!focusCle) sauverPositions();
   // the tables glide to their new spot over the .35s CSS transition; redraw
   // the links every frame so they follow instead of snapping at the end
   const t0 = performance.now();
