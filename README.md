@@ -200,6 +200,19 @@ file's header.
 
 ## Changelog
 
+### v0.21.0 — Diff polish, rename detection, column search (2026-08-29)
+
+- The diff detail panel now shows a retyped column as `old → new` (the old
+  type struck through).
+- Small single-schema models lay out as a roughly square block instead of a
+  tall vertical band.
+- Rename detection: a table dropped and one added with the same set of column
+  names is shown as a rename ("renamed from X", amber) rather than a
+  remove+add pair, and a foreign key untouched apart from the rename stays
+  unchanged. The JSON summary carries `renamed_from`.
+- Search now matches column names too (`table.column` or a bare column name):
+  it isolates the table and highlights the row.
+
 ### v0.20.2 — JSON diff summary (2026-08-29)
 
 - `--summary FILE` (with `--diff`) writes a machine-readable JSON summary of

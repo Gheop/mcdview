@@ -45,6 +45,7 @@
   #panneau tr.d-del td.ty, #panneau tr.d-del td strong { text-decoration: line-through; }
   #panneau tr.d-del td { background: #ef44442e; }
   #panneau .was { text-decoration: line-through; opacity: .6; }
+  #panneau tr.cible td:first-child { border-left: 3px solid var(--ligne-vive); }
   #legdiff { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
     display: none; gap: 14px; align-items: center; background: var(--voile);
     backdrop-filter: blur(4px); padding: 6px 14px; border-radius: 8px; z-index: 10;
@@ -116,7 +117,7 @@
 <div id="hud">
   <span style='display:flex;align-items:center'>__LOGO__</span>
   <strong>__TITRE__</strong>
-  <input id="cherche" type="search" placeholder="chercher une table…" list="noms">
+  <input id="cherche" type="search" placeholder="chercher table ou colonne…" list="noms">
   <datalist id="noms"></datalist>
   <button id="vueGenerale" hidden>← vue générale (Échap)</button>
   <button id="reorganiser" title="réétaler les tables pour dégager les liens">⇄ réorganiser</button>
@@ -174,6 +175,8 @@ const dl = document.getElementById("noms");
 // single fragment append: one layout instead of thousands on big models
 const fragTables = document.createDocumentFragment();
 const fragNoms = document.createDocumentFragment();
+const parColonne = {};      // "table.col" and bare "col" -> {cle, col} for search
+let colonneCible = null;    // a column to highlight after the search isolates its table
 const fkColsPar = {};
 D.fks.forEach(f => { (fkColsPar[f.de] = fkColsPar[f.de] || new Set()).add(f.col); });
 const DCLS = { ajoute: "d-add", supprime: "d-del", modifie: "d-mod" };
@@ -196,6 +199,14 @@ D.tables.forEach(t => {
   const o = document.createElement("option");
   o.value = cle;
   fragNoms.appendChild(o);
+  t.cols.forEach(c => {
+    parColonne[(t.nom + "." + c.nom).toLowerCase()] = { cle, col: c.nom };
+    const seul = c.nom.toLowerCase();
+    if (!(seul in parColonne)) parColonne[seul] = { cle, col: c.nom };
+    const oc = document.createElement("option");
+    oc.value = t.nom + "." + c.nom;
+    fragNoms.appendChild(oc);
+  });
 });
 plan.appendChild(fragTables);
 dl.appendChild(fragNoms);
@@ -558,6 +569,7 @@ function detailler(cle) {
   sortants.forEach(f => { fkDe[f.col] = f.vers; });
   panneau.innerHTML =
     `<h2>${ech(t.nom)}</h2><div class="schema">schéma ${ech(t.schema)}</div>` +
+    (t.renomme_de ? `<div class="comm">renommée depuis <b>${ech(t.renomme_de)}</b></div>` : "") +
     (t.comment ? `<div class="comm">${ech(t.comment)}</div>` : "") +
     `<table>` + t.cols.map(c => {
       const ic = t.pk.includes(c.nom) ? "🔑" : fkDe[c.nom] ? "🔗" : "";
@@ -565,7 +577,7 @@ function detailler(cle) {
       const com = t.colcomments[c.nom] ? `<div class="ccom">${ech(t.colcomments[c.nom])}</div>` : "";
       const def = c.defaut ? `<div class="ccom">= ${ech(c.defaut)}</div>` : "";
       const dc = c.diff ? ` class="${DCLS[c.diff]}"` : "";
-      return `<tr${dc}><td class="ic">${ic}</td><td><strong>${ech(c.nom)}</strong>${cible}${com}${def}</td>` +
+      return `<tr${dc} data-col="${ech(c.nom)}"><td class="ic">${ic}</td><td><strong>${ech(c.nom)}</strong>${cible}${com}${def}</td>` +
         `<td class="ty">${c.avant ? `<span class="was">${ech(c.avant)}</span> → ` : ""}` +
         `${ech(c.type)}${c.nn ? " NN" : ""}</td></tr>`;
     }).join("") + `</table>` +
@@ -575,15 +587,25 @@ function detailler(cle) {
       : "<span class='ty'>aucune table</span>");
   panneau.querySelectorAll("a[data-cible]").forEach(a =>
     a.addEventListener("click", () => isoler(a.dataset.cible)));
+  if (colonneCible) {  // a column search: highlight and reveal its row
+    const rang = panneau.querySelector(`tr[data-col="${(window.CSS && CSS.escape ? CSS.escape(colonneCible) : colonneCible)}"]`);
+    if (rang) { rang.classList.add("cible"); rang.scrollIntoView({ block: "center" }); }
+    colonneCible = null;
+  }
 }
 
 // --- search ---
 document.getElementById("cherche").addEventListener("change", e => {
-  const v = e.target.value.trim();
-  const cle = parCle[v] ? v :
-    Object.keys(parCle).find(c => c.endsWith("." + v)) ||
-    Object.keys(parCle).find(c => c.includes(v));
-  if (cle) { vueGenerale(); setTimeout(() => isoler(cle), 400); }
+  const v = e.target.value.trim(), vl = v.toLowerCase();
+  let cle = null, col = null;
+  if (parCle[v]) cle = v;                                          // exact table key
+  else {
+    const parNom = Object.keys(parCle).find(c => c.toLowerCase().endsWith("." + vl));
+    if (parNom) cle = parNom;                                      // table by short name
+    else if (parColonne[vl]) { cle = parColonne[vl].cle; col = parColonne[vl].col; }  // column
+    else cle = Object.keys(parCle).find(c => c.toLowerCase().includes(vl));
+  }
+  if (cle) { colonneCible = col; vueGenerale(); setTimeout(() => isoler(cle), 400); }
 });
 ckAudit.addEventListener("change", () => {
   if (focusCle) isoler(focusCle); else dessinerLiens();

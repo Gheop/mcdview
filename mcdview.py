@@ -883,7 +883,7 @@ def placement_auto(tables, fks):
 TRADUCTIONS = {
     'en': {
         '<html lang="fr">': '<html lang="en">',
-        'placeholder="chercher une table…"': 'placeholder="find a table…"',
+        'placeholder="chercher table ou colonne…"': 'placeholder="find a table or column…"',
         '← vue générale (Échap)': '← overview (Esc)',
         "> FK d'audit": '> audit FKs',
         "Cliquer sur une table pour l'isoler avec ses\n"
@@ -904,6 +904,7 @@ TRADUCTIONS = {
         '"mod">modifiée<': '"mod">changed<',
         '"del">supprimée<': '"del">removed<',
         'const MOT = "touchées";': 'const MOT = "touched";',
+        'renommée depuis <b>': 'renamed from <b>',
     },
 }
 
@@ -1009,16 +1010,41 @@ def comparer(vieux, neuf):
     table, column and FK carries a `diff` status: 'ajoute' (in the new only),
     'supprime' (in the old only), 'modifie' (changed), or none (identical). The
     new definition wins for a changed item; removed items are kept so the page
-    can show them struck through."""
+    can show them struck through. A table present only in the old and one
+    present only in the new with the same set of column names are matched as a
+    rename (the new one gets `renomme_de`), not a remove+add pair."""
     vt, vf = vieux
     nt, nf = neuf
+
+    # rename detection: pair an old-only table with a new-only table sharing
+    # the exact set of column names (≥2 columns, to avoid matching trivial
+    # tables by accident). Each side is used at most once.
+    def signature(t):
+        return frozenset(c['nom'] for c in t['cols'])
+    renomme = {}                       # new_key -> old_key
+    pris = set()
+    for nk in [c for c in nt if c not in vt]:
+        sig = signature(nt[nk])
+        if len(sig) < 2:
+            continue
+        for ok in [c for c in vt if c not in nt and c not in pris]:
+            if signature(vt[ok]) == sig:
+                renomme[nk] = ok
+                pris.add(ok)
+                break
+    old_renomme = set(renomme.values())
+
     tables = {}
-    for cle in list(nt) + [c for c in vt if c not in nt]:
-        anc, nou = vt.get(cle), nt.get(cle)
+    for cle in list(nt) + [c for c in vt if c not in nt and c not in old_renomme]:
+        nou = nt.get(cle)
+        anc = vt.get(cle) or (vt.get(renomme[cle]) if cle in renomme else None)
         base = nou or anc
         t = nouvelle_table(base['schema'], base['nom'], pk=list(base['pk']),
                            comment=base['comment'], colcomments=dict(base['colcomments']))
-        if nou and not anc:
+        if cle in renomme:
+            t['diff'] = 'modifie'
+            t['renomme_de'] = vt[renomme[cle]]['nom']
+        elif nou and not anc:
             t['diff'] = 'ajoute'
         elif anc and not nou:
             t['diff'] = 'supprime'
@@ -1042,9 +1068,15 @@ def comparer(vieux, neuf):
             t['diff'] = 'modifie'
         tables[cle] = t
 
-    def cle_fk(f):
-        return (f['de'], f['col'], f['vers'], f['colcible'])
-    anciens, nouveaux = {cle_fk(f): f for f in vf}, {cle_fk(f): f for f in nf}
+    # FK endpoints on a renamed table are translated to the new key so a FK
+    # untouched apart from the rename does not show up as removed + added
+    inv = {ok: nk for nk, ok in renomme.items()}
+    def cle_fk(f, traduit=False):
+        de = inv.get(f['de'], f['de']) if traduit else f['de']
+        vers = inv.get(f['vers'], f['vers']) if traduit else f['vers']
+        return (de, f['col'], vers, f['colcible'])
+    anciens = {cle_fk(f, True): f for f in vf}
+    nouveaux = {cle_fk(f): f for f in nf}
     fks = []
     for k in list(nouveaux) + [x for x in anciens if x not in nouveaux]:
         f = dict(nouveaux.get(k) or anciens[k])
@@ -1052,6 +1084,8 @@ def comparer(vieux, neuf):
             f['diff'] = 'ajoute'
         elif k in anciens and k not in nouveaux:
             f['diff'] = 'supprime'
+        # point a surviving old FK at the renamed table's new endpoints
+        f['de'], f['col'], f['vers'], f['colcible'] = k
         fks.append(f)
     return tables, fks
 
@@ -1069,6 +1103,8 @@ def resume_diff(tables, fks, baseline=None):
         st = trad.get(t.get('diff'), 'unchanged')
         ct[st] += 1
         entree = {'table': f"{t['schema']}.{t['nom']}", 'status': st}
+        if t.get('renomme_de'):
+            entree['renamed_from'] = t['renomme_de']
         if st == 'changed':  # column-level detail only where the table persists
             cols = []
             for c in t['cols']:

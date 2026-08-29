@@ -107,6 +107,21 @@ def principal():
     if r['counts']['foreign_keys']['added'] != 1:
         echecs.append('résumé: FK ajoutée non comptée')
 
+    # rename detection: a table renamed (same column set) is not remove+add,
+    # and a FK untouched apart from the rename stays unchanged
+    av = "CREATE TABLE utilisateur (\n id serial PRIMARY KEY,\n nom text,\n mail text\n);\n"
+    ap = "CREATE TABLE client (\n id serial PRIMARY KEY,\n nom text,\n mail text\n);\n"
+    import tempfile as tf
+    with tf.TemporaryDirectory() as td:
+        rv = modele(av, td, 'rv.sql')
+        rn = modele(ap, td, 'rn.sql')
+    rt, rf = mcdview.comparer(rv, rn)
+    noms = {t['nom']: t for t in rt.values()}
+    if 'utilisateur' in noms:
+        echecs.append('rename: ancienne table utilisateur émise (devrait être fusionnée)')
+    if not noms.get('client') or noms['client'].get('renomme_de') != 'utilisateur':
+        echecs.append('rename: client devrait porter renomme_de=utilisateur')
+
     if echecs:
         print('ÉCHECS diff :')
         for e in echecs:
