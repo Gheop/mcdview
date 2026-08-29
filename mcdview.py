@@ -1132,6 +1132,50 @@ def resume_diff(tables, fks, baseline=None):
             'tables': liste_tables, 'foreign_keys': liste_fks}
 
 
+def vers_mermaid(tables, fks):
+    """Render the model as a Mermaid erDiagram. Pasted in a Markdown file, it
+    is rendered natively by GitHub and GitLab — a static diagram (not the
+    interactive page). Names and types are sanitised to Mermaid's identifier
+    grammar; the interactive page stays the way to explore a big model."""
+    # a unique, Mermaid-safe entity name per table (prefix the schema on a
+    # cross-schema name clash)
+    homonymes = defaultdict(list)
+    for cle, t in tables.items():
+        homonymes[t['nom']].append(cle)
+    noms = {}
+    for cle, t in tables.items():
+        base = t['nom'] if len(homonymes[t['nom']]) == 1 else f"{t['schema']}_{t['nom']}"
+        noms[cle] = re.sub(r'\W', '_', base) or 'table'
+
+    def type_court(s):
+        m = re.match(r'\w+', s or '')  # Mermaid wants a single-token type
+        return m.group(0) if m else 'text'
+
+    fkcols = defaultdict(set)
+    for f in fks:
+        fkcols[f['de']].add(f['col'])
+
+    lignes = ['erDiagram']
+    for cle, t in tables.items():
+        lignes.append(f'    {noms[cle]} {{')
+        for c in t['cols']:
+            marques = (['PK'] if c['nom'] in t['pk'] else []) + \
+                      (['FK'] if c['nom'] in fkcols[cle] else [])
+            suffixe = ' ' + ', '.join(marques) if marques else ''
+            lignes.append(f'        {type_court(c["type"])} {re.sub(r"\\W", "_", c["nom"])}{suffixe}')
+        lignes.append('    }')
+    vues = set()
+    for f in fks:
+        if f['de'] not in noms or f['vers'] not in noms:
+            continue
+        paire = (f['vers'], f['de'])
+        if paire in vues:
+            continue
+        vues.add(paire)
+        lignes.append(f'    {noms[f["vers"]]} ||--o{{ {noms[f["de"]]} : ""')
+    return '\n'.join(lignes) + '\n'
+
+
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
     ap.add_argument('sql', nargs='?', metavar='sql|dbm|dbml|mwb|rb|mmd|ts',
@@ -1144,6 +1188,9 @@ def principal():
                          'tables/columns/FKs added, removed or changed are colored')
     ap.add_argument('--summary', metavar='FILE',
                     help='with --diff: also write a JSON summary of the changes to FILE')
+    ap.add_argument('--to-mermaid', action='store_true',
+                    help='output a Mermaid erDiagram (paste in a .md; GitHub/GitLab '
+                         'render it) instead of the HTML page; to -o if given, else stdout')
     ap.add_argument('-o', '--sortie', help='output HTML file (default: <sql>.html)')
     ap.add_argument('--titre', default=None, help="displayed title (default: file name)")
     ap.add_argument('--dbm', help='pgModeler model to reuse table positions from')
@@ -1181,6 +1228,15 @@ def principal():
     if not tables:
         sys.exit('no table found: the DDL must contain CREATE TABLE statements'
                  + indice_dialecte(source))
+
+    if args.to_mermaid:
+        mmd = vers_mermaid(tables, fks)
+        if args.sortie:
+            Path(args.sortie).write_text(mmd)
+            print(f'{len(tables)} tables, {len(fks)} FKs → {args.sortie} (Mermaid)')
+        else:
+            sys.stdout.write(mmd)
+        return
 
     if args.diff:
         vieux = charger(args.diff, args.dialect)[:2]

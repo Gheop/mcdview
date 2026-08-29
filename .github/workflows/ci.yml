@@ -44,6 +44,8 @@ jobs:
         run: ./tests/test_invariants.py --strict
       - name: schema diff (added/removed/changed tagging)
         run: ./tests/test_diff.py
+      - name: mermaid export (round-trips to the same tables)
+        run: ./tests/test_export.py
       - name: corpus campaign (examples), strict
         run: ./tests/grand_banc.py --strict
       - name: generate example pages

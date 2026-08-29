@@ -96,6 +96,7 @@ In the page:
 | `--db URL` | Read a live database's schema instead of a file (`postgresql://…` via `pg_dump`, `mysql://…` via `mysqldump`); CLI only |
 | `--diff BASELINE` | Compare against an older model (any supported format); added/removed/changed tables, columns and FKs are colored |
 | `--summary FILE` | With `--diff`: also write a JSON summary of the changes (counts + change list) to `FILE` |
+| `--to-mermaid` | Output a Mermaid `erDiagram` (paste in a `.md`; GitHub/GitLab render it) instead of the HTML page |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
@@ -199,6 +200,13 @@ security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.22.0 — Mermaid export (2026-08-29)
+
+- `--to-mermaid` renders the model as a Mermaid `erDiagram`. Pasted into a
+  Markdown file, GitHub and GitLab render it natively — a static diagram in
+  the README, no hosting needed (the interactive page stays the way to explore
+  a big model). See [docs/diagrams.md](docs/diagrams.md) for the four examples.
 
 ### v0.21.0 — Diff polish, rename detection, column search (2026-08-29)
 
