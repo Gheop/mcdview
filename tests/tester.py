@@ -30,6 +30,8 @@ ATTENDUS = {
     'exemples/pagila.sql': (16, 22),
     'exemples/northwind.sql': (14, 13),
     'exemples/chinook.sql': (11, 11),
+    'exemples/boutique_v1.sql': (6, 5),   # baseline for the --diff demo
+    'exemples/boutique_v2.sql': (6, 6),   # newer model in the --diff demo
     'samples/demo.dbm': (9, 8),
     # pagila.dbm content varies by pgModeler version (15/18 here, 21/40 on
     # the CI runner's build), so it stays tested but without a pinned count

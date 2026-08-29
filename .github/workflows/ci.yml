@@ -57,6 +57,8 @@ jobs:
               --titre "Northwind" --lang en
           ./mcdview.py exemples/chinook.sql -o _site/exemples/chinook.html \
               --titre "Chinook (music store)" --lang en
+          ./mcdview.py exemples/boutique_v2.sql --diff exemples/boutique_v1.sql \
+              -o _site/exemples/boutique-diff.html --titre "Shop schema v1 → v2 (diff)" --lang en
           cp docs/index.html _site/index.html
       - name: validate generated HTML (structure + data island)
         run: ./tests/valider_html.py _site/exemples/*.html
