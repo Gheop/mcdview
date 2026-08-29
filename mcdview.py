@@ -376,6 +376,33 @@ def indice_dialecte(chemin):
     return ''
 
 
+# --- hardening the untrusted-upload surface (converters + model XML) ---
+# A hosted service parses files it did not write, so these paths must not let a
+# crafted input hang the process or exhaust memory.
+DELAI_OUTIL = 300          # kill an external converter after this many seconds
+LIMITE_XML = 80 * 1024 * 1024   # cap the model XML we decompress/parse (80 MB)
+
+
+def executer(cmd, **kw):
+    """subprocess.run with a mandatory timeout, so a converter that hangs on a
+    forged input cannot block the process forever."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=DELAI_OUTIL, **kw)
+    except subprocess.TimeoutExpired:
+        sys.exit(f'{cmd[0]} timed out after {DELAI_OUTIL}s')
+
+
+def parser_xml(donnees):
+    """Parse model XML, rejecting a DTD/entity declaration up front. A model
+    file never legitimately carries one, and it is the vector for the
+    entity-expansion ("billion laughs") and external-entity (XXE) attacks that
+    Python's stdlib XML parser does not defend against on its own."""
+    if b'<!DOCTYPE' in donnees[:65536] or b'<!ENTITY' in donnees[:65536]:
+        sys.exit('refusing an XML document that declares a DTD or entities')
+    return ET.fromstring(donnees)
+
+
 def sql_depuis_dbm(chemin):
     """Export a .dbm model to SQL through pgmodeler-cli, return the SQL path.
 
@@ -389,17 +416,15 @@ def sql_depuis_dbm(chemin):
     sortie = coin / 'export.sql'
 
     def exporter(entree):
-        return subprocess.run(['pgmodeler-cli', '--export-to-file', '--input',
-                               entree, '--output', str(sortie), '--silent'],
-                              capture_output=True, text=True)
+        return executer(['pgmodeler-cli', '--export-to-file', '--input',
+                         entree, '--output', str(sortie), '--silent'])
 
     r = exporter(chemin)
     if r.returncode or not sortie.exists():
         # a .dbm from an older pgModeler often loads only after --fix-model
         repare = coin / 'repare.dbm'
-        subprocess.run(['pgmodeler-cli', '--fix-model', '--input', chemin,
-                        '--output', str(repare), '--silent'],
-                       capture_output=True, text=True)
+        executer(['pgmodeler-cli', '--fix-model', '--input', chemin,
+                  '--output', str(repare), '--silent'])
         # pgmodeler-cli 1.2.2 may segfault while freeing the model AFTER the
         # fixed file is fully written (memory-layout dependent: systematic in
         # containers, where the environment is tiny), so trust the output
@@ -418,8 +443,7 @@ def sql_depuis_convertisseur(chemin, outil, cmd, format_nom, vers_stdout=False, 
     if not shutil.which(outil):
         sys.exit(f'reading a {format_nom} file requires {outil} in PATH')
     sortie = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'export.sql'
-    r = subprocess.run([a.format(entree=chemin, sortie=str(sortie)) for a in cmd],
-                       capture_output=True, text=True, env=env)
+    r = executer([a.format(entree=chemin, sortie=str(sortie)) for a in cmd], env=env)
     if vers_stdout and not r.returncode and r.stdout.strip():
         sortie.write_text(r.stdout)
     if r.returncode or not sortie.exists() or not sortie.stat().st_size:
@@ -470,7 +494,7 @@ def sql_depuis_db(url):
         sys.exit('--db expects a postgresql:// or mysql:// URL')
     if not shutil.which(outil):
         sys.exit(f'--db needs {outil} in PATH')
-    r = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    r = executer(cmd, env=env)
     if r.returncode or not r.stdout.strip():
         sys.exit(f'{outil} failed:\n{r.stderr.strip()}')
     sortie = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'db.sql'
@@ -487,7 +511,17 @@ def analyser_mwb(chemin):
     against every object's `id` attribute.
     """
     with zipfile.ZipFile(chemin) as z:
-        racine = ET.fromstring(z.read('document.mwb.xml'))
+        try:
+            info = z.getinfo('document.mwb.xml')
+        except KeyError:
+            sys.exit('not a MySQL Workbench file (no document.mwb.xml inside)')
+        # read through a stream and stop at the cap: a tiny .mwb can otherwise
+        # decompress into gigabytes (zip bomb)
+        with z.open(info) as f:
+            donnees = f.read(LIMITE_XML + 1)
+    if len(donnees) > LIMITE_XML:
+        sys.exit('the .mwb model XML is too large (possible zip bomb)')
+    racine = parser_xml(donnees)
 
     def par_cle(el, cle):
         return next((c for c in el if c.get('key') == cle), None)
@@ -759,7 +793,10 @@ def analyser_drizzle(chemin):
 
 
 def positions_dbm(chemin, tables):
-    root = ET.parse(chemin).getroot()
+    donnees = Path(chemin).read_bytes()[:LIMITE_XML + 1]
+    if len(donnees) > LIMITE_XML:
+        sys.exit('the .dbm model is too large to read positions from')
+    root = parser_xml(donnees)
     couleurs = {}
     for s in root.iter('schema'):
         if s.get('fill-color'):

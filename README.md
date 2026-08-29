@@ -189,6 +189,18 @@ file's header.
 
 ## Changelog
 
+### v0.19.3 — Harden the untrusted-upload surface (2026-08-29)
+
+- Model XML (`.mwb`, `.dbm`) is refused if it declares a DTD or entities, the
+  vector for entity-expansion ("billion laughs") and XXE attacks the stdlib
+  XML parser does not block on its own.
+- The `.mwb` archive is read through a size cap, so a tiny file cannot
+  decompress into gigabytes (zip bomb).
+- Every external converter (`pgmodeler-cli`, `dbml2sql`, `prisma`,
+  `pg_dump`/`mysqldump`) runs under a timeout and is killed if it hangs.
+- `tests/test_securite.py` covers all four (generated on the fly, like the
+  ReDoS bombs). This matters for a service that renders files it did not write.
+
 ### v0.19.2 — Fuller Mermaid erDiagram parsing (2026-08-29)
 
 - A crow's-foot cardinality (`o{`, `}o`) is no longer mistaken for an entity

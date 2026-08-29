@@ -98,10 +98,77 @@ def verifier_dos(echecs):
                 echecs.append(f'{nom}: {ms:.0f} ms > budget {BUDGET_MS} ms (DoS)')
 
 
+def verifier_uploads(echecs):
+    """The untrusted-upload surface: model XML and external converters must not
+    let a crafted file expand without bound or hang the process."""
+    import io
+    import zipfile
+
+    # 1. entity-expansion ("billion laughs") / XXE: a DTD or entity block in
+    #    model XML is refused outright
+    bombe = (b'<?xml version="1.0"?>\n<!DOCTYPE lolz [<!ENTITY a "aa">\n'
+             b'<!ENTITY b "&a;&a;">]>\n<data>&b;</data>')
+    try:
+        mcdview.parser_xml(bombe)
+        echecs.append('parser_xml: DTD/entités acceptées (bombe d\'entités possible)')
+    except SystemExit:
+        pass
+
+    # 2. zip bomb: the decompressed .mwb XML is capped. Shrink the cap so the
+    #    test stays cheap, then feed an entry larger than it.
+    cap = mcdview.LIMITE_XML
+    mcdview.LIMITE_XML = 4096
+    try:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr('document.mwb.xml', b'<a>' + b'A' * (64 * 1024) + b'</a>')
+        with tempfile.NamedTemporaryFile(suffix='.mwb', delete=False) as f:
+            f.write(buf.getvalue())
+            nom = f.name
+        try:
+            mcdview.analyser_mwb(nom)
+            echecs.append('analyser_mwb: XML décompressé au-delà du cap accepté (zip bomb)')
+        except SystemExit:
+            pass
+        finally:
+            Path(nom).unlink(missing_ok=True)
+    finally:
+        mcdview.LIMITE_XML = cap
+
+    # 3. a .dbm carrying a DTD is refused when reading table positions
+    with tempfile.NamedTemporaryFile(suffix='.dbm', delete=False) as f:
+        f.write(bombe)
+        nom = f.name
+    try:
+        mcdview.positions_dbm(nom, {})
+        echecs.append('positions_dbm: .dbm avec DTD accepté')
+    except SystemExit:
+        pass
+    finally:
+        Path(nom).unlink(missing_ok=True)
+
+    # 4. a converter that hangs is killed by the timeout (shrunk for the test)
+    delai = mcdview.DELAI_OUTIL
+    mcdview.DELAI_OUTIL = 1
+    try:
+        t0 = time.perf_counter()
+        try:
+            mcdview.executer(['python3', '-c', 'import time; time.sleep(30)'])
+            echecs.append('executer: aucun timeout sur un process bloqué')
+        except SystemExit:
+            pass
+        if time.perf_counter() - t0 > 10:
+            echecs.append('executer: le timeout n\'a pas tué le process à temps')
+    finally:
+        mcdview.DELAI_OUTIL = delai
+    print('  OK  uploads : entités XML, zip bomb, DTD .dbm et timeout convertisseur')
+
+
 def principal():
     echecs = []
     verifier_xss(echecs)
     verifier_dos(echecs)
+    verifier_uploads(echecs)
     if echecs:
         print('\nÉCHECS sécurité :')
         for e in echecs:
