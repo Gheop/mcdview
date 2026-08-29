@@ -43,7 +43,7 @@ MOTS_CONTRAINTE = ('CONSTRAINT', 'PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE',
 RE_COLONNE = re.compile(r'"?(\w+)"?\s+(.+)$')
 RE_NOT_NULL = re.compile(r'\s*\bNOT NULL\b')
 RE_DEFAUT = re.compile(r'\s*\bDEFAULT\s+(.*)$')
-RE_COUPE = re.compile(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT)\b')
+RE_COUPE = re.compile(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT|PRIMARY|UNIQUE|CHECK)\b')
 
 
 def identifiants(liste):
@@ -115,6 +115,11 @@ def analyser_sql(chemin):
                 continue
             col = analyser_colonne(ligne)
             if col:
+                # a column-level PRIMARY KEY ("id serial PRIMARY KEY") is not a
+                # separate constraint line, so catch it here (RE_COUPE already
+                # kept it out of the type)
+                if re.search(r'\bPRIMARY KEY\b', ligne):
+                    pk.append(col['nom'])
                 cols.append(col)
         tables[f'{sch}.{nom}'] = nouvelle_table(sch, nom, cols, pk)
 

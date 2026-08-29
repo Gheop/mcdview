@@ -8,23 +8,104 @@
 [![license: MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 ![no dependencies](https://img.shields.io/badge/dependencies-none-64748b)
 
-Interactive HTML explorer for a SQL data model. From a DDL file
-(`CREATE TABLE ...`), mcdview generates a self-contained page — no server,
-no dependency — to browse the model: overview of tables grouped by schema,
-click a table to isolate it with its related tables, field detail panel,
-search box.
+Turn a SQL data model into one self-contained HTML page you can open, share
+and explore: an overview of every table, click one to isolate it with its
+relations, field-level detail, search. No server, no build step, no
+dependencies — the page opens straight from `file://`.
 
-PostgreSQL is read out of the box with zero dependencies; MySQL/MariaDB,
-SQLite and ~15 other dialects are read when the optional
-[sqlglot](https://github.com/tobymao/sqlglot) package is installed.
+**[Try it on mcdview.dev](https://mcdview.dev/)** (drop a `.sql`/`.dbm`, get a
+shareable link) · **[Live demo](https://gheop.github.io/mcdview/)** ·
+**[Example diagrams](docs/diagrams.md)**
 
-**Try it without installing anything: [mcdview.dev](https://mcdview.dev/)** —
-drop a `.sql` or `.dbm` file and get a shareable link to your model's page.
+[![mcdview: overview, rearrange, isolate a table with its relations, search](docs/demo.gif)](https://gheop.github.io/mcdview/exemples/chinook.html)
 
-**[Live demo](https://gheop.github.io/mcdview/exemples/mediatheque.html)** —
-a fictional library model (12 tables, 3 schemas).
+*Overview → rearrange → click a table to isolate it with its related tables →
+search. [Open the live, interactive version.](https://gheop.github.io/mcdview/exemples/chinook.html)*
 
-[![mcdview showing a table isolated with its related tables](docs/screenshot.webp)](https://gheop.github.io/mcdview/exemples/mediatheque.html)
+### The same tool renders a model right here
+
+`mcdview model.sql --to-mermaid` emits a Mermaid `erDiagram` that GitHub and
+GitLab draw natively — no image, no hosting:
+
+```mermaid
+erDiagram
+    categorie {
+        serial id PK
+        text nom
+        text slug
+    }
+    produit {
+        serial id PK
+        text nom
+        bigint prix
+        integer categorie_id FK
+        text sku
+    }
+    client {
+        serial id PK
+        text nom
+        text email
+        text telephone
+    }
+    commande {
+        serial id PK
+        integer client_id FK
+        date passee_le
+        bigint total
+        text statut
+    }
+    ligne {
+        serial id PK
+        integer commande_id FK
+        integer produit_id FK
+        integer quantite
+        numeric remise
+    }
+    avis {
+        serial id PK
+        integer produit_id FK
+        integer client_id FK
+        integer note
+        text commentaire
+    }
+    categorie ||--o{ produit : ""
+    client ||--o{ commande : ""
+    commande ||--o{ ligne : ""
+    produit ||--o{ ligne : ""
+    produit ||--o{ avis : ""
+    client ||--o{ avis : ""
+```
+
+## What you get
+
+- **Explore any model.** Overview grouped by schema, click a table to isolate
+  it with its neighbours, field detail (types, NOT NULL, DEFAULT, PK 🔑,
+  clickable FK 🔗, comments), search by table *or column*, drag to rearrange
+  (links follow live), force-directed relayout, `#schema.table` permalinks.
+  One HTML file, works offline.
+- **Eight input formats.** PostgreSQL and ~15 dialects (MySQL/MariaDB, SQLite,
+  SQL Server, Oracle…) via [sqlglot](https://github.com/tobymao/sqlglot);
+  pgModeler `.dbm`, dbdiagram.io `.dbml`, Prisma, MySQL Workbench `.mwb`,
+  Rails `db/schema.rb`, Mermaid `erDiagram`, Drizzle `schema.ts`.
+- **Diff two versions.** `--diff old` colors what was added, removed and
+  changed, detects renames, and can write a JSON summary (see below).
+- **Mermaid export.** `--to-mermaid` for a diagram that renders in any
+  Markdown file.
+- **Live database.** `--db postgresql://…` / `mysql://…` reads a running
+  schema (CLI only).
+- **Zero dependency by default.** Python stdlib in, vanilla JS out. Hostile
+  input is HTML-escaped and DoS-budgeted; the upload surface is hardened
+  (XML/zip caps, converter timeouts).
+- **Tested at scale.** 839 real-world schemas, synthetic models to 5000
+  tables, zero crashes.
+
+### Compare two versions
+
+`mcdview new.sql --diff old.sql` — added tables/columns/FKs in green, removed
+in red (kept, struck through), changed in amber, with a legend and a "show
+only what moved" filter:
+
+[![mcdview diff: added, removed and changed tables highlighted](docs/diff.webp)](https://gheop.github.io/mcdview/exemples/boutique-diff.html)
 
 ## Usage
 
@@ -200,6 +281,15 @@ security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.22.1 — Inline primary keys, revamped README (2026-08-29)
+
+- The PostgreSQL parser now recognises a column-level primary key
+  (`id serial PRIMARY KEY`), not only a separate `PRIMARY KEY (...)` line or
+  an `ALTER TABLE`. The column gets its 🔑 and the constraint no longer leaks
+  into the displayed type.
+- README rebuilt around an animated demo, a live-rendered Mermaid diagram and
+  a diff screenshot.
 
 ### v0.22.0 — Mermaid export (2026-08-29)
 
