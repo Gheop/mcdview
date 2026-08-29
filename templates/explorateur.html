@@ -193,6 +193,7 @@ const fragNoms = document.createDocumentFragment();
 const parColonne = {};      // "table.col" and bare "col" -> {cle, col} for search
 let colonneCible = null;    // a column to highlight after the search isolates its table
 const colonnesEnAuto = D.tables.length <= 300;  // suggest columns only on small models
+const NOEUDS_LEGERS = D.tables.length > 800;    // header-only nodes on huge models
 const fkColsPar = {};
 D.fks.forEach(f => { (fkColsPar[f.de] = fkColsPar[f.de] || new Set()).add(f.col); });
 const DCLS = { ajoute: "d-add", supprime: "d-del", modifie: "d-mod" };
@@ -203,8 +204,11 @@ D.tables.forEach(t => {
   div.style.left = t.x + "px";
   div.style.top = t.y + "px";
   const fkCols = fkColsPar[cle] || new Set();
-  div.innerHTML = "<h3 style='background:" + ech(D.schemas[t.schema] || "#ccc") + "'>" +
-    ech(t.nom) + "</h3><ul>" +
+  const entete = "<h3 style='background:" + ech(D.schemas[t.schema] || "#ccc") + "'>" + ech(t.nom) + "</h3>";
+  // on a huge model, build header-only nodes (≈20× fewer DOM nodes): the column
+  // lists are unreadable at that scale anyway, and the detail panel reads
+  // columns from the data, so isolating a table still shows everything
+  div.innerHTML = NOEUDS_LEGERS ? entete : entete + "<ul>" +
     t.cols.map(c => "<li" + (c.diff ? " class='" + DCLS[c.diff] + "'" : "") + ">" +
       (t.pk.includes(c.nom) ? "🔑 " : fkCols.has(c.nom) ? "🔗 " : "") +
       ech(c.nom) + "<span class='t'>" + ech(c.type) + "</span></li>").join("") + "</ul>";
