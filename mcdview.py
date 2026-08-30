@@ -1299,7 +1299,10 @@ def vers_mermaid(tables, fks):
             marques = (['PK'] if c['nom'] in t['pk'] else []) + \
                       (['FK'] if c['nom'] in fkcols[cle] else [])
             suffixe = ' ' + ', '.join(marques) if marques else ''
-            lignes.append(f'        {type_court(c["type"])} {re.sub(r"\\W", "_", c["nom"])}{suffixe}')
+            # a backslash inside an f-string expression is a syntax error before
+            # Python 3.12, so build the sanitized name outside the f-string
+            nom_col = re.sub(r'\W', '_', c['nom'])
+            lignes.append(f'        {type_court(c["type"])} {nom_col}{suffixe}')
         lignes.append('    }')
     vues = set()
     for f in fks:

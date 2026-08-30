@@ -7,6 +7,9 @@
 # The full campaign with .dbm (pgmodeler-cli, minutes) and headless Chrome
 # is manual: ./tests/grand_banc.py --dbm --chrome 12
 set -e
+# lint the real-error subset (same as CI), respecting requires-python so a
+# 3.12-only construct doesn't slip in; skip silently if ruff is not installed
+if command -v ruff >/dev/null 2>&1; then ruff check --select F,E9 mcdview.py tests/*.py; fi
 ./tests/tester.py --rapide
 ./tests/test_parser.py
 ./tests/test_securite.py
