@@ -1014,8 +1014,15 @@ def analyser_drizzle(chemin):
             out.append(cur)
         return out
 
+    # a multi-project schema defines its own table function via a creator:
+    # `const createTable = pgTableCreator(...)`; treat those variables as table
+    # constructors alongside the built-in pg/mysql/sqliteTable
+    fabriques = ['pgTable', 'mysqlTable', 'sqliteTable']
+    fabriques += re.findall(
+        r'(?:const|let|var)\s+(\w+)\s*=\s*(?:pg|mysql|sqlite)TableCreator\s*\(', src)
+    motif_table = '|'.join(re.escape(f) for f in dict.fromkeys(fabriques))
     for m in re.finditer(
-            r'(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:pg|mysql|sqlite)Table\s*\(\s*'
+            r'(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:' + motif_table + r')\s*\(\s*'
             r'["\'`]([^"\'`]+)["\'`]\s*,\s*\{', src):
         var, nom = m.group(1), m.group(2)
         i, prof = m.end() - 1, 0    # scan balanced braces for the body
