@@ -151,13 +151,16 @@ def principal():
         pf['n'] += 1
         octets = chemin.stat().st_size
         try:
-            if fmt == 'dbm':
+            # external-tool formats (dbm/dbml/prisma) sys.exit when the upstream
+            # tool rejects a file — that is a conversion refusal, not a crash
+            if fmt in ('dbm', 'dbml', 'prisma'):
                 try:
                     (tables, fks), ms_parse = chrono(charger_fichier, chemin, fmt)
                 except SystemExit as e:
-                    stats['refus-pgmodeler'] = stats.get('refus-pgmodeler', 0) + 1
+                    stats['conv-échec'] = stats.get('conv-échec', 0) + 1
+                    pf['sans'] += 1
                     lignes.append((chemin.name, fmt, octets, 0, 0, 0, 0, 0, 0,
-                                   'refus-pgmodeler: ' + str(e)[:80].replace('\n', ' ')))
+                                   'conv-échec: ' + str(e)[:80].replace('\n', ' ')))
                     continue
             else:
                 (tables, fks), ms_parse = chrono(charger_fichier, chemin, fmt)
@@ -193,12 +196,15 @@ def principal():
         for ligne in lignes:
             sortie.write('\t'.join(str(c) for c in ligne) + '\n')
 
-    problemes = [ligne for ligne in lignes if ligne[9] not in ('ok', 'sans-table')]
+    benins = ('ok', 'sans-table')
+    problemes = [ligne for ligne in lignes
+                 if ligne[9] not in benins and not ligne[9].startswith('conv-échec')]
     anomalies = [ligne for ligne in lignes if ligne[9].startswith('anomalie')]
+    conv = stats.get('conv-échec', 0) + stats.get('refus-pgmodeler', 0)
     print(f'{len(lignes)} fichiers — {len(stats["ok"])} ok, '
           f'{stats["sans-table"]} sans table (autre dialecte), '
           f'{len(anomalies)} anomalies, {stats["erreur"]} erreurs, '
-          f'{stats.get("refus-pgmodeler", 0)} refus pgmodeler-cli')
+          f'{conv} conversions refusées (tool amont)')
     print('temps total (parse+placement+page) :', percentiles([t for _, t in stats['ok']]))
     gros = [t for o, t in stats['ok'] if o > 500_000]
     if gros:
