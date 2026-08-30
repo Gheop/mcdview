@@ -300,6 +300,19 @@ file's header.
 
 ## Changelog
 
+### v0.24.9 — Detect FKs declared inside CREATE TABLE (2026-08-30)
+
+- Foreign keys written inside the `CREATE TABLE` body are now detected: a
+  column-level inline `col int REFERENCES other(id)`, a table-level
+  `FOREIGN KEY (col) REFERENCES other(id)` (single or composite), a column-less
+  `REFERENCES other` that leans on the target's primary key, and
+  self-references. Previously only `ALTER TABLE ... ADD ... FOREIGN KEY`
+  (pg_dump style) was read, so hand-written schemas showed 0 FKs and every
+  table floated unlinked. The sqlglot path already handled these; this fixes
+  the built-in PostgreSQL parser.
+- `--diagnose` gained a soft `disconnected_tables` anomaly (several tables and
+  not one FK), which is almost always a parser gap rather than a real model.
+
 ### v0.24.8 — Version stamp moved into the detail panel (2026-08-30)
 
 - The version stamp now sits discreetly in the detail panel's bottom-right

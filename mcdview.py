@@ -72,6 +72,19 @@ RE_NOT_NULL = re.compile(r'\s*\bNOT NULL\b')
 RE_DEFAUT = re.compile(r'\s*\bDEFAULT\s+(.*)$')
 RE_COUPE = re.compile(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT|PRIMARY|UNIQUE|CHECK)\b')
 RE_PK_TABLE = re.compile(r'(?:CONSTRAINT "?\w+"? )?PRIMARY KEY\s*\(([^)]+)\)')
+# FKs declared inside a CREATE TABLE body (pg_dump uses ALTER TABLE instead, but
+# hand-written schemas embed them): a table-level FOREIGN KEY (...) REFERENCES,
+# and a column-level inline REFERENCES. Both may carry a target column list or
+# lean on the target PK, and either can be self-referential.
+RE_FK_TABLE = re.compile(
+    r'(?:CONSTRAINT\s+"?\w+"?\s+)?FOREIGN\s+KEY\s*\(([^)]+)\)\s*'
+    r'REFERENCES\s+(?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?', re.I)
+RE_FK_INLINE = re.compile(
+    r'\bREFERENCES\s+(?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?', re.I)
+# an entry that opens with a table constraint keyword is not a column definition
+RE_DEBUT_CONTRAINTE = re.compile(
+    r'^\s*(?:CONSTRAINT\s+"?\w+"?\s+)?'
+    r'(?:PRIMARY|FOREIGN|UNIQUE|CHECK|EXCLUDE|LIKE)\b', re.I)
 
 
 def identifiants(liste):
@@ -224,6 +237,7 @@ def decouper_corps(s, cap=100000):
 def analyser_sql(chemin):
     src = open(chemin).read()
     tables, fks = {}, []
+    corps_par_cle = {}   # cle -> raw CREATE TABLE body, for inline/table-level FKs
 
     # CREATE TABLE [schema.]name ( ... ) [PARTITION BY ... / WITH ...];
     # the opening parenthesis may end the line or stand on its own. The body
@@ -242,6 +256,7 @@ def analyser_sql(chemin):
         sch = m.group(1) or 'public'
         nom = m.group(2)
         tables[f'{sch}.{nom}'] = entrees_en_table(sch, nom, corps.split('\n'))
+        corps_par_cle[f'{sch}.{nom}'] = corps
 
     # single-line / compact CREATE TABLE (open paren NOT followed by a newline):
     # the fast pass above needs "(\n", so a one-line "CREATE TABLE t (a int);"
@@ -260,6 +275,7 @@ def analyser_sql(chemin):
         entrees, ok = decouper_corps(ligne_reste)
         if ok and entrees:
             tables[cle] = entrees_en_table(m.group(1) or 'public', m.group(2), entrees)
+            corps_par_cle[cle] = ligne_reste
 
     # partitions: constraints carried by a partition are folded back into
     # the parent, and the partitions themselves do not appear in the model
@@ -347,6 +363,48 @@ def analyser_sql(chemin):
                 continue
             vues.add((de, scol, vers, dcol))
             fks.append(nouvelle_fk(de, scol, vers, dcol, cname or ''))
+
+    # FKs embedded in the CREATE TABLE body (hand-written schemas): a column-level
+    # inline `col type REFERENCES tgt(id)` and a table-level `FOREIGN KEY (...)
+    # REFERENCES tgt(...)`, mono or composite, possibly self-referential. Scanned
+    # on the stored bodies once every table exists (so a column-less REFERENCES
+    # can fall back to the target PK), deduplicated against the ALTER pass above.
+    def ajouter_fk(de, scol, vers, dcol, nom):
+        if (de, scol, vers, dcol) in vues:
+            return
+        vues.add((de, scol, vers, dcol))
+        fks.append(nouvelle_fk(de, scol, vers, dcol, nom))
+
+    for cle, corps in corps_par_cle.items():
+        de = resoudre(cle)
+        if de not in tables:
+            continue
+        # terminate the body so decouper_corps emits the final entry too (it only
+        # flushes the buffer at a depth-0 ')' or comma; a multi-line body has
+        # neither after its last column, and a single-line one stops at its real
+        # close paren before this added one)
+        entrees, _ = decouper_corps(corps + '\n)')
+        for e in entrees:
+            e = RE_COMMENTAIRE.sub('', RE_LITTERAL.sub('', e)).strip()
+            mt = RE_FK_TABLE.match(e)
+            if mt:
+                scols, dsch, dtab, dcols = mt.groups()
+                sources = identifiants(scols)
+            elif RE_DEBUT_CONTRAINTE.match(e):
+                continue  # a non-FK table constraint (PK/UNIQUE/CHECK…)
+            else:
+                cm = RE_COLONNE.match(e)
+                mi = RE_FK_INLINE.search(e) if cm else None
+                if not mi:
+                    continue
+                dsch, dtab, dcols = mi.groups()
+                sources = [cm.group(1).strip('"`')]
+            vers = resoudre(f"{dsch or 'public'}.{dtab}")
+            if vers not in tables:
+                continue
+            cibles = identifiants(dcols) if dcols else tables[vers]['pk']
+            for i, scol in enumerate(sources):
+                ajouter_fk(de, scol, vers, cibles[i] if i < len(cibles) else '', '')
     return tables, fks
 
 
@@ -1558,7 +1616,8 @@ def diagnostiquer(args, ap):
     source = args.sql[0]
     diag = {'status': 'ok', 'file': Path(source).name, 'format': Path(source).suffix.lstrip('.') or 'sql',
             'dialect': None, 'tables': 0, 'fks': 0,
-            'anomalies': {'empty_tables': 0, 'phantom_columns': 0, 'fks_without_target': 0},
+            'anomalies': {'empty_tables': 0, 'phantom_columns': 0,
+                          'fks_without_target': 0, 'disconnected_tables': 0},
             'error': None, 'mcdview_version': version_mcdview()}
     try:
         tables, fks, dialecte = charger(source, args.dialect)
@@ -1577,6 +1636,11 @@ def diagnostiquer(args, ap):
                 src = tables.get(f['de'])
                 if src and f['col'] and f['col'] not in {c['nom'] for c in src['cols']}:
                     a['phantom_columns'] += 1
+            # several tables and not one FK is almost always a parser gap (inline
+            # REFERENCES missed, an unsupported dialect…), rarely a real model —
+            # a soft flag so the hosting side can surface and sample these
+            if diag['tables'] >= 2 and diag['fks'] == 0:
+                a['disconnected_tables'] = diag['tables']
             if any(a.values()):
                 diag['status'] = 'anomaly'
     except SystemExit as e:          # charger()/converters call sys.exit on failure

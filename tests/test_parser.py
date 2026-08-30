@@ -20,6 +20,15 @@ def tables_de(sql):
         return dict(mcdview.analyser_sql(str(p))[0])
 
 
+def fks_de(sql):
+    """Return the FK set as {(de, col, vers, colcible)} (schemas stripped)."""
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'x.sql'
+        p.write_text(sql)
+        return {(f['de'].split('.')[1], f['col'], f['vers'].split('.')[1],
+                 f['colcible']) for f in mcdview.analyser_sql(str(p))[1]}
+
+
 def principal():
     echecs = []
 
@@ -71,6 +80,51 @@ def principal():
     noms = [c['nom'] for c in t['public.a']['cols']]
     if 'REFERENCES' in noms or noms != ['id', 'b_id']:
         echecs.append(f'FK multi-ligne: colonnes={noms} (REFERENCES fantôme ?)')
+
+    # FKs declared INSIDE the CREATE TABLE body (hand-written schemas): inline
+    # column REFERENCES, table-level FOREIGN KEY (mono + composite), a
+    # self-reference, and a column-less REFERENCES falling back to the target PK.
+    got = fks_de(
+        'CREATE TABLE employees (\n'
+        '  id INT PRIMARY KEY,\n'
+        '  manager_id INT REFERENCES employees(id)\n);\n'
+        'CREATE TABLE orders (id INT PRIMARY KEY);\n'
+        'CREATE TABLE products (id INT PRIMARY KEY);\n'
+        'CREATE TABLE order_items (\n'
+        '  order_id INT,\n  product_id INT,\n'
+        '  PRIMARY KEY (order_id, product_id),\n'
+        '  FOREIGN KEY (order_id) REFERENCES orders(id),\n'
+        '  FOREIGN KEY (product_id) REFERENCES products(id)\n);')
+    attendu = {('employees', 'manager_id', 'employees', 'id'),
+               ('order_items', 'order_id', 'orders', 'id'),
+               ('order_items', 'product_id', 'products', 'id')}
+    if got != attendu:
+        echecs.append(f'FK inline/table-level: {got} != {attendu}')
+
+    # a composite table-level FK, and a column-less REFERENCES using the PK
+    got = fks_de(
+        'CREATE TABLE parent (\n a INT, b INT,\n PRIMARY KEY (a, b)\n);\n'
+        'CREATE TABLE child (\n'
+        '  pa INT, pb INT,\n  owner INT REFERENCES parent,\n'  # no target cols
+        '  FOREIGN KEY (pa, pb) REFERENCES parent (a, b)\n);')
+    attendu = {('child', 'pa', 'parent', 'a'), ('child', 'pb', 'parent', 'b'),
+               ('child', 'owner', 'parent', 'a')}
+    if got != attendu:
+        echecs.append(f'FK composite/PK-fallback: {got} != {attendu}')
+
+    # an inline FK and an ALTER FK for the same relation are not duplicated
+    got = fks_de(
+        'CREATE TABLE a (id INT PRIMARY KEY);\n'
+        'CREATE TABLE b (\n id INT PRIMARY KEY,\n a_id INT REFERENCES a(id)\n);\n'
+        'ALTER TABLE b ADD CONSTRAINT b_a FOREIGN KEY (a_id) REFERENCES a(id);')
+    if got != {('b', 'a_id', 'a', 'id')}:
+        echecs.append(f'FK dédup inline+ALTER: {got}')
+
+    # single-line CREATE TABLE with an inline REFERENCES is caught too
+    got = fks_de('CREATE TABLE a (id INT PRIMARY KEY);\n'
+                 'CREATE TABLE b (id INT PRIMARY KEY, a_id INT REFERENCES a(id));')
+    if got != {('b', 'a_id', 'a', 'id')}:
+        echecs.append(f'FK inline single-line: {got}')
 
     # single-line / compact CREATE TABLE (no newline after the open paren) is
     # parsed by the built-in parser, not only via sqlglot
@@ -130,6 +184,15 @@ def principal():
         d = _json.loads(r.stdout)
         if r.returncode != 0 or d['status'] != 'error':
             echecs.append(f'--diagnose error: exit={r.returncode} status={d.get("status")}')
+        # several tables and no FK: soft "disconnected_tables" anomaly
+        sansfk = Path(td) / 'c.sql'
+        sansfk.write_text('CREATE TABLE a (id int);\nCREATE TABLE b (id int);')
+        r = subprocess.run([sys.executable, str(RACINE / 'mcdview.py'),
+                            str(sansfk), '--diagnose'], capture_output=True, text=True)
+        d = _json.loads(r.stdout)
+        if d['status'] != 'anomaly' or d['anomalies']['disconnected_tables'] != 2:
+            echecs.append(f'--diagnose disconnected: status={d.get("status")} '
+                          f'anom={d.get("anomalies")}')
 
     if echecs:
         print('ÉCHECS parser :')
