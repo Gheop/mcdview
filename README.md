@@ -263,15 +263,16 @@ in place of `__DONNEES__`.
 
 ### Tested at scale
 
-The harness under `tests/` last ran mcdview over **839 schemas**: 529
-real-world `.sql` and 296 pgModeler `.dbm` harvested from public GitHub
-repositories, plus synthetic models up to 5000 tables. Results: **zero
-crashes**; every PostgreSQL schema produced a valid page (17,449 tables and
-19,788 FKs in total, DOM-verified on a sample in headless Chrome); MySQL
-and SQLite inputs are detected and get a clear hint; 99% of the loadable
-`.dbm` models convert (a `--fix-model` repair pass catches models saved by
-older pgModeler versions). Median page build: 4 ms; worst case (5000
-tables, 3.2 MB of DDL): 0.6 s.
+The harness under `tests/` last ran mcdview over **13,408 model files**:
+9,913 `.sql` plus native `.ts` (Drizzle), Mermaid, Rails `schema.rb` and
+MySQL Workbench `.mwb`, harvested from public GitHub repositories, plus
+synthetic models up to 5000 tables. Results: **zero crashes and zero
+timeouts** (2 s per-file budget). Every loadable schema produced a valid
+page (DOM-verified on a sample in headless Chrome); MySQL and SQLite `.sql`
+inputs are detected and get a clear hint. Median page build: 3 ms; worst
+case (a 5.7 MB model): 1.3 s. Separately, pgModeler `.dbm` models convert
+through pgModeler's CLI in a frozen-image CI job (a `--fix-model` repair
+pass catches models saved by older versions).
 
 Model data (names, types, comments, defaults) is HTML-escaped and the JSON
 data island escapes every `<`, so a hostile schema cannot inject markup or
