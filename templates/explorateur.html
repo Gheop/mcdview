@@ -20,7 +20,17 @@
     background: var(--fond); color: var(--encre);
     font-family: system-ui, sans-serif; font-size: 14px; }
   #viewport { position: absolute; inset: 0; right: 340px; cursor: grab; touch-action: none;
-    user-select: none; -webkit-user-select: none; }
+    user-select: none; -webkit-user-select: none; overflow: hidden;
+    /* soft fade at the frame edges: a FK link to an off-screen table then fades
+       out at the border instead of stopping hard in mid-air ("leads to nothing") */
+    -webkit-mask:
+      linear-gradient(to right, transparent, #000 26px, #000 calc(100% - 26px), transparent),
+      linear-gradient(to bottom, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+    -webkit-mask-composite: source-in;
+    mask:
+      linear-gradient(to right, transparent, #000 26px, #000 calc(100% - 26px), transparent),
+      linear-gradient(to bottom, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+    mask-composite: intersect; }
   #viewport.drag { cursor: grabbing; }
   #plan { position: absolute; transform-origin: 0 0; }
   #liens { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
