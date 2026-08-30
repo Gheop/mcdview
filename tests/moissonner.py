@@ -42,6 +42,25 @@ RECHERCHES = [
     ('CREATE TABLE categories language:SQL', '.sql', b'CREATE TABLE'),
     ('CREATE TABLE payments language:SQL', '.sql', b'CREATE TABLE'),
     ('CREATE TABLE sessions language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE posts language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE comments language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE messages language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE roles language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE permissions language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE addresses language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE items language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE transactions language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE events language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE logs language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE tags language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE notifications language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE settings language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE companies language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE projects language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE tasks language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE books language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE reviews language:SQL', '.sql', b'CREATE TABLE'),
+    ('CREATE TABLE inventory language:SQL', '.sql', b'CREATE TABLE'),
     ('SERIAL PRIMARY KEY CREATE TABLE language:SQL', '.sql', b'SERIAL'),
     ('bigserial REFERENCES language:SQL', '.sql', b'REFERENCES'),
     ('ALTER TABLE ADD CONSTRAINT FOREIGN KEY language:SQL', '.sql', b'FOREIGN KEY'),
@@ -125,7 +144,10 @@ def principal():
     ap = argparse.ArgumentParser()
     ap.add_argument('--max', type=int, default=100000, help='stop after N new files')
     ap.add_argument('--par-requete', type=int, default=10, help='pages per query (×100)')
+    ap.add_argument('--formats-only', action='store_true',
+                    help='skip the .sql queries; harvest only the other formats')
     args = ap.parse_args()
+    recherches = [r for r in RECHERCHES if not (args.formats_only and r[1] == '.sql')]
 
     CORPUS.mkdir(parents=True, exist_ok=True)
     vus_depots = set()
@@ -133,7 +155,7 @@ def principal():
     for f in CORPUS.glob('*'):
         vus_depots.add(f.name.split('__')[0])
     total = 0
-    for requete, ext, aiguille in RECHERCHES:
+    for requete, ext, aiguille in recherches:
         if total >= args.max:
             break
         print(f'-- recherche : {requete}  (total {total})')
