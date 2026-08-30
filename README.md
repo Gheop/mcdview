@@ -299,6 +299,14 @@ file's header.
 
 ## Changelog
 
+### v0.23.2 — Index diff on the sqlglot path (2026-08-30)
+
+- Indexes and unique constraints are now extracted on the sqlglot path too
+  (`CREATE [UNIQUE] INDEX`, `ALTER … ADD CONSTRAINT … UNIQUE`, inline `UNIQUE`).
+  Previously only the built-in PostgreSQL parser read them, so a single-line
+  `CREATE TABLE …` (which routes to sqlglot) reported no index changes in a
+  diff. MySQL `UNIQUE KEY` is picked up as a bonus.
+
 ### v0.23.1 — Installable from PyPI (2026-08-30)
 
 - Published to PyPI: `pipx install mcdview` (extra `[dialects]` pulls in

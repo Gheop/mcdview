@@ -62,12 +62,29 @@ def principal():
                 echecs.append(f'{rel}: page non produite')
         print(f'{"FAIL" if any(rel in e for e in echecs) else "ok  "} {rel}: '
               f'{len(tables)} tables, {len(fks)} FKs')
+    # indexes on the sqlglot path (single-line DDL falls here too): CREATE
+    # [UNIQUE] INDEX, ALTER ADD CONSTRAINT UNIQUE, inline UNIQUE
+    import tempfile
+    from pathlib import Path
+    ddl = ("CREATE TABLE client (id serial PRIMARY KEY, email text, ville text);\n"
+           "CREATE UNIQUE INDEX client_email_idx ON client (email);\n"
+           "CREATE INDEX client_ville_idx ON client (ville);\n")
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'x.sql'
+        p.write_text(ddl)
+        tables, _, _ = mcdview.analyser(str(p), 'auto')
+    idx = {i['nom']: i for i in tables['public.client']['index']}
+    if idx.get('client_email_idx', {}).get('unique') is not True:
+        echecs.append(f'sqlglot index: UNIQUE non capté ({list(idx)})')
+    if idx.get('client_ville_idx', {}).get('unique') is not False:
+        echecs.append(f'sqlglot index: index non-unique non capté ({list(idx)})')
+
     if echecs:
         print('\nÉCHECS dialectes :')
         for e in echecs:
             print('  !', e)
         sys.exit(1)
-    print('\ndialectes : MySQL et SQLite parsés correctement')
+    print('\ndialectes : MySQL/SQLite + index (chemin sqlglot) OK')
 
 
 if __name__ == '__main__':

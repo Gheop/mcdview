@@ -425,13 +425,38 @@ def analyser_sqlglot(chemin, dialecte, strict=True):
                 ref = fk.args.get('reference')
                 if ref:
                     ajouter_fk(k, [c.name for c in fk.expressions], ref, nom_fk(fk))
+            # inline UNIQUE constraints become indexes
+            for u in stmt.find_all(exp.UniqueColumnConstraint):
+                sch = u.this if u.this is not None else None
+                noms = [e.name for e in getattr(sch, 'expressions', [])] if sch else []
+                if noms:
+                    tables[k]['index'].append({'nom': '', 'cols': noms, 'unique': True})
+        elif isinstance(stmt, exp.Create) and stmt.kind == 'INDEX':
+            idx = stmt.this
+            tbl = idx.args.get('table')
+            if tbl is not None:
+                k = cle(tbl)
+                if k in tables:
+                    tables[k]['index'].append(
+                        {'nom': idx.name, 'unique': bool(stmt.args.get('unique')),
+                         'cols': [c.name for c in idx.find_all(exp.Column)]})
         elif isinstance(stmt, exp.Alter):
             src_tbl = stmt.find(exp.Table)
             if src_tbl:
+                k = cle(src_tbl)
                 for fk in stmt.find_all(exp.ForeignKey):
                     ref = fk.args.get('reference')
                     if ref:
-                        ajouter_fk(cle(src_tbl), [c.name for c in fk.expressions], ref, nom_fk(fk))
+                        ajouter_fk(k, [c.name for c in fk.expressions], ref, nom_fk(fk))
+                for u in stmt.find_all(exp.UniqueColumnConstraint):
+                    if k not in tables:
+                        continue
+                    cont = u.find_ancestor(exp.Constraint)
+                    sch = u.this if u.this is not None else None
+                    noms = [e.name for e in getattr(sch, 'expressions', [])] if sch else []
+                    if noms:
+                        tables[k]['index'].append(
+                            {'nom': cont.name if cont else '', 'cols': noms, 'unique': True})
 
     # a reference without a column list points at the target's primary key
     for f in fks:
