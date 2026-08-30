@@ -300,6 +300,13 @@ file's header.
 
 ## Changelog
 
+### v0.24.3 — Intro reveal for the detail panel (2026-08-30)
+
+- On first load the detail panel shows open (so its purpose is visible), then
+  slides shut over ~2s to the collapsed default — clicking a table or the
+  toggle cancels the intro and keeps the panel open. Skipped when a preference
+  is remembered or the URL opens straight on a table.
+
 ### v0.24.2 — Collapsible detail panel (2026-08-30)
 
 - The detail panel can be collapsed to give the diagram the full width. It

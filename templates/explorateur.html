@@ -105,6 +105,10 @@
   #viewport, #panneau { transition: right .25s ease, transform .25s ease; }
   body.panneau-reduit #viewport { right: 0; }
   body.panneau-reduit #panneau { transform: translateX(100%); }
+  /* intro: the panel shows open over the (already full-width) diagram, then
+     slides away — so a first-time viewer sees the panel exists before it tucks */
+  body.intro-panneau #panneau { transform: none; }
+  body.intro-ferme #panneau { transition: transform 1.8s ease; }
   /* the toggle sits on the panel's inner edge, and rides to the screen edge
      when collapsed so it stays reachable */
   #togglePanneau { position: absolute; top: 50%; right: 340px; z-index: 11;
@@ -502,14 +506,31 @@ function reduirePanneau(v, refit) {
   if (refit) setTimeout(() => cadrer(focusCle ? [focusCle, ...voisins(focusCle)]
                                               : Object.keys(elems)), 260);
 }
+let introTimer = null;
+function finIntro() {  // stop the intro; leave the panel wherever it now is
+  if (introTimer) { clearTimeout(introTimer); introTimer = null; }
+  document.body.classList.remove("intro-panneau", "intro-ferme");
+}
 (function initPanneau() {
   let pref = null;
   try { pref = localStorage.getItem("mcdview:panneau"); } catch (e) { /* ignore */ }
-  if (pref === "ouvert") { autoExpand = false; reduirePanneau(false); }
-  else reduirePanneau(true);  // default (and pref "reduit")
-  if (pref) autoExpand = false;
+  if (pref === "ouvert") { autoExpand = false; reduirePanneau(false); return; }
+  if (pref === "reduit") { autoExpand = false; reduirePanneau(true); return; }
+  // no stored choice, and not opening straight on a table (permalink): play the
+  // intro — collapsed layout (full-width diagram) but the panel visible, then it
+  // slides shut over ~2s, revealing the space it frees
+  reduirePanneau(true);
+  if (!location.hash) {
+    document.body.classList.add("intro-panneau");
+    introTimer = setTimeout(() => {
+      document.body.classList.add("intro-ferme");
+      document.body.classList.remove("intro-panneau");   // triggers the slow close
+      introTimer = setTimeout(() => document.body.classList.remove("intro-ferme"), 1900);
+    }, 1100);
+  }
 })();
 btnToggle.addEventListener("click", () => {
+  finIntro();
   autoExpand = false;                       // the viewer decides from now on
   reduirePanneau(!panneauReduit, true);
   try { localStorage.setItem("mcdview:panneau", panneauReduit ? "reduit" : "ouvert"); } catch (e) { /* ignore */ }
@@ -518,6 +539,7 @@ btnToggle.addEventListener("click", () => {
 // --- DBeaver-like focus mode: the table in the center, its neighbours in a star ---
 function isoler(cle) {
   focusCle = cle;
+  finIntro();  // a table click ends the intro and keeps the panel open below
   if (autoExpand && panneauReduit) reduirePanneau(false, true);  // reveal detail
   survolCle = null;
   history.replaceState(null, "", "#" + encodeURIComponent(cle));
