@@ -112,6 +112,25 @@ def principal():
         if '2 tables, 1 FKs' not in r.stdout:
             echecs.append(f'merge multi-fichiers: {r.stdout.strip()!r} (attendu 2 tables, 1 FK)')
 
+    # --diagnose emits JSON and never fails (exit 0), whatever the input
+    import json as _json
+    import subprocess
+    with tempfile.TemporaryDirectory() as td:
+        bon = Path(td) / 'a.sql'
+        bon.write_text('CREATE TABLE t (\n a integer PRIMARY KEY,\n b text\n);')
+        r = subprocess.run([sys.executable, str(RACINE / 'mcdview.py'),
+                            str(bon), '--diagnose'], capture_output=True, text=True)
+        d = _json.loads(r.stdout)
+        if r.returncode != 0 or d['status'] != 'ok' or d['tables'] != 1:
+            echecs.append(f'--diagnose ok: {r.returncode} {d.get("status")}')
+        mauvais = Path(td) / 'b.mwb'
+        mauvais.write_text('not a zip')
+        r = subprocess.run([sys.executable, str(RACINE / 'mcdview.py'),
+                            str(mauvais), '--diagnose'], capture_output=True, text=True)
+        d = _json.loads(r.stdout)
+        if r.returncode != 0 or d['status'] != 'error':
+            echecs.append(f'--diagnose error: exit={r.returncode} status={d.get("status")}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:

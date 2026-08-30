@@ -195,6 +195,7 @@ In the page:
 | `--summary FILE` | With `--diff`: also write a JSON summary of the changes (counts + change list) to `FILE` |
 | `--to-mermaid` | Output a Mermaid `erDiagram` (paste in a `.md`; GitHub/GitLab render it) instead of the HTML page |
 | `--watch` | Regenerate the page whenever the input file changes (Ctrl-C to stop); file input only |
+| `--diagnose` | Print a JSON diagnosis of the input (status ok/no_table/anomaly/error, dialect, counts, anomalies) instead of a page; exits 0 even on failure |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
@@ -298,6 +299,20 @@ security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.24.0 — Robustness, --diagnose, and a big corpus sweep (2026-08-30)
+
+- Swept mcdview over **~15,000 real-world files** across every format; fixed
+  every crash found: a phantom `REFERENCES` column from a wrapped FK, and
+  several sqlglot AST edge cases (exotic defaults, constraint/comment/index
+  nodes) — plus a safety net so no sqlglot AST shape can crash the tool.
+- The built-in PostgreSQL parser reads single-line `CREATE TABLE t (a int);`.
+- Faster `--dialect auto` on large non-PostgreSQL files (dialect picked on a
+  prefix, ~4–6× less parse time).
+- Rails FK columns resolve against the real columns and handle irregular
+  plurals (people→person); Drizzle `pgTableCreator` factories are supported.
+- `--diagnose` prints a JSON verdict (status, dialect, counts, anomalies) and
+  never fails — for a hosting service to flag problematic uploads.
 
 ### v0.23.3 — Single-line DDL, --version (2026-08-30)
 

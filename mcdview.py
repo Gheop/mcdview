@@ -253,7 +253,10 @@ def analyser_sql(chemin):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:  # already built by the multi-line pass
             continue
-        ligne_reste = src[m.end():].split('\n', 1)[0]
+        # slice only to the end of the opener's line, not the whole remaining
+        # file (else 3000 unterminated openers each copy the full tail — a DoS)
+        fin_ligne = src.find('\n', m.end())
+        ligne_reste = src[m.end():fin_ligne if fin_ligne != -1 else len(src)]
         entrees, ok = decouper_corps(ligne_reste)
         if ok and entrees:
             tables[cle] = entrees_en_table(m.group(1) or 'public', m.group(2), entrees)
@@ -1503,6 +1506,9 @@ def principal():
                          'tables/columns/FKs added, removed or changed are colored')
     ap.add_argument('--summary', metavar='FILE',
                     help='with --diff: also write a JSON summary of the changes to FILE')
+    ap.add_argument('--diagnose', action='store_true',
+                    help='print a JSON diagnosis of the input (status, dialect, '
+                         'counts, anomalies) instead of a page; never fails')
     ap.add_argument('--to-mermaid', action='store_true',
                     help='output a Mermaid erDiagram (paste in a .md; GitHub/GitLab '
                          'render it) instead of the HTML page; to -o if given, else stdout')
@@ -1530,11 +1536,55 @@ def principal():
     if args.summary and not args.diff:
         ap.error('--summary only applies with --diff')
 
+    if args.diagnose:
+        diagnostiquer(args, ap)
+        return
+
     generer(args, ap)
     if args.watch:
         if args.db or args.to_mermaid or not args.sql:
             ap.error('--watch needs a model file (not --db or --to-mermaid)')
         surveiller(args, ap)
+
+
+def diagnostiquer(args, ap):
+    """Print a JSON diagnosis of the input and exit 0, whatever happens — a
+    hosting service calls this alongside generation to decide whether an upload
+    is worth reporting (crash / no table / content anomaly), without parsing the
+    HTML. One file input (the per-upload case); --db/--diff are not diagnosed."""
+    if not args.sql:
+        ap.error('--diagnose needs a model file')
+    source = args.sql[0]
+    diag = {'status': 'ok', 'file': Path(source).name, 'format': Path(source).suffix.lstrip('.') or 'sql',
+            'dialect': None, 'tables': 0, 'fks': 0,
+            'anomalies': {'empty_tables': 0, 'phantom_columns': 0, 'fks_without_target': 0},
+            'error': None, 'mcdview_version': version_mcdview()}
+    try:
+        tables, fks, dialecte = charger(source, args.dialect)
+        diag['dialect'] = dialecte
+        if not tables:
+            diag['status'] = 'no_table'
+        else:
+            diag['tables'], diag['fks'] = len(tables), len(fks)
+            a = diag['anomalies']
+            a['empty_tables'] = sum(1 for t in tables.values() if not t['cols'])
+            a['fks_without_target'] = sum(1 for f in fks if not f['colcible'])
+            for t in tables.values():
+                noms = {c['nom'] for c in t['cols']}
+                a['phantom_columns'] += sum(1 for p in t['pk'] if p not in noms)
+            for f in fks:
+                src = tables.get(f['de'])
+                if src and f['col'] and f['col'] not in {c['nom'] for c in src['cols']}:
+                    a['phantom_columns'] += 1
+            if any(a.values()):
+                diag['status'] = 'anomaly'
+    except SystemExit as e:          # charger()/converters call sys.exit on failure
+        diag['status'] = 'error'
+        diag['error'] = str(e)[:500]
+    except Exception as e:
+        diag['status'] = 'error'
+        diag['error'] = f'{type(e).__name__}: {e}'[:500]
+    print(json.dumps(diag, ensure_ascii=False, indent=2))
 
 
 def surveiller(args, ap):
