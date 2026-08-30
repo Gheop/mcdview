@@ -314,6 +314,13 @@ file's header.
   breaks insert ordering and dumps.
 - **Hub heatmap** (`◉ hubs`): shade every table by its number of FK relations,
   so the central hub tables stand out at a glance, with a degree badge.
+- **Model summary** (`∑ résumé`): tables, FKs, schemas, average columns, the
+  most-referenced table, orphan tables (no FK) and how many sit on a cycle.
+- **Enriched search**: `type:<sql type>` highlights every table with a column
+  of that type, `ref:<table>` highlights the tables that reference it, and a
+  plain query now falls back to a fuzzy (subsequence) name match.
+- **Text exports**: a Markdown data dictionary (`⬇ MD`) and a Graphviz DOT
+  graph (`⬇ DOT`), alongside the existing SVG export.
 - All are pure client-side, single-file, zero-dependency, and available in the
   English UI too.
 

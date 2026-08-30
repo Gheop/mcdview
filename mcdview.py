@@ -1261,6 +1261,21 @@ TRADUCTIONS = {
         '"Copié"': '"Copied"',
         '"▲ dépend de"': '"▲ depends on"',
         '"▼ dont dépendent"': '"▼ depended on by"',
+        # model-summary card + export buttons
+        'title="résumé du modèle">∑ résumé': 'title="model summary">∑ summary',
+        'title="exporter le dictionnaire de données (Markdown)">⬇ MD':
+            'title="export the data dictionary (Markdown)">⬇ MD',
+        'title="exporter le graphe en DOT (Graphviz)">⬇ DOT':
+            'title="export the graph as DOT (Graphviz)">⬇ DOT',
+        '"Résumé"': '"Summary"',
+        '"Schémas"': '"Schemas"',
+        '"Colonnes / table (moy.)"': '"Columns / table (avg.)"',
+        '"Plus référencée"': '"Most referenced"',
+        '"Orphelines (sans FK)"': '"Orphans (no FK)"',
+        '"Tables en cycle"': '"Tables in a cycle"',
+        '"Aucun résultat."': '"No match."',
+        '"tables avec une colonne de type"': '"tables with a column of type"',
+        '"tables référencent"': '"tables reference"',
     },
 }
 

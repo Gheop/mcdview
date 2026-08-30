@@ -119,7 +119,8 @@
   #legdiff button.actif { background: var(--ligne-vive); color: #fff; border-color: var(--ligne-vive); }
   #hud { position: fixed; top: 12px; left: 12px; display: flex; gap: 8px;
     align-items: center; background: var(--voile); backdrop-filter: blur(4px);
-    padding: 7px 12px; border-radius: 8px; z-index: 10; border: 1px solid var(--bord); }
+    padding: 7px 12px; border-radius: 8px; z-index: 10; border: 1px solid var(--bord);
+    flex-wrap: wrap; max-width: calc(100vw - 372px); }
   #hud input[type=search] { padding: 4px 8px; border: 1px solid var(--bord);
     border-radius: 5px; background: var(--panneau); color: var(--encre); width: 200px; }
   #hud button { padding: 4px 10px; border: 1px solid var(--bord); border-radius: 5px;
@@ -205,8 +206,11 @@
   <button id="btnHubs" data-graphe title="teinter les tables par nombre de relations">◉ hubs</button>
   <button id="btnCycles" data-graphe title="surligner les cycles de clés étrangères">↻ cycles</button>
   <button id="btnJointure" data-graphe title="chemin de jointure entre deux tables">⇢ jointure</button>
+  <button id="btnStats" title="résumé du modèle">∑ résumé</button>
   <button id="theme" title="thème clair / sombre">◐</button>
   <button id="exportSvg" title="exporter le diagramme en SVG">⬇ SVG</button>
+  <button id="exportDico" title="exporter le dictionnaire de données (Markdown)">⬇ MD</button>
+  <button id="exportDot" title="exporter le graphe en DOT (Graphviz)">⬇ DOT</button>
   <label id="labelAudit"><input type="checkbox" id="voirAudit"> FK d'audit</label>
   <span id="compte"></span>
 </div>
@@ -882,6 +886,72 @@ function exporterSVG() {
 }
 document.getElementById("exportSvg").addEventListener("click", exporterSVG);
 
+// --- text exports (data dictionary, Graphviz DOT) and the model summary ---
+function nomFichier(ext) {
+  return (document.title.replace(/[^\w.-]+/g, "_") || "mcdview") + "." + ext;
+}
+function telecharger(nom, contenu, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([contenu], { type }));
+  a.download = nom; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function dicoMarkdown() {
+  const lignes = ["# " + (D.titre || document.title), ""];
+  const fkParTable = {};
+  fksVisibles().forEach(f => { (fkParTable[f.de] = fkParTable[f.de] || {})[f.col] = f.vers; });
+  Object.keys(parCle).sort().forEach(cle => {
+    const t = parCle[cle], fk = fkParTable[cle] || {};
+    lignes.push("## " + cle, "");
+    if (t.comment) lignes.push("> " + t.comment, "");
+    lignes.push("| column | type | key |", "| --- | --- | --- |");
+    t.cols.forEach(c => {
+      const cle2 = t.pk.includes(c.nom) ? "PK" : fk[c.nom] ? "FK → " + nomCourt(fk[c.nom]) : "";
+      lignes.push(`| ${c.nom} | ${c.type}${c.nn ? " NOT NULL" : ""} | ${cle2} |`);
+    });
+    lignes.push("");
+  });
+  return lignes.join("\n");
+}
+function dotGraphe() {
+  const id = s => '"' + String(s).replace(/"/g, '\\"') + '"';
+  const l = ["digraph model {", "  rankdir=LR;", "  node [shape=box, style=rounded];"];
+  Object.keys(parCle).forEach(c => l.push("  " + id(c) + ";"));
+  fksVisibles().forEach(f => l.push("  " + id(f.de) + " -> " + id(f.vers) +
+    (f.col ? " [label=" + id(f.col) + "]" : "") + ";"));
+  l.push("}");
+  return l.join("\n");
+}
+document.getElementById("exportDico").addEventListener("click",
+  () => telecharger(nomFichier("md"), dicoMarkdown(), "text/markdown"));
+document.getElementById("exportDot").addEventListener("click",
+  () => telecharger(nomFichier("dot"), dotGraphe(), "text/vnd.graphviz"));
+
+// --- model summary card ---
+function montrerStats() {
+  const n = Object.keys(parCle).length, fks = fksVisibles();
+  const totalCols = Object.values(parCle).reduce((s, t) => s + t.cols.length, 0);
+  const entrants = {};
+  fks.forEach(f => { entrants[f.vers] = (entrants[f.vers] || 0) + 1; });
+  let refMax = null, refN = 0;
+  Object.keys(entrants).forEach(c => { if (entrants[c] > refN) { refN = entrants[c]; refMax = c; } });
+  const relies = new Set(); fks.forEach(f => { relies.add(f.de); relies.add(f.vers); });
+  const orphelines = Object.keys(parCle).filter(c => !relies.has(c));
+  const schemas = new Set(Object.values(parCle).map(t => t.schema));
+  const cycles = tablesEnCycle().size;
+  const ligne = (k, v) => `<tr><td>${ech(k)}</td><td><strong>${ech(String(v))}</strong></td></tr>`;
+  panneau.innerHTML = `<h2>${ech(TXT.resume)}</h2><table>` +
+    ligne(TXT.tables, n) + ligne("FK", fks.length) + ligne(TXT.schemas, schemas.size) +
+    ligne(TXT.colMoy, (totalCols / (n || 1)).toFixed(1)) +
+    ligne(TXT.plusReferencee, refMax ? nomCourt(refMax) + " (" + refN + ")" : "—") +
+    ligne(TXT.orphelines, orphelines.length) + ligne(TXT.cycles, cycles) + `</table>` +
+    (orphelines.length ? `<div class="encart ty">${ech(TXT.orphelines)} : ` +
+      orphelines.slice(0, 30).map(c => ech(nomCourt(c))).join(", ") +
+      (orphelines.length > 30 ? " …" : "") + `</div>` : "");
+  reduirePanneau(false);
+}
+document.getElementById("btnStats").addEventListener("click", montrerStats);
+
 // --- detail panel ---
 function lienTable(cle) {
   return `<a data-cible="${ech(cle)}">${ech(cle.split(".")[1])}</a>`;
@@ -933,15 +1003,22 @@ function detailler(cle) {
 // --- search ---
 document.getElementById("cherche").addEventListener("change", e => {
   const v = e.target.value.trim(), vl = v.toLowerCase();
+  if (!v) { vueGenerale(); return; }
+  const mt = v.match(/^type:\s*(.+)$/i);                           // type:<sql type>
+  if (mt) { chercherType(mt[1].trim().toLowerCase()); return; }
+  const mr = v.match(/^ref:\s*(.+)$/i);                            // ref:<table>
+  if (mr) { chercherRef(mr[1].trim().toLowerCase()); return; }
   let cle = null, col = null;
   if (parCle[v]) cle = v;                                          // exact table key
   else {
     const parNom = Object.keys(parCle).find(c => c.toLowerCase().endsWith("." + vl));
     if (parNom) cle = parNom;                                      // table by short name
     else if (parColonne[vl]) { cle = parColonne[vl].cle; col = parColonne[vl].col; }  // column
-    else cle = Object.keys(parCle).find(c => c.toLowerCase().includes(vl));
+    else cle = Object.keys(parCle).find(c => c.toLowerCase().includes(vl))
+           || cleFloue(vl);                                        // fuzzy fallback
   }
   if (cle) { colonneCible = col; vueGenerale(); setTimeout(() => isoler(cle), 400); }
+  else montrerIndice(TXT.rienTrouve);
 });
 ckAudit.addEventListener("change", () => {
   if (focusCle) isoler(focusCle); else dessinerLiens();
@@ -974,6 +1051,16 @@ const TXT = {
   copie: "Copié",
   amont: "▲ dépend de",
   aval: "▼ dont dépendent",
+  resume: "Résumé",
+  tables: "Tables",
+  schemas: "Schémas",
+  colMoy: "Colonnes / table (moy.)",
+  plusReferencee: "Plus référencée",
+  orphelines: "Orphelines (sans FK)",
+  cycles: "Tables en cycle",
+  rienTrouve: "Aucun résultat.",
+  tablesAvecType: "tables avec une colonne de type",
+  tablesRef: "tables référencent",
 };
 function afficherEncartJointure(a, b, chemin) {
   let corps;
@@ -1021,6 +1108,17 @@ function poserMev(cles, liens) {
   document.body.classList.add("graphe-actif");
   dessinerLiens();
 }
+// leave isolation synchronously (all tables back home, visible) without the
+// async reframe vueGenerale schedules — so a caller can then frame its own set
+function reinitVue() {
+  focusCle = null; btnRetour.hidden = true;
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  Object.keys(elems).forEach(c => {
+    elems[c].classList.remove("efface", "choisie");
+    elems[c].style.left = origines[c].x + "px";
+    elems[c].style.top = origines[c].y + "px";
+  });
+}
 // leaving focus/overview or pressing Escape drops any active graph mode
 function sortirModes() {
   jointure.actif = false; jointure.premier = null;
@@ -1049,16 +1147,41 @@ function montrerImpact(cle, versLAmont) {
   if (r.tables.size <= 1) { montrerIndice(TXT.aucuneRelation); return; }
   // called from the isolated panel: leave isolation so the whole reachable set
   // is visible (home positions), then highlight it. Keep the panel as-is.
-  focusCle = null; btnRetour.hidden = true;
-  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
-  Object.keys(elems).forEach(c => {
-    elems[c].classList.remove("efface", "choisie");
-    elems[c].style.left = origines[c].x + "px";
-    elems[c].style.top = origines[c].y + "px";
-  });
+  reinitVue();
   poserMev(r.tables, r.liens);
   elems[cle].classList.add("depart");
   cadrer([...r.tables]);
+}
+
+// ---- enriched search: fuzzy names, type:… and ref:… ----
+function cleFloue(vl) {  // subsequence match on the short name; shortest name wins
+  let best = null, bestLen = 1e9;
+  Object.keys(parCle).forEach(c => {
+    const nom = c.split(".").pop().toLowerCase();
+    let i = 0; for (const ch of nom) if (i < vl.length && ch === vl[i]) i++;
+    if (i === vl.length && nom.length < bestLen) { best = c; bestLen = nom.length; }
+  });
+  return best;
+}
+function chercherType(q) {  // highlight every table with a column of this type
+  const tables = Object.keys(parCle).filter(c =>
+    parCle[c].cols.some(col => col.type.toLowerCase().includes(q)));
+  if (!tables.length) { montrerIndice(TXT.rienTrouve); return; }
+  reinitVue(); poserMev(tables, new Set()); cadrer(tables);
+  montrerIndice(tables.length + " " + TXT.tablesAvecType + ' « ' + q + ' »');
+}
+function chercherRef(q) {  // highlight the tables that reference the named table
+  const cible = Object.keys(parCle).find(c => c.split(".").pop().toLowerCase() === q)
+             || Object.keys(parCle).find(c => c.toLowerCase().includes(q));
+  if (!cible) { montrerIndice(TXT.rienTrouve); return; }
+  const liens = new Set(), tables = new Set([cible]);
+  fksVisibles().forEach(f => {
+    if (f.vers === cible) { tables.add(f.de); liens.add(cleLien(f.de, f.vers)); }
+  });
+  reinitVue(); poserMev(tables, liens);
+  elems[cible] && elems[cible].classList.add("depart");
+  cadrer([...tables]);
+  montrerIndice((tables.size - 1) + " " + TXT.tablesRef + " " + nomCourt(cible));
 }
 
 // ---- shortest join path between two tables (BFS on the undirected FK graph) ----
