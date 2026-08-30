@@ -814,7 +814,8 @@ def analyser_mwb(chemin):
 
 IRREGULIERS = {'people': 'person', 'children': 'child', 'men': 'man',
                'women': 'woman', 'teeth': 'tooth', 'feet': 'foot',
-               'mice': 'mouse', 'geese': 'goose', 'people_id': 'person'}
+               'mice': 'mouse', 'geese': 'goose', 'media': 'medium',
+               'data': 'datum', 'people_id': 'person'}
 
 
 def singulariser(mot):
@@ -869,12 +870,23 @@ def analyser_schema_rb(chemin):
         tables[cle] = nouvelle_table('public', nom, cols, pk)
     for m in re.finditer(r'add_foreign_key\s+["\']([^"\']+)["\'],\s*["\']([^"\']+)["\']([^\n]*)', src):
         det, verst, reste = m.groups()
-        mc = re.search(r'column:\s*["\']([^"\']+)["\']', reste)
-        col = mc.group(1) if mc else singulariser(verst) + '_id'
         mp = re.search(r'primary_key:\s*["\']([^"\']+)["\']', reste)
         de, vers = f'public.{det}', f'public.{verst}'
-        if de in tables and vers in tables:
-            fks.append(nouvelle_fk(de, col, vers, mp.group(1) if mp else 'id'))
+        if de not in tables or vers not in tables:
+            continue
+        mc = re.search(r'column:\s*["\']([^"\']+)["\']', reste)
+        if mc:
+            col = mc.group(1)
+        else:
+            # the default is <singular(to)>_id; singularization is heuristic
+            # (statuses→status, people→person), so if the guess is not an
+            # actual column, prefer a real <stem>_id column that matches
+            col = singulariser(verst) + '_id'
+            reels = {c['nom'] for c in tables[de]['cols']}
+            if col not in reels:
+                col = next((c for c in (singulariser(verst) + '_id', verst[:-2] + '_id',
+                                        verst[:-1] + '_id', verst + '_id') if c in reels), col)
+        fks.append(nouvelle_fk(de, col, vers, mp.group(1) if mp else 'id'))
     return tables, fks
 
 
