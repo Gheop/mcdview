@@ -367,9 +367,10 @@ def flairer_dialecte(chemin):
 # auto tries these sqlglot dialects (after the sniffed guess) and keeps the
 # one that yields the most tables — one file is often only valid in one of them
 DIALECTES_ESSAI = ['mysql', 'sqlite', 'postgres', 'tsql', 'oracle', 'clickhouse', 'duckdb']
-# above this size, --dialect auto picks the dialect on a prefix (one full
-# sqlglot parse per dialect on a big file is what made a 300 KB file take 2 s+)
-SEUIL_ECHANTILLON = 60000
+# above this size, --dialect auto picks the dialect on a prefix, then does one
+# full parse with the winner — instead of a full sqlglot parse per candidate
+# dialect. A ~25 KB prefix already distinguishes dialects by table count.
+SEUIL_ECHANTILLON = 25000
 
 
 def ressemble_postgres(chemin):
