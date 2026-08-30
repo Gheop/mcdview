@@ -468,6 +468,14 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
             return fk.parent.name
         return fk.name
 
+    def rendre_sql(noeud):
+        # sqlglot's generator itself can crash on some exotic default/type
+        # expressions; a rendering failure must not abort the whole parse
+        try:
+            return noeud.sql(dialect=dialecte)
+        except Exception:
+            return ''
+
     def ajouter_fk(de, cols, ref, nom):
         cible = ref.find(exp.Table)
         if not cible:
@@ -504,14 +512,14 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                         ajouter_fk(k, [d.name], c, '')
                 if comc is not None:
                     colcomments[d.name] = comc.name
-                brut = typ.sql(dialect=dialecte) if typ else ''
+                brut = rendre_sql(typ) if typ else ''
                 # lowercase to match the PostgreSQL parser's output, but keep
                 # string literals intact (ENUM('Active') must not become 'active')
                 type_txt = brut if "'" in brut else brut.lower()
                 cols.append(nouvelle_colonne(
                     d.name, type_txt,
                     any(isinstance(c, exp.NotNullColumnConstraint) for c in kinds),
-                    defc.sql(dialect=dialecte) if defc is not None else ''))
+                    rendre_sql(defc) if defc is not None else ''))
             for p in stmt.find_all(exp.PrimaryKey):
                 noms = [c.name for c in p.expressions]
                 if noms:
