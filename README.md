@@ -300,6 +300,12 @@ file's header.
 
 ## Changelog
 
+### v0.24.1 — Soft-faded diagram edges (2026-08-30)
+
+- The viewport edges fade softly, so a foreign-key link to a table currently
+  off-screen (after panning) fades out at the border instead of stopping hard
+  in mid-air (it used to read as "a link leading to nothing").
+
 ### v0.24.0 — Robustness, --diagnose, and a big corpus sweep (2026-08-30)
 
 - Swept mcdview over **~15,000 real-world files** across every format; fixed
