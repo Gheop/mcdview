@@ -300,6 +300,21 @@ file's header.
 
 ## Changelog
 
+### v0.24.6 — Columns in the isolated view on huge models; no edge flash (2026-08-30)
+
+- On very large models (over 800 tables) the diagram builds header-only nodes
+  to stay fast, so a table showed as a name pill even when you zoomed in or
+  isolated it — its columns only appeared in the side panel. Isolating a table
+  now re-injects the columns into the focused table and its neighbours (a
+  handful of nodes), so the isolated view reads like it does on a small model.
+  Returning to the overview strips them back to header-only, keeping the
+  overview cheap.
+- No more edge flash on first paint (Firefox): the FK edges stay hidden until
+  the initial refit routes them against settled boxes, then fade in over ~120
+  ms. The tables show immediately (no cold-start blank screen), and a safety
+  timeout reveals the edges even if the animation frame is starved (background
+  tab) so they can never stay hidden.
+
 ### v0.24.5 — Deterministic, flash-free panel intro (2026-08-30)
 
 - The panel intro now plays the same way on every load: the page starts with

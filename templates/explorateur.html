@@ -33,7 +33,12 @@
     mask-composite: intersect; }
   #viewport.drag { cursor: grabbing; }
   #plan { position: absolute; transform-origin: 0 0; }
-  #liens { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+  #liens { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none;
+           transition: opacity .12s ease; }
+  /* hidden until the initial refit routes the edges against settled boxes, so
+     Firefox never flashes the provisional (mis-placed) edges — revealed with a
+     short fade. Tables stay visible throughout (no cold-start blank screen). */
+  #liens.avant-refit { opacity: 0; transition: none; }
   .table { position: absolute; min-width: 150px; background: var(--panneau);
     border: 1.5px solid var(--bord); border-radius: 6px; cursor: pointer;
     box-shadow: 0 1px 4px #0002; transition: left .35s ease, top .35s ease, opacity .25s; }
@@ -171,7 +176,7 @@
   <span id="compte"></span>
 </div>
 <div id="viewport">
-  <div id="plan"><svg id="liens"></svg></div>
+  <div id="plan"><svg id="liens" class="avant-refit"></svg></div>
 </div>
 <canvas id="minimap" width="200" height="140" title="cliquer pour naviguer"></canvas>
 <div id="legende"></div>
@@ -230,21 +235,29 @@ const NOEUDS_LEGERS = D.tables.length > 800;    // header-only nodes on huge mod
 const fkColsPar = {};
 D.fks.forEach(f => { (fkColsPar[f.de] = fkColsPar[f.de] || new Set()).add(f.col); });
 const DCLS = { ajoute: "d-add", supprime: "d-del", modifie: "d-mod" };
+const tParCle = {};              // cle -> table data, for lazy node rebuilds
+// node markup: header always, column <ul> only when avecColonnes. On a huge
+// model the overview builds header-only nodes (≈20× fewer DOM nodes); isoler()
+// re-injects the columns for the handful of tables it keeps on screen, so the
+// isolated table reads like it does on a small model.
+function htmlNoeud(cle, avecColonnes) {
+  const t = tParCle[cle];
+  const entete = "<h3 style='background:" + ech(D.schemas[t.schema] || "#ccc") + "'>" + ech(t.nom) + "</h3>";
+  if (!avecColonnes) return entete;
+  const fkCols = fkColsPar[cle] || new Set();
+  return entete + "<ul>" +
+    t.cols.map(c => "<li" + (c.diff ? " class='" + DCLS[c.diff] + "'" : "") + ">" +
+      (t.pk.includes(c.nom) ? "🔑 " : fkCols.has(c.nom) ? "🔗 " : "") +
+      ech(c.nom) + "<span class='t'>" + ech(c.type) + "</span></li>").join("") + "</ul>";
+}
 D.tables.forEach(t => {
   const cle = t.schema + "." + t.nom;
+  tParCle[cle] = t;
   const div = document.createElement("div");
   div.className = "table" + (t.diff ? " " + DCLS[t.diff] : "");
   div.style.left = t.x + "px";
   div.style.top = t.y + "px";
-  const fkCols = fkColsPar[cle] || new Set();
-  const entete = "<h3 style='background:" + ech(D.schemas[t.schema] || "#ccc") + "'>" + ech(t.nom) + "</h3>";
-  // on a huge model, build header-only nodes (≈20× fewer DOM nodes): the column
-  // lists are unreadable at that scale anyway, and the detail panel reads
-  // columns from the data, so isolating a table still shows everything
-  div.innerHTML = NOEUDS_LEGERS ? entete : entete + "<ul>" +
-    t.cols.map(c => "<li" + (c.diff ? " class='" + DCLS[c.diff] + "'" : "") + ">" +
-      (t.pk.includes(c.nom) ? "🔑 " : fkCols.has(c.nom) ? "🔗 " : "") +
-      ech(c.nom) + "<span class='t'>" + ech(c.type) + "</span></li>").join("") + "</ul>";
+  div.innerHTML = htmlNoeud(cle, !NOEUDS_LEGERS);
   if (t.comment) div.title = t.comment;
   div.dataset.cle = cle;
   fragTables.appendChild(div);
@@ -539,6 +552,7 @@ btnToggle.addEventListener("click", () => {
 });
 
 // --- DBeaver-like focus mode: the table in the center, its neighbours in a star ---
+const enrichis = new Set();   // huge-model nodes rebuilt with their columns (see isoler)
 function isoler(cle) {
   focusCle = cle;
   finIntro();  // a table click ends the intro and keeps the panel open below
@@ -550,6 +564,12 @@ function isoler(cle) {
   const garde = new Set([cle, ...voisinage]);
   Object.keys(elems).forEach(c => elems[c].classList.toggle("efface", !garde.has(c)));
   Object.keys(elems).forEach(c => elems[c].classList.toggle("choisie", c === cle));
+  // huge model: the kept tables were built header-only; give them their columns
+  // back now (cheap for a star of a few tables) so the isolated view is legible.
+  // Done before measuring sizes below, so the star layout uses the real heights.
+  if (NOEUDS_LEGERS) garde.forEach(c => {
+    if (!enrichis.has(c)) { elems[c].innerHTML = htmlNoeud(c, true); enrichis.add(c); }
+  });
   // star: the chosen table keeps its place, neighbours circle around it.
   // The radius grows with the table sizes (a big neighbour like a 40-column
   // table would overlap the centre at a fixed radius) and a final de-overlap
@@ -601,6 +621,8 @@ function vueGenerale() {
   if (bf) bf.classList.remove("actif");
   if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   btnRetour.hidden = true;
+  // strip the columns re-injected during isolation, back to cheap header-only nodes
+  if (enrichis.size) { enrichis.forEach(c => elems[c].innerHTML = htmlNoeud(c, false)); enrichis.clear(); }
   Object.keys(elems).forEach(c => {
     elems[c].classList.remove("efface", "choisie");
     elems[c].style.left = origines[c].x + "px";
@@ -880,16 +902,25 @@ cadrer(Object.keys(elems));
 // Re-fit once fonts are ready and two frames have painted — a no-op in Chrome
 // (same result), the correction Firefox needs. Skipped if the viewer is
 // already on a specific table (permalink) or has taken over the view.
+let liensReveles = false;
+function revelerLiens() {  // idempotent: edges fade in once, whoever gets here first
+  if (liensReveles) return;
+  liensReveles = true;
+  svg.classList.remove("avant-refit");
+}
 function refitInitial() {
   // if a permalink put the viewer on a table, just redraw links against the
   // now-settled boxes; otherwise re-fit the whole diagram
-  if (focusCle || location.hash) { dessinerLiens(); return; }
-  cadrer(Object.keys(elems));
-  dessinerLiens();
+  if (focusCle || location.hash) dessinerLiens();
+  else { cadrer(Object.keys(elems)); dessinerLiens(); }
+  revelerLiens();  // edges are now correctly placed against settled boxes
 }
 const deuxFrames = () => requestAnimationFrame(() => requestAnimationFrame(refitInitial));
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(deuxFrames);
 else deuxFrames();
+// safety net: never leave the edges hidden if rAF is starved (background tab) or
+// fonts.ready stalls — reveal them even though the refit hasn't run yet
+setTimeout(revelerLiens, 1200);
 
 // --- permalink: #schema.table opens straight on that table ---
 window.addEventListener("hashchange", () => {
