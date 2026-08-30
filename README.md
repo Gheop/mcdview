@@ -301,6 +301,16 @@ file's header.
 
 ## Changelog
 
+### v0.25.1 — Firefox fit fix; grouped export menu (2026-08-30)
+
+- Fix a Firefox regression where the diagram's foreign-key edges could appear at
+  their provisional positions before the initial fit settled. The edges now stay
+  hidden until a real re-fit runs — re-fit is also retried on `window.load` and
+  by the safety timeout (which now re-fits, not just reveals), and it is skipped
+  once the viewer has panned or zoomed, so it never resets a view in use.
+- The SVG, Markdown and DOT exports are grouped under one `⬇ export` dropdown
+  to declutter the toolbar.
+
 ### v0.25.0 — Graph analysis: join paths, impact, cycles, hub heatmap (2026-08-30)
 
 - **Join path** (`⇢ jointure`): pick two tables and mcdview highlights the
