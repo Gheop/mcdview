@@ -73,6 +73,18 @@ def analyser_colonne(ligne):
     return nouvelle_colonne(nom, reste.strip().rstrip(',').strip(), nn, defaut)
 
 
+def ressource(rel):
+    """Locate a bundled data file (the HTML template, the logo). In a source
+    checkout it sits next to this file; a pip/pipx install carries it under
+    `_assets/` alongside the module (see pyproject force-include)."""
+    ici = Path(__file__).parent
+    for base in (ici, ici / '_assets'):
+        p = base / rel
+        if p.exists():
+            return p
+    return ici / rel  # let the caller's read() raise a clear FileNotFoundError
+
+
 def nouvelle_table(schema, nom, cols=None, pk=None, comment='', colcomments=None,
                    index=None):
     """The table record every parser produces and composer_page consumes — one
@@ -791,7 +803,9 @@ def analyser_mermaid(chemin):
         r'(?:"([^"]{1,255})"|([A-Za-z_][\w-]{0,127}))')
     masque = ''.join(reste_masque)
     for ligne in masque.splitlines():
-        if '--' not in ligne and '..' not in ligne:
+        # a real relationship line is short; skip an abnormally long one so the
+        # regex cannot be made to scan many start positions on crafted input
+        if len(ligne) > 2000 or ('--' not in ligne and '..' not in ligne):
             continue
         m = RE_REL.search(ligne)
         if not m:
@@ -1038,9 +1052,8 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
                'dialecte': dialecte, 'diff': mode_diff}
     # '<' escaped in the JSON: no '</script>' or '<!--' can leak from the data
     json_txt = json.dumps(donnees, ensure_ascii=False).replace('<', '\\u003c')
-    ici = Path(__file__).parent
-    html = traduire((ici / 'templates' / 'explorateur.html').read_text(), lang)
-    logo = (ici / 'logo.svg').read_text()
+    html = traduire(ressource('templates/explorateur.html').read_text(), lang)
+    logo = ressource('logo.svg').read_text()
     html = html.replace('__DONNEES__', json_txt).replace('__TITRE__', echapper(titre))
     if logo_file:
         # a custom logo is embedded as <img> data URI: in an image context no
@@ -1060,7 +1073,7 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
     # clash with the header SVG). mcdview-site passes its own; CLI users don't.
     badge = ''
     if credit:
-        b64 = base64.b64encode((ici / 'logo.svg').read_bytes()).decode()
+        b64 = base64.b64encode(ressource('logo.svg').read_bytes()).decode()
         contenu = (f'<img src="data:image/svg+xml;base64,{b64}" width="18" '
                    f'height="18" alt=""><b>{echapper(credit)}</b>')
         badge = (f'<a href="{echapper(url_sure(credit_url))}" target="_blank" '

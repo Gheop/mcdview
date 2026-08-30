@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.27,<1.28"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcdview"
+version = "0.23.1"
+description = "Turn a SQL data model into one self-contained, interactive HTML page"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Gheop" }]
+keywords = ["sql", "erd", "database", "schema", "diagram", "postgresql", "visualization"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Database",
+    "Topic :: Software Development :: Documentation",
+]
+
+[project.optional-dependencies]
+# non-PostgreSQL dialects (MySQL, SQLite, SQL Server…) go through sqlglot;
+# .dbm/.dbml/.prisma need external non-Python tools, documented in the README
+dialects = ["sqlglot"]
+
+[project.urls]
+Homepage = "https://github.com/Gheop/mcdview"
+Demo = "https://gheop.github.io/mcdview/"
+Issues = "https://github.com/Gheop/mcdview/issues"
+
+[project.scripts]
+mcdview = "mcdview:principal"
+
+[tool.hatch.build.targets.wheel]
+# the tool is a single top-level module; its data files ride along under
+# _assets/ so `ressource()` finds them next to the installed module
+only-include = ["mcdview.py"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"templates" = "_assets/templates"
+"logo.svg" = "_assets/logo.svg"
+
+[tool.hatch.build.targets.sdist]
+include = ["mcdview.py", "templates", "logo.svg", "README.md", "LICENSE"]

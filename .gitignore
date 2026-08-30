@@ -10,3 +10,4 @@ tests/corpus/mwb/
 tests/corpus/rails/
 tests/corpus/mermaid/
 tests/corpus/drizzle/
+dist

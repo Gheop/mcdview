@@ -110,9 +110,21 @@ only what moved" filter:
 
 [![mcdview diff: added, removed and changed tables highlighted](docs/diff.webp)](https://gheop.github.io/mcdview/exemples/boutique-diff.html)
 
+## Install
+
+```bash
+pipx install mcdview                 # the CLI, isolated
+pipx install "mcdview[dialects]"     # + sqlglot for MySQL/SQLite/… input
+```
+
+Or run the script straight from a checkout — it has no dependency of its own:
+`./mcdview.py model.sql`. The `.dbm`/`.dbml`/`.prisma` inputs still need their
+external converter in the PATH (see [Dialects](#dialects)).
+
 ## Usage
 
 ```bash
+mcdview model.sql                    # (or ./mcdview.py from a checkout)
 ./mcdview.py model.sql
 ./mcdview.py model.sql -o explorer.html --titre "My project"
 ./mcdview.py model.dbm          # pgModeler model (needs pgmodeler-cli)
@@ -285,6 +297,12 @@ security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.23.1 — Installable from PyPI (2026-08-30)
+
+- Packaged for `pipx install mcdview` (extra `[dialects]` pulls in sqlglot).
+  The HTML template and logo ride along as bundled data; running the script
+  straight from a checkout keeps working unchanged.
 
 ### v0.23.0 — Big-model UX, SVG export, richer diff (2026-08-29)
 
