@@ -153,6 +153,23 @@ def principal():
     if got != {('c', 'pid', 'p', 'id')}:
         echecs.append(f'virgule en tête FK: {got}')
 
+    # a CREATE TABLE whose "(" is followed by columns on the SAME line and whose
+    # body continues on later lines (closing ")" elsewhere) must parse even in a
+    # mixed file — previously the built-in parser dropped it (no sqlglot fallback
+    # once another table had parsed)
+    t = tables_de(
+        'CREATE TABLE users (id INT PRIMARY KEY, name TEXT);\n'
+        'CREATE TABLE posts (id INT PRIMARY KEY, user_id INT,\n'
+        '  FOREIGN KEY (user_id) REFERENCES users(id));')
+    if 'public.posts' not in t or [c['nom'] for c in t.get('public.posts', {}).get('cols', [])] != ['id', 'user_id']:
+        echecs.append(f'ouverture inline multi-ligne: posts={t.get("public.posts")}')
+    got = fks_de(
+        'CREATE TABLE users (id INT PRIMARY KEY, name TEXT);\n'
+        'CREATE TABLE posts (id INT PRIMARY KEY, user_id INT,\n'
+        '  FOREIGN KEY (user_id) REFERENCES users(id));')
+    if got != {('posts', 'user_id', 'users', 'id')}:
+        echecs.append(f'ouverture inline multi-ligne FK: {got}')
+
     # single-line / compact CREATE TABLE (no newline after the open paren) is
     # parsed by the built-in parser, not only via sqlglot
     t = tables_de("CREATE TABLE t (a integer PRIMARY KEY, b numeric(10,2), c text);")

@@ -271,14 +271,24 @@ def analyser_sql(chemin):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:  # already built by the multi-line pass
             continue
-        # slice only to the end of the opener's line, not the whole remaining
-        # file (else 3000 unterminated openers each copy the full tail — a DoS)
+        # first try the opener's own line only — the common single-line table,
+        # and cheap even on a "CREATE TABLE a (\n" bomb (empty body)
         fin_ligne = src.find('\n', m.end())
-        ligne_reste = src[m.end():fin_ligne if fin_ligne != -1 else len(src)]
-        entrees, ok = decouper_corps(ligne_reste)
+        corps_txt = src[m.end():fin_ligne if fin_ligne != -1 else len(src)]
+        entrees, ok = decouper_corps(corps_txt)
+        if not ok:
+            # the body runs past the opener's line (e.g. "(id int,\n  FOREIGN KEY
+            # …\n);"). Look for a plausible statement close ");" within a bounded
+            # window — a C-level find with no copy, so many unterminated openers
+            # stay cheap — then depth-split only that slice
+            borne = min(len(src), m.end() + 20000)
+            j = src.find(');', m.end(), borne)
+            if j != -1:
+                corps_txt = src[m.end():j + 1]
+                entrees, ok = decouper_corps(corps_txt)
         if ok and entrees:
             tables[cle] = entrees_en_table(m.group(1) or 'public', m.group(2), entrees)
-            corps_par_cle[cle] = ligne_reste
+            corps_par_cle[cle] = corps_txt
 
     # partitions: constraints carried by a partition are folded back into
     # the parent, and the partitions themselves do not appear in the model

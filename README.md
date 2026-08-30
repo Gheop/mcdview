@@ -301,6 +301,17 @@ file's header.
 
 ## Changelog
 
+### v0.26.1 — Parse inline-opening multi-line CREATE TABLE (2026-08-30)
+
+- The built-in PostgreSQL parser now reads a `CREATE TABLE` whose `(` is
+  followed by columns on the same line and whose body continues on later lines
+  (closing `)` elsewhere) — e.g. `CREATE TABLE t (id int,\n  FOREIGN KEY …\n);`.
+  Previously it sat between the two fast passes and was silently dropped in a
+  mixed file (only rescued by sqlglot when the whole file had zero
+  regex-parseable tables). The single-line pass now extends to the statement's
+  closing `);` within a bounded window (a C-level search, no copy), so the
+  ReDoS/DoS budget is unchanged (the orphan-openers stress stays ~0.4 s).
+
 ### v0.26.0 — SVG preview, view deep-links, schema lint (2026-08-30)
 
 - `--to-preview` emits a static SVG snapshot of the diagram (auto-layout,
