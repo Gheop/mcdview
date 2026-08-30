@@ -418,14 +418,22 @@ def analyser(chemin, dialecte='auto'):
         # dialect on a bounded prefix, then parse it in full just once.
         candidats = list(dict.fromkeys([flairer_dialecte(chemin)] + DIALECTES_ESSAI))
         src = open(chemin, errors='replace').read()
+
+        def essayer(d, texte):
+            # defense in depth: an unforeseen sqlglot AST shape must not crash
+            # the whole tool — fall back to no tables for that dialect
+            try:
+                return analyser_sqlglot(chemin, d, False, texte)
+            except Exception:
+                return {}, []
+
         if len(src) > SEUIL_ECHANTILLON:
             ech = src[:SEUIL_ECHANTILLON]
-            d = max(candidats, key=lambda d: len(analyser_sqlglot(chemin, d, False, ech)[0]))
-            t, f = analyser_sqlglot(chemin, d, False, src)
-            return (*normaliser_casse(t, f), d)
+            d = max(candidats, key=lambda d: len(essayer(d, ech)[0]))
+            return (*normaliser_casse(*essayer(d, src)), d)
         meilleur = ({}, [], candidats[0])
         for d in candidats:
-            t, f = analyser_sqlglot(chemin, d, False, src)
+            t, f = essayer(d, src)
             if len(t) > len(meilleur[0]):
                 meilleur = (t, f, d)
         return (*normaliser_casse(meilleur[0], meilleur[1]), meilleur[2])
@@ -531,7 +539,7 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
             comment = ''
             props = stmt.args.get('properties')
             for p in (props.expressions if props else []):
-                if isinstance(p, exp.SchemaCommentProperty):
+                if isinstance(p, exp.SchemaCommentProperty) and p.this is not None:
                     comment = p.this.name
             tables[k] = nouvelle_table(tbl.db or 'public', tbl.name, cols, pk,
                                        comment, colcomments)
@@ -547,7 +555,7 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                     tables[k]['index'].append({'nom': '', 'cols': noms, 'unique': True})
         elif isinstance(stmt, exp.Create) and stmt.kind == 'INDEX':
             idx = stmt.this
-            tbl = idx.args.get('table')
+            tbl = idx.args.get('table') if idx is not None else None
             if tbl is not None:
                 k = cle(tbl)
                 if k in tables:
