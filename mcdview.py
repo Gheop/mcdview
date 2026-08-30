@@ -1231,6 +1231,7 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
     html = traduire(ressource('templates/explorateur.html').read_text(), lang)
     logo = ressource('logo.svg').read_text()
     html = html.replace('__DONNEES__', json_txt).replace('__TITRE__', echapper(titre))
+    html = html.replace('__VERSION__', echapper('mcdview ' + version_mcdview()))
     if logo_file:
         # a custom logo is embedded as <img> data URI: in an image context no
         # script from a third-party SVG can run, unlike an inlined <svg>

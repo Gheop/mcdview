@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcdview"
-version = "0.24.6"
+version = "0.24.7"
 description = "Turn a SQL data model into one self-contained, interactive HTML page"
 readme = "README.md"
 requires-python = ">=3.9"

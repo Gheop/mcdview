@@ -300,6 +300,13 @@ file's header.
 
 ## Changelog
 
+### v0.24.7 — Discreet version stamp (2026-08-30)
+
+- Each generated page now shows which mcdview built it, faintly in the
+  bottom-left corner (below the schema legend). Handy when a diagram was saved
+  or shared a while ago: you can tell at a glance which version produced it,
+  since old pages are never regenerated in place.
+
 ### v0.24.6 — Columns in the isolated view on huge models; no edge flash (2026-08-30)
 
 - On very large models (over 800 tables) the diagram builds header-only nodes

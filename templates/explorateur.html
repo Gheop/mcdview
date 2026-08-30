@@ -135,8 +135,12 @@
   #panneau h4 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase;
     letter-spacing: .04em; opacity: .7; }
   #panneau .vide { opacity: .6; font-style: italic; margin-top: 3em; }
-  #legende { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 6px;
+  #legende { position: fixed; left: 12px; bottom: 34px; display: flex; gap: 6px;
     flex-wrap: wrap; z-index: 10; max-width: 55%; }
+  /* which mcdview built this page — discreet, so a saved diagram is traceable
+     to a version (the site never regenerates old pages). Sits below the legend. */
+  #version { position: fixed; left: 13px; bottom: 12px; z-index: 8; font-size: 11px;
+    color: var(--encre); opacity: .35; pointer-events: none; }
   #legende .puce { display: flex; gap: 6px; align-items: center; font: inherit;
     background: var(--voile); color: var(--encre); border: 1px solid var(--bord);
     border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer;
@@ -180,6 +184,7 @@
 </div>
 <canvas id="minimap" width="200" height="140" title="cliquer pour naviguer"></canvas>
 <div id="legende"></div>
+<div id="version">__VERSION__</div>
 <div id="legdiff"><span class="add">ajoutée</span><span class="mod">modifiée</span><span class="del">supprimée</span><button id="filtreTouchees" type="button"></button></div>
 <div id="credit">__CREDIT__</div>
 <button id="togglePanneau" type="button" title="réduire / agrandir le panneau">›</button>
