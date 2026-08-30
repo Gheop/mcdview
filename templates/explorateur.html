@@ -521,11 +521,16 @@ function finIntro() {  // stop the intro; leave the panel wherever it now is
   // slides shut over ~2s, revealing the space it frees
   reduirePanneau(true);
   if (!location.hash) {
-    document.body.classList.add("intro-panneau");
+    document.body.classList.add("intro-panneau");        // shown open on first paint
     introTimer = setTimeout(() => {
+      // establish the slow (1.8s) transition first, then change the transform on
+      // the NEXT frame — changing duration and value in one frame is not animated
+      // reliably (Firefox especially), which made the panel snap shut instantly
       document.body.classList.add("intro-ferme");
-      document.body.classList.remove("intro-panneau");   // triggers the slow close
-      introTimer = setTimeout(() => document.body.classList.remove("intro-ferme"), 1900);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.body.classList.remove("intro-panneau"); // now the slow close runs
+        introTimer = setTimeout(() => document.body.classList.remove("intro-ferme"), 1900);
+      }));
     }, 1100);
   }
 })();
@@ -873,6 +878,21 @@ ckAudit.addEventListener("change", () => {
 if (!D.fks.some(f => f.audit)) document.getElementById("labelAudit").hidden = true;
 dessinerLiens();
 cadrer(Object.keys(elems));
+// Firefox computes the first fit before layout/fonts settle, so the initial
+// zoom and edge routing are off until a reflow (the first hover fixes it).
+// Re-fit once fonts are ready and two frames have painted — a no-op in Chrome
+// (same result), the correction Firefox needs. Skipped if the viewer is
+// already on a specific table (permalink) or has taken over the view.
+function refitInitial() {
+  // if a permalink put the viewer on a table, just redraw links against the
+  // now-settled boxes; otherwise re-fit the whole diagram
+  if (focusCle || location.hash) { dessinerLiens(); return; }
+  cadrer(Object.keys(elems));
+  dessinerLiens();
+}
+const deuxFrames = () => requestAnimationFrame(() => requestAnimationFrame(refitInitial));
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(deuxFrames);
+else deuxFrames();
 
 // --- permalink: #schema.table opens straight on that table ---
 window.addEventListener("hashchange", () => {

@@ -300,6 +300,16 @@ file's header.
 
 ## Changelog
 
+### v0.24.4 — Firefox initial-fit fix (2026-08-30)
+
+- Firefox computed the first zoom-to-fit before layout settled, so a freshly
+  opened page showed the tables mis-scaled and the FK links mis-routed until
+  the first hover. The fit is now recomputed after fonts are ready and two
+  frames have painted (a no-op in Chrome, the correction Firefox needs).
+- The panel intro-close now animates reliably (the slow transition is
+  established a frame before the transform changes, so it no longer snaps shut
+  instantly on some browsers).
+
 ### v0.24.3 — Intro reveal for the detail panel (2026-08-30)
 
 - On first load the detail panel shows open (so its purpose is visible), then
