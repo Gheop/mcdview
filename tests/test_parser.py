@@ -59,6 +59,19 @@ def principal():
     if t['public.d']['pk'] != ['a', 'b']:
         echecs.append(f'PK composite table-level: {t["public.d"]["pk"]}')
 
+    # a FK constraint wrapped across lines (pg_dump style) must not create a
+    # phantom column named REFERENCES
+    t = tables_de(
+        'CREATE TABLE public.a (\n'
+        '  id integer PRIMARY KEY,\n'
+        '  b_id integer,\n'
+        '  CONSTRAINT a_b_fkey FOREIGN KEY (b_id)\n'
+        '      REFERENCES public.b (id)\n'
+        ');')
+    noms = [c['nom'] for c in t['public.a']['cols']]
+    if 'REFERENCES' in noms or noms != ['id', 'b_id']:
+        echecs.append(f'FK multi-ligne: colonnes={noms} (REFERENCES fantôme ?)')
+
     # single-line / compact CREATE TABLE (no newline after the open paren) is
     # parsed by the built-in parser, not only via sqlglot
     t = tables_de("CREATE TABLE t (a integer PRIMARY KEY, b numeric(10,2), c text);")

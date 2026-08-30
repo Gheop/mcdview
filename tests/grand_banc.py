@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""Large-scale quality and performance campaign over the local corpus.
+"""Large-scale quality and performance campaign over the whole local corpus.
 
-Runs mcdview in-process on every .sql under tests/corpus/ (recursive) plus
-the committed examples, timing each phase separately (parse, layout, page
-composition) and validating the result:
+Runs mcdview in-process on every model file under tests/corpus/ (recursive),
+ALL formats — .sql plus the native/converter parsers — timing each phase
+(parse, layout, page) and validating the result:
 - classification: ok / sans-table (dialect not covered) / erreur (exception);
 - anomalies: tables without columns, FKs whose target column is unresolved,
-  leftover placeholders in the HTML;
+  phantom PK columns, leftover placeholders in the HTML;
+- a per-format benchmark breakdown (count + timing percentiles), so a slow
+  parser stands out;
 - optional --chrome N: render N sampled pages headless and compare the DOM
-  table count with the parsed one (end-to-end JS sanity);
-- optional --dbm: also run every corpus .dbm through pgmodeler-cli (export
-  timed apart, upstream loading failures classified as refus-pgmodeler).
+  table count with the parsed one (end-to-end JS sanity).
 
-Writes one line per file to tests/resultats.tsv and prints a summary with
-percentiles.
+External-tool formats are gated: .dbm needs --dbm (pgmodeler-cli), .dbml/.prisma
+need --converters (dbml2sql / prisma). Native formats always run. Writes one
+line per file to tests/resultats.tsv and prints a summary with percentiles.
 """
 import argparse
 import importlib.util
@@ -33,6 +34,11 @@ TSV = RACINE / 'tests' / 'resultats.tsv'
 spec = importlib.util.spec_from_file_location('mcdview', RACINE / 'mcdview.py')
 mcdview = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mcdview)
+
+# extension -> format label. Native formats need no external tool.
+NATIFS = {'.mwb': 'mwb', '.rb': 'rails', '.mmd': 'mermaid', '.mermaid': 'mermaid',
+          '.md': 'mermaid', '.ts': 'drizzle'}
+CONVERTISSEURS = {'.dbml': 'dbml', '.prisma': 'prisma'}
 
 
 def chrono(fonction, *args):
@@ -60,108 +66,171 @@ def valider_chrome(chemin_html, attendu_tables):
     return rendues == attendu_tables, rendues
 
 
+def charger_fichier(chemin, fmt):
+    """Return (tables, fks) for one file, dispatched by format."""
+    s = str(chemin)
+    if fmt == 'sql':
+        return mcdview.analyser(s, 'auto')[:2]
+    if fmt == 'dbm':
+        return mcdview.analyser(mcdview.sql_depuis_dbm(s), 'postgres')[:2]
+    if fmt == 'dbml':
+        return mcdview.analyser(mcdview.sql_depuis_dbml(s), 'postgres')[:2]
+    if fmt == 'prisma':
+        return mcdview.analyser(mcdview.sql_depuis_prisma(s), 'auto')[:2]
+    if fmt == 'mwb':
+        return mcdview.normaliser_casse(*mcdview.analyser_mwb(s))
+    if fmt == 'rails':
+        return mcdview.normaliser_casse(*mcdview.analyser_schema_rb(s))
+    if fmt == 'mermaid':
+        return mcdview.normaliser_casse(*mcdview.analyser_mermaid(s))
+    if fmt == 'drizzle':
+        return mcdview.normaliser_casse(*mcdview.analyser_drizzle(s))
+    raise ValueError(fmt)
+
+
+def anomalies_de(tables, fks, html):
+    problemes = []
+    if any(p in html for p in ('__DONNEES__', '__TITRE__', '__LOGO__')):
+        problemes.append('placeholder')
+    sans_cols = sum(1 for t in tables.values() if not t['cols'])
+    if sans_cols:
+        problemes.append(f'{sans_cols} tables sans colonne')
+    sans_cible = sum(1 for f in fks if not f['colcible'])
+    if sans_cible:
+        problemes.append(f'{sans_cible} FK sans colonne cible')
+    # a PK/FK naming a column the table does not have (phantom)
+    fantomes = 0
+    for t in tables.values():
+        noms = {c['nom'] for c in t['cols']}
+        fantomes += sum(1 for p in t['pk'] if p not in noms)
+    for f in fks:
+        src = tables.get(f['de'])
+        if src and f['col'] and f['col'] not in {c['nom'] for c in src['cols']}:
+            fantomes += 1
+    if fantomes:
+        problemes.append(f'{fantomes} colonnes PK/FK fantômes')
+    return problemes
+
+
 def principal():
-    ap = argparse.ArgumentParser(description='mcdview large-scale campaign')
+    ap = argparse.ArgumentParser(description='mcdview large-scale campaign (all formats)')
     ap.add_argument('--chrome', type=int, default=0, metavar='N',
                     help='render N sampled pages headless and check the DOM')
     ap.add_argument('--limite', type=int, default=0, help='cap the file count')
     ap.add_argument('--dbm', action='store_true',
-                    help='also run the corpus .dbm files through pgmodeler-cli')
+                    help='also run the corpus .dbm files (pgmodeler-cli)')
+    ap.add_argument('--converters', action='store_true',
+                    help='also run .dbml/.prisma (dbml2sql / prisma)')
+    ap.add_argument('--budget', type=float, default=2000, metavar='MS',
+                    help='per-file time budget in ms; exceeding it is an anomaly')
     ap.add_argument('--strict', action='store_true',
-                    help='exit non-zero on any exception or anomaly (pre-commit)')
+                    help='exit non-zero on any exception (pre-commit)')
     args = ap.parse_args()
 
-    fichiers = sorted((RACINE / 'exemples').glob('*.sql')) + sorted(CORPUS.rglob('*.sql'))
+    # build the (path, format) work list
+    travaux = [(p, 'sql') for p in sorted((RACINE / 'exemples').glob('*.sql'))]
+    travaux += [(p, 'sql') for p in sorted(CORPUS.rglob('*.sql'))]
+    for ext, fmt in NATIFS.items():
+        travaux += [(p, fmt) for p in sorted(CORPUS.rglob('*' + ext))]
     if args.dbm:
-        fichiers += sorted(CORPUS.rglob('*.dbm'))
+        travaux += [(p, 'dbm') for p in sorted(CORPUS.rglob('*.dbm'))]
+    if args.converters:
+        for ext, fmt in CONVERTISSEURS.items():
+            travaux += [(p, fmt) for p in sorted(CORPUS.rglob('*' + ext))]
     if args.limite:
-        fichiers = fichiers[:args.limite]
-    lignes, stats = [], {'ok': [], 'sans-table': 0, 'erreur': 0}
+        travaux = travaux[:args.limite]
+
+    lignes = []
+    stats = {'ok': [], 'sans-table': 0, 'erreur': 0}
+    par_format = {}          # fmt -> {'n','ok','sans','err','anom','temps':[]}
     tailles_html = []
     td = Path(tempfile.mkdtemp(prefix='mcdview-banc-'))
-    for chemin in fichiers:
+    for chemin, fmt in travaux:
+        pf = par_format.setdefault(fmt, {'n': 0, 'ok': 0, 'sans': 0, 'err': 0,
+                                         'anom': 0, 'temps': []})
+        pf['n'] += 1
         octets = chemin.stat().st_size
         try:
-            source = str(chemin)
-            if chemin.suffix == '.dbm':
+            if fmt == 'dbm':
                 try:
-                    source, ms_export = chrono(mcdview.sql_depuis_dbm, source)
+                    (tables, fks), ms_parse = chrono(charger_fichier, chemin, fmt)
                 except SystemExit as e:
                     stats['refus-pgmodeler'] = stats.get('refus-pgmodeler', 0) + 1
-                    lignes.append((chemin.name, octets, 0, 0, 0, 0, 0, 0,
+                    lignes.append((chemin.name, fmt, octets, 0, 0, 0, 0, 0, 0,
                                    'refus-pgmodeler: ' + str(e)[:80].replace('\n', ' ')))
                     continue
-            (tables, fks, _dial), ms_parse = chrono(mcdview.analyser, source, 'auto')
+            else:
+                (tables, fks), ms_parse = chrono(charger_fichier, chemin, fmt)
             if not tables:
                 stats['sans-table'] += 1
-                lignes.append((chemin.name, octets, 0, 0, ms_parse, 0, 0, 0, 'sans-table'))
+                pf['sans'] += 1
+                lignes.append((chemin.name, fmt, octets, 0, 0, ms_parse, 0, 0, 0, 'sans-table'))
                 continue
             _, ms_place = chrono(mcdview.placement_auto, tables, fks)
             html, ms_page = chrono(mcdview.composer_page, tables, fks, chemin.stem, 'en')
-            problemes = []
-            if any(p in html for p in ('__DONNEES__', '__TITRE__', '__LOGO__')):
-                problemes.append('placeholder')
-            sans_cols = sum(1 for t in tables.values() if not t['cols'])
-            if sans_cols:
-                problemes.append(f'{sans_cols} tables sans colonne')
-            sans_cible = sum(1 for f in fks if not f['colcible'])
-            if sans_cible:
-                problemes.append(f'{sans_cible} FK sans colonne cible')
+            total_ms = ms_parse + ms_place + ms_page
+            problemes = anomalies_de(tables, fks, html)
+            if total_ms > args.budget:
+                problemes.append(f'{total_ms:.0f} ms > budget {args.budget:.0f} ms')
             etat = 'anomalie: ' + '; '.join(problemes) if problemes else 'ok'
             if not problemes:
-                stats['ok'].append((octets, ms_parse + ms_place + ms_page))
+                stats['ok'].append((octets, total_ms))
+                pf['ok'] += 1
+                pf['temps'].append(total_ms)
+            else:
+                pf['anom'] += 1
             (td / (chemin.stem + '.html')).write_text(html)
             tailles_html.append(len(html))
-            lignes.append((chemin.name, octets, len(tables), len(fks),
+            lignes.append((chemin.name, fmt, octets, len(tables), len(fks),
                            ms_parse, ms_place, ms_page, len(html), etat))
         except Exception as e:
             stats['erreur'] += 1
-            lignes.append((chemin.name, octets, 0, 0, 0, 0, 0, 0, f'erreur: {e!r:.120}'))
+            pf['err'] += 1
+            lignes.append((chemin.name, fmt, octets, 0, 0, 0, 0, 0, 0, f'erreur: {e!r:.160}'))
 
     with open(TSV, 'w') as sortie:
-        sortie.write('fichier\tocts\ttables\tfks\tms_parse\tms_place\tms_page\tocts_html\tetat\n')
-        for l in lignes:
-            sortie.write('\t'.join(str(c) for c in l) + '\n')
+        sortie.write('fichier\tformat\tocts\ttables\tfks\tms_parse\tms_place\tms_page\tocts_html\tetat\n')
+        for ligne in lignes:
+            sortie.write('\t'.join(str(c) for c in ligne) + '\n')
 
-    problemes = [l for l in lignes if l[8] not in ('ok', 'sans-table')]
+    problemes = [ligne for ligne in lignes if ligne[9] not in ('ok', 'sans-table')]
+    anomalies = [ligne for ligne in lignes if ligne[9].startswith('anomalie')]
     print(f'{len(lignes)} fichiers — {len(stats["ok"])} ok, '
           f'{stats["sans-table"]} sans table (autre dialecte), '
-          f'{len([l for l in lignes if l[8].startswith("anomalie")])} anomalies, '
-          f'{stats["erreur"]} erreurs, '
+          f'{len(anomalies)} anomalies, {stats["erreur"]} erreurs, '
           f'{stats.get("refus-pgmodeler", 0)} refus pgmodeler-cli')
-    tota = [t for _, t in stats['ok']]
-    print('temps total (parse+placement+page) :', percentiles(tota))
+    print('temps total (parse+placement+page) :', percentiles([t for _, t in stats['ok']]))
     gros = [t for o, t in stats['ok'] if o > 500_000]
     if gros:
         print(f'fichiers > 500 KiB ({len(gros)}) :', percentiles(gros))
     if tailles_html:
         print(f'HTML produit : med {statistics.median(tailles_html)/1024:.0f} KiB, '
               f'max {max(tailles_html)/1024/1024:.1f} MiB')
-    for l in problemes[:15]:
-        print('  !', l[0], '—', l[8])
+    print('\npar format :')
+    print(f'  {"format":9s} {"n":>6s} {"ok":>6s} {"sans":>5s} {"anom":>5s} {"err":>4s}   timing')
+    for fmt in sorted(par_format):
+        p = par_format[fmt]
+        print(f'  {fmt:9s} {p["n"]:6d} {p["ok"]:6d} {p["sans"]:5d} {p["anom"]:5d} '
+              f'{p["err"]:4d}   {percentiles(p["temps"])}')
+    for ligne in problemes[:25]:
+        print('  !', ligne[0], f'[{ligne[1]}]', '—', ligne[9])
 
     if args.chrome:
         alea = random.Random(0)
-        candidats = [l for l in lignes if l[8] == 'ok']
+        candidats = [ligne for ligne in lignes if ligne[9] == 'ok']
         echantillon = alea.sample(candidats, min(args.chrome, len(candidats)))
         rates = 0
-        for l in echantillon:
-            page = td / (Path(l[0]).stem + '.html')
-            t0 = time.perf_counter()
-            bon, rendues = valider_chrome(page, l[2])
-            dt = time.perf_counter() - t0
+        for ligne in echantillon:
+            page = td / (Path(ligne[0]).stem + '.html')
+            bon, rendues = valider_chrome(page, ligne[3])
             if not bon:
                 rates += 1
-                print(f'  ! DOM {l[0]} : {rendues} tables rendues != {l[2]} parsées')
-            else:
-                print(f'  chrome ok {l[0]:50s} {l[2]:5d} tables rendues en {dt:5.1f} s')
+                print(f'  ! DOM {ligne[0]} : {rendues} tables rendues != {ligne[3]} parsées')
         print(f'chrome : {len(echantillon) - rates}/{len(echantillon)} pages conformes')
     print(f'détail par fichier : {TSV}\npages : {td}')
 
     if args.strict:
-        # exceptions are always a regression; anomalies come from faithful
-        # source models (empty tables in a .dbm), so they only warn
-        durs = [l for l in lignes if l[8].startswith('erreur')]
+        durs = [ligne for ligne in lignes if ligne[9].startswith('erreur')]
         if durs:
             print(f'\nSTRICT: {len(durs)} fichier(s) en exception — régression')
             sys.exit(1)

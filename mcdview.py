@@ -60,7 +60,11 @@ GAP_X, GAP_Y, ZONE_GAP = 120, 70, 300
 
 # keywords opening a constraint line inside a CREATE TABLE body
 MOTS_CONTRAINTE = ('CONSTRAINT', 'PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE',
-                   'CHECK', 'EXCLUDE', 'LIKE ')
+                   'CHECK', 'EXCLUDE', 'LIKE ',
+                   # a FK constraint often wraps: "... FOREIGN KEY (x)\n
+                   # REFERENCES t (y)"; the continuation line must not be read
+                   # as a column named REFERENCES
+                   'REFERENCES ', 'REFERENCES(')
 
 
 RE_COLONNE = re.compile(r'"?(\w+)"?\s+(.+)$')
@@ -363,6 +367,9 @@ def flairer_dialecte(chemin):
 # auto tries these sqlglot dialects (after the sniffed guess) and keeps the
 # one that yields the most tables — one file is often only valid in one of them
 DIALECTES_ESSAI = ['mysql', 'sqlite', 'postgres', 'tsql', 'oracle', 'clickhouse', 'duckdb']
+# above this size, --dialect auto picks the dialect on a prefix (one full
+# sqlglot parse per dialect on a big file is what made a 300 KB file take 2 s+)
+SEUIL_ECHANTILLON = 60000
 
 
 def ressemble_postgres(chemin):
@@ -405,11 +412,19 @@ def analyser(chemin, dialecte='auto'):
             tables, fks = analyser_sql(chemin)
             if tables:
                 return (*normaliser_casse(tables, fks), 'postgresql')
-        # otherwise try several sqlglot dialects, keep the most tables
+        # otherwise try several sqlglot dialects, keep the most tables. Each
+        # try is a full sqlglot parse (O(size)); on a big file, pick the
+        # dialect on a bounded prefix, then parse it in full just once.
         candidats = list(dict.fromkeys([flairer_dialecte(chemin)] + DIALECTES_ESSAI))
+        src = open(chemin, errors='replace').read()
+        if len(src) > SEUIL_ECHANTILLON:
+            ech = src[:SEUIL_ECHANTILLON]
+            d = max(candidats, key=lambda d: len(analyser_sqlglot(chemin, d, False, ech)[0]))
+            t, f = analyser_sqlglot(chemin, d, False, src)
+            return (*normaliser_casse(t, f), d)
         meilleur = ({}, [], candidats[0])
         for d in candidats:
-            t, f = analyser_sqlglot(chemin, d, strict=False)
+            t, f = analyser_sqlglot(chemin, d, False, src)
             if len(t) > len(meilleur[0]):
                 meilleur = (t, f, d)
         return (*normaliser_casse(meilleur[0], meilleur[1]), meilleur[2])
@@ -417,7 +432,7 @@ def analyser(chemin, dialecte='auto'):
     return (*normaliser_casse(tables, fks), dialecte)
 
 
-def analyser_sqlglot(chemin, dialecte, strict=True):
+def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
     try:
         import logging
         import sqlglot
@@ -429,10 +444,11 @@ def analyser_sqlglot(chemin, dialecte, strict=True):
         if not strict:
             return {}, []
         sys.exit(f'reading {dialecte} DDL needs sqlglot (pip install sqlglot)')
+    if src is None:
+        src = open(chemin, errors='replace').read()
     try:
         # IGNORE: a single unparseable statement must not abort the whole model
-        arbre = sqlglot.parse(open(chemin, errors='replace').read(),
-                              read=dialecte, error_level=ErrorLevel.IGNORE)
+        arbre = sqlglot.parse(src, read=dialecte, error_level=ErrorLevel.IGNORE)
     except Exception as e:
         if not strict:
             return {}, []
