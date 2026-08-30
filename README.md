@@ -2,6 +2,7 @@
 
 <img src="logo.svg" width="96" align="right" alt="mcdview logo">
 
+[![PyPI](https://img.shields.io/pypi/v/mcdview)](https://pypi.org/project/mcdview/)
 [![hosted at mcdview.dev](https://img.shields.io/badge/hosted-mcdview.dev-2563eb)](https://mcdview.dev/)
 [![live demo](https://img.shields.io/badge/demo-live-22c55e)](https://gheop.github.io/mcdview/)
 [![ci](https://github.com/Gheop/mcdview/actions/workflows/ci.yml/badge.svg)](https://github.com/Gheop/mcdview/actions/workflows/ci.yml)
@@ -300,9 +301,12 @@ file's header.
 
 ### v0.23.1 — Installable from PyPI (2026-08-30)
 
-- Packaged for `pipx install mcdview` (extra `[dialects]` pulls in sqlglot).
-  The HTML template and logo ride along as bundled data; running the script
-  straight from a checkout keeps working unchanged.
+- Published to PyPI: `pipx install mcdview` (extra `[dialects]` pulls in
+  sqlglot). The HTML template and logo ride along as bundled data; running the
+  script straight from a checkout keeps working unchanged. Releases publish
+  automatically on a version tag via PyPI Trusted Publishing (no stored token).
+- Fixed a backslash inside an f-string expression that broke the Mermaid export
+  on Python 3.9–3.11 (only 3.12+ tolerated it).
 
 ### v0.23.0 — Big-model UX, SVG export, richer diff (2026-08-29)
 
