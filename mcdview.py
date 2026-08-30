@@ -812,8 +812,15 @@ def analyser_mwb(chemin):
     return tables, fks
 
 
+IRREGULIERS = {'people': 'person', 'children': 'child', 'men': 'man',
+               'women': 'woman', 'teeth': 'tooth', 'feet': 'foot',
+               'mice': 'mouse', 'geese': 'goose', 'people_id': 'person'}
+
+
 def singulariser(mot):
     """Rough ActiveRecord singularize, for the default FK column name."""
+    if mot.lower() in IRREGULIERS:
+        return IRREGULIERS[mot.lower()]
     if mot.endswith('ies'):
         return mot[:-3] + 'y'
     if re.search(r'(ss|sh|ch|x|z)es$', mot):
