@@ -744,6 +744,9 @@ document.addEventListener("keydown", e => {
 // theme toggle: cycle system → light → dark, remembered per viewer
 const btnTheme = document.getElementById("theme");
 (function initTheme() {
+  // a ?theme= deep-link wins over the remembered choice (see view deep-links)
+  const t = new URLSearchParams(location.search).get("theme");
+  if (t === "light" || t === "dark") { document.documentElement.dataset.theme = t; return; }
   let choix = null;
   try { choix = localStorage.getItem("mcdview:theme"); } catch (e) { /* ignore */ }
   if (choix === "light" || choix === "dark") document.documentElement.dataset.theme = choix;
@@ -1450,6 +1453,24 @@ window.addEventListener("hashchange", () => {
 });
 const cleInitiale = decodeURIComponent(location.hash.slice(1));
 if (parCle[cleInitiale]) setTimeout(() => isoler(cleInitiale), 60);
+
+// --- view deep-links: ?focus=<table>&theme=dark&audit=show&hubs&cycles ---
+// the hosting side passes the query string straight to the page; theme is
+// handled in initTheme, the rest here. Read-only, no network.
+(function paramsVue() {
+  const q = new URLSearchParams(location.search);
+  if (q.get("audit") === "show" && !document.getElementById("labelAudit").hidden) {
+    ckAudit.checked = true; ckAudit.dispatchEvent(new Event("change"));
+  }
+  const f = q.get("focus");
+  if (f && !location.hash) {
+    const cle = parCle[f] ? f :
+      Object.keys(parCle).find(c => c.split(".").pop().toLowerCase() === f.toLowerCase());
+    if (cle) setTimeout(() => isoler(cle), 80);
+  }
+  if (q.has("hubs")) setTimeout(basculerHubs, 130);
+  if (q.has("cycles")) setTimeout(basculerCycles, 130);
+})();
 </script>
 </body>
 </html>

@@ -221,6 +221,46 @@ def principal():
             echecs.append(f'--diagnose disconnected: status={d.get("status")} '
                           f'anom={d.get("anomalies")}')
 
+    # --lint: rule violations + --fail-on exit code
+    with tempfile.TemporaryDirectory() as td:
+        f = Path(td) / 'a.sql'
+        f.write_text('CREATE TABLE Users (id INT PRIMARY KEY, Name TEXT);\n'
+                     'CREATE TABLE posts (\n  id INT PRIMARY KEY,\n  user_id INT,\n'
+                     '  FOREIGN KEY (user_id) REFERENCES Users(id)\n);\n'
+                     'CREATE TABLE logs (msg TEXT);')
+        r = subprocess.run([sys.executable, str(RACINE / 'mcdview.py'), str(f), '--lint'],
+                           capture_output=True, text=True)
+        d = _json.loads(r.stdout)
+        regles = d['counts']
+        for attendu in ('missing_pk', 'disconnected_table', 'unindexed_fk', 'naming_case'):
+            if attendu not in regles:
+                echecs.append(f'--lint: règle {attendu} manquante ({regles})')
+        r = subprocess.run([sys.executable, str(RACINE / 'mcdview.py'), str(f),
+                            '--lint', '--fail-on', 'warning'], capture_output=True, text=True)
+        if r.returncode != 1:
+            echecs.append(f'--lint --fail-on warning: exit {r.returncode} (attendu 1)')
+        r = subprocess.run([sys.executable, str(RACINE / 'mcdview.py'), str(f),
+                            '--lint', '--fail-on', 'error'], capture_output=True, text=True)
+        if r.returncode != 0:
+            echecs.append(f'--lint --fail-on error: exit {r.returncode} (attendu 0)')
+
+    # --to-preview: a valid standalone SVG naming the tables
+    with tempfile.TemporaryDirectory() as td:
+        f = Path(td) / 'a.sql'
+        f.write_text('CREATE TABLE client (id serial PRIMARY KEY, nom text);\n'
+                     'CREATE TABLE commande (\n  id serial PRIMARY KEY,\n  client_id integer,\n'
+                     '  FOREIGN KEY (client_id) REFERENCES client(id)\n);')
+        r = subprocess.run([sys.executable, str(RACINE / 'mcdview.py'), str(f), '--to-preview'],
+                           capture_output=True, text=True)
+        svg = r.stdout
+        import xml.dom.minidom as _xml
+        try:
+            _xml.parseString(svg)
+        except Exception as e:
+            echecs.append(f'--to-preview: SVG invalide ({e})')
+        if '<svg' not in svg or 'client' not in svg or 'commande' not in svg:
+            echecs.append('--to-preview: SVG sans <svg> ou sans les tables')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:

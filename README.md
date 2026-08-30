@@ -301,6 +301,19 @@ file's header.
 
 ## Changelog
 
+### v0.26.0 — SVG preview, view deep-links, schema lint (2026-08-30)
+
+- `--to-preview` emits a static SVG snapshot of the diagram (auto-layout,
+  schema-colored headers, columns, FK links) — a social/OpenGraph card image.
+- **View deep-links**: a generated page reads its query string —
+  `?focus=<table>` isolates a table, `theme=dark|light` forces the theme,
+  `audit=show` reveals audit FKs, and `hubs` / `cycles` open on that analysis —
+  so a precise view can be embedded in a doc.
+- `--lint` checks the schema against rules (missing primary key, unindexed
+  foreign key, disconnected table, non-`lower_snake_case` names, FK without a
+  target) and prints JSON violations (rule, table, column, severity);
+  `--fail-on error|warning|info` turns it into a CI gate.
+
 ### v0.25.1 — Firefox fit fix; grouped export menu (2026-08-30)
 
 - Fix a Firefox regression where the diagram's foreign-key edges could appear at

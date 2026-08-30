@@ -1596,6 +1596,55 @@ def vers_mermaid(tables, fks):
     return '\n'.join(lignes) + '\n'
 
 
+def vers_svg(tables, fks, couleurs):
+    """A static SVG snapshot of the diagram, for social/OpenGraph cards: the
+    auto-layout positions, the same box sizing as the interactive page, table
+    headers colored per schema and their columns. No script, no emoji (so a
+    server-side rasteriser renders it cleanly)."""
+    def taille(t):
+        ncols = len(t['cols'])
+        long_ = max([len(t['nom']) + 4] +
+                    [len(c['nom']) + len(c['type']) + 3 for c in t['cols']] + [14])
+        return max(160, long_ * CHAR_W + 30), HDR_H + ROW_H * ncols
+    boxes = {cle: (t['x'], t['y'], *taille(t)) for cle, t in tables.items()}
+    if not boxes:
+        return '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'
+    m = 40
+    x0 = min(b[0] for b in boxes.values()) - m
+    y0 = min(b[1] for b in boxes.values()) - m
+    x1 = max(b[0] + b[2] for b in boxes.values()) + m
+    y1 = max(b[1] + b[3] for b in boxes.values()) + m
+    W, H = x1 - x0, y1 - y0
+    p = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W:.0f}" height="{H:.0f}" '
+         f'viewBox="{x0:.0f} {y0:.0f} {W:.0f} {H:.0f}" '
+         f'font-family="system-ui, -apple-system, sans-serif">',
+         f'<rect x="{x0:.0f}" y="{y0:.0f}" width="{W:.0f}" height="{H:.0f}" fill="#f4f4f6"/>']
+    for f in fks:
+        if f['de'] not in boxes or f['vers'] not in boxes:
+            continue
+        ax, ay, aw, ah = boxes[f['de']]
+        bx, by, bw, bh = boxes[f['vers']]
+        cx1, cy1, cx2, cy2 = ax + aw / 2, ay + ah / 2, bx + bw / 2, by + bh / 2
+        mx = (cx1 + cx2) / 2
+        p.append(f'<path d="M {cx1:.0f} {cy1:.0f} C {mx:.0f} {cy1:.0f}, {mx:.0f} {cy2:.0f}, '
+                 f'{cx2:.0f} {cy2:.0f}" stroke="#9aa3ad" stroke-width="1.2" fill="none" opacity=".5"/>')
+    for cle, t in tables.items():
+        x, y, w, h = boxes[cle]
+        coul = echapper(str(couleurs.get(t['schema'], '#cdebc5')))
+        p.append(f'<rect x="{x:.0f}" y="{y:.0f}" width="{w:.0f}" height="{h:.0f}" rx="6" '
+                 f'fill="#ffffff" stroke="#d5d8dd" stroke-width="1.5"/>')
+        p.append(f'<path d="M {x:.0f} {y + 6:.0f} a6 6 0 0 1 6 -6 h {w - 12:.0f} a6 6 0 0 1 6 6 '
+                 f'v {HDR_H - 6:.0f} h -{w:.0f} z" fill="{coul}"/>')
+        p.append(f'<text x="{x + 10:.0f}" y="{y + 22:.0f}" font-size="13" font-weight="600" '
+                 f'fill="#1c1e22">{echapper(t["nom"])}</text>')
+        for i, c in enumerate(t['cols']):
+            ty = y + HDR_H + ROW_H * i + 15
+            p.append(f'<text x="{x + 10:.0f}" y="{ty:.0f}" font-size="12" fill="#1c1e22">'
+                     f'{echapper(c["nom"])}<tspan fill="#8b93a0"> {echapper(c["type"])}</tspan></text>')
+    p.append('</svg>')
+    return '\n'.join(p)
+
+
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
     ap.add_argument('--version', action='version', version=f'mcdview {version_mcdview()}')
@@ -1616,6 +1665,17 @@ def principal():
     ap.add_argument('--to-mermaid', action='store_true',
                     help='output a Mermaid erDiagram (paste in a .md; GitHub/GitLab '
                          'render it) instead of the HTML page; to -o if given, else stdout')
+    ap.add_argument('--to-preview', action='store_true',
+                    help='output a static SVG snapshot of the diagram (for a social '
+                         'card / OpenGraph image) instead of the HTML page')
+    ap.add_argument('--lint', action='store_true',
+                    help='check the schema against a set of rules (missing PK, '
+                         'unindexed FK, naming…) and print JSON violations instead '
+                         'of a page; a finer CI gate than --diagnose')
+    ap.add_argument('--fail-on', choices=['error', 'warning', 'info'], default=None,
+                    metavar='SEVERITY',
+                    help='with --lint, exit non-zero when a violation of at least '
+                         'this severity is found (error > warning > info)')
     ap.add_argument('--watch', action='store_true',
                     help='regenerate the page whenever the input file changes '
                          '(Ctrl-C to stop); file input only')
@@ -1644,9 +1704,13 @@ def principal():
         diagnostiquer(args, ap)
         return
 
+    if args.lint:
+        linter(args, ap)
+        return
+
     generer(args, ap)
     if args.watch:
-        if args.db or args.to_mermaid or not args.sql:
+        if args.db or args.to_mermaid or args.to_preview or not args.sql:
             ap.error('--watch needs a model file (not --db or --to-mermaid)')
         surveiller(args, ap)
 
@@ -1695,6 +1759,80 @@ def diagnostiquer(args, ap):
         diag['status'] = 'error'
         diag['error'] = f'{type(e).__name__}: {e}'[:500]
     print(json.dumps(diag, ensure_ascii=False, indent=2))
+
+
+def lint_schema(tables, fks):
+    """Rule-based schema checks. Returns a list of violations, each with a rule,
+    the table (and column when relevant), a severity and a message. Heuristics,
+    not gospel — a stricter, itemised complement to --diagnose's aggregate."""
+    viols = []
+
+    def add(rule, table, column, severity, message):
+        viols.append({'rule': rule, 'table': table, 'column': column,
+                      'severity': severity, 'message': message})
+
+    fk_par_table = defaultdict(list)
+    relies = set()
+    for f in fks:
+        fk_par_table[f['de']].append(f)
+        relies.add(f['de'])
+        relies.add(f['vers'])
+    multi = len(tables) > 1
+    for cle, t in sorted(tables.items()):
+        nom = f"{t['schema']}.{t['nom']}"
+        if not t['cols']:
+            add('empty_table', nom, None, 'warning', 'table has no columns')
+            continue
+        if not t['pk']:
+            add('missing_pk', nom, None, 'warning', 'table has no primary key')
+        if multi and cle not in relies:
+            add('disconnected_table', nom, None, 'info', 'no foreign key in or out')
+        if t['nom'] != t['nom'].lower():
+            add('naming_case', nom, None, 'info', 'table name is not lower_snake_case')
+        # a column is "covered" if it leads a PK or an index (first column)
+        couverts = set(t['pk'][:1])
+        for ix in t.get('index', []):
+            if ix.get('cols'):
+                couverts.add(ix['cols'][0])
+        for f in fk_par_table[cle]:
+            if not f['colcible']:
+                add('fk_without_target', nom, f['col'] or None, 'error',
+                    f"foreign key to {f['vers']} has no target column")
+            elif f['col'] and f['col'] not in couverts:
+                add('unindexed_fk', nom, f['col'], 'info',
+                    'foreign-key column is not covered by an index')
+        for c in t['cols']:
+            if c['nom'] != c['nom'].lower():
+                add('naming_case', nom, c['nom'], 'info', 'column name is not lower_snake_case')
+    return viols
+
+
+def linter(args, ap):
+    """Print JSON schema-lint violations and exit 0, unless --fail-on is set and a
+    violation of at least that severity is present (then exit 1) — a CI gate."""
+    if not args.sql:
+        ap.error('--lint needs a model file')
+    source = args.sql[0]
+    out = {'file': Path(source).name, 'dialect': None, 'tables': 0, 'fks': 0,
+           'violations': [], 'counts': {}, 'error': None,
+           'mcdview_version': version_mcdview()}
+    try:
+        tables, fks, dialecte = charger(source, args.dialect)
+        out['dialect'] = dialecte
+        out['tables'], out['fks'] = len(tables), len(fks)
+        out['violations'] = lint_schema(tables, fks)
+        for v in out['violations']:
+            out['counts'][v['rule']] = out['counts'].get(v['rule'], 0) + 1
+    except SystemExit as e:
+        out['error'] = str(e)[:500]
+    except Exception as e:
+        out['error'] = f'{type(e).__name__}: {e}'[:500]
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    if args.fail_on:
+        rang = {'info': 1, 'warning': 2, 'error': 3}
+        seuil = rang[args.fail_on]
+        if any(rang[v['severity']] >= seuil for v in out['violations']):
+            sys.exit(1)
 
 
 def surveiller(args, ap):
@@ -1784,6 +1922,17 @@ def generer(args, ap):
         couleurs = positions_dbm(args.dbm, tables)
     if not args.dbm or all(t['x'] == 0 and t['y'] == 0 for t in tables.values()):
         placement_auto(tables, fks)
+
+    if args.to_preview:
+        for i, s in enumerate(sorted({t['schema'] for t in tables.values()})):
+            couleurs.setdefault(s, PALETTE[i % len(PALETTE)])
+        svg = vers_svg(tables, fks, couleurs)
+        if args.sortie:
+            Path(args.sortie).write_text(svg)
+            print(f'{len(tables)} tables, {len(fks)} FKs → {args.sortie} (SVG preview)')
+        else:
+            sys.stdout.write(svg)
+        return
 
     if args.fk_audit:
         motif = re.compile(args.fk_audit)
