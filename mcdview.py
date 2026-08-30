@@ -1276,6 +1276,13 @@ TRADUCTIONS = {
         '"Aucun résultat."': '"No match."',
         '"tables avec une colonne de type"': '"tables with a column of type"',
         '"tables référencent"': '"tables reference"',
+        # copy DDL + probable missing-FK detector
+        'title="colonnes _id sans clé étrangère déclarée">≈ FK ?':
+            'title="_id columns with no declared foreign key">≈ FK ?',
+        '"Aucune FK manquante probable."': '"No probable missing FK."',
+        '"FK manquantes probables"': '"Probable missing FKs"',
+        '"Colonnes en _id sans FK déclarée, avec une table du nom correspondant. Heuristique à vérifier."':
+            '"_id columns with no declared FK, when a table of that name exists. A heuristic to check."',
     },
 }
 

@@ -321,6 +321,12 @@ file's header.
   plain query now falls back to a fuzzy (subsequence) name match.
 - **Text exports**: a Markdown data dictionary (`⬇ MD`) and a Graphviz DOT
   graph (`⬇ DOT`), alongside the existing SVG export.
+- **Copy DDL**: an isolated table's panel reconstructs its `CREATE TABLE`
+  (columns, primary key, foreign keys) to the clipboard.
+- **Probable missing FKs** (`≈ FK ?`): flags `<x>_id` columns with no declared
+  foreign key when a table named `<x>` exists — a heuristic hint to review.
+- **Print stylesheet**: printing (or saving to PDF) drops the interactive
+  chrome and lays the diagram and panel out on white.
 - All are pure client-side, single-file, zero-dependency, and available in the
   English UI too.
 

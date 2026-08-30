@@ -98,6 +98,17 @@
     background: var(--ligne-vive); color: #fff; padding: 5px 14px; border-radius: 6px;
     font-size: 13px; z-index: 12; box-shadow: 0 2px 8px #0004; }
   #indice[hidden] { display: none; }
+  /* print / PDF: drop the interactive chrome, flatten the layout to flow, and
+     print on white — a snapshot of the diagram and whatever the panel shows */
+  @media print {
+    #hud, #minimap, #togglePanneau, #indice, #legdiff, #credit, #version { display: none !important; }
+    html, body { overflow: visible; height: auto; background: #fff; color: #000; }
+    #viewport { position: static; inset: auto; right: auto; overflow: visible;
+      -webkit-mask: none; mask: none; }
+    #panneau { position: static; width: auto; border: none; transform: none; }
+    body.panneau-reduit #panneau { transform: none; }
+    .table { box-shadow: none; }
+  }
   #legdiff { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
     display: none; gap: 14px; align-items: center; background: var(--voile);
     backdrop-filter: blur(4px); padding: 6px 14px; border-radius: 8px; z-index: 10;
@@ -211,6 +222,7 @@
   <button id="exportSvg" title="exporter le diagramme en SVG">⬇ SVG</button>
   <button id="exportDico" title="exporter le dictionnaire de données (Markdown)">⬇ MD</button>
   <button id="exportDot" title="exporter le graphe en DOT (Graphviz)">⬇ DOT</button>
+  <button id="btnFkManq" title="colonnes _id sans clé étrangère déclarée">≈ FK ?</button>
   <label id="labelAudit"><input type="checkbox" id="voirAudit"> FK d'audit</label>
   <span id="compte"></span>
 </div>
@@ -926,6 +938,18 @@ document.getElementById("exportDico").addEventListener("click",
   () => telecharger(nomFichier("md"), dicoMarkdown(), "text/markdown"));
 document.getElementById("exportDot").addEventListener("click",
   () => telecharger(nomFichier("dot"), dotGraphe(), "text/vnd.graphviz"));
+// reconstruct a CREATE TABLE from the parsed model (a copy convenience; one
+// FOREIGN KEY line per FK record, so a composite FK prints one line per column)
+function ddlDeTable(cle) {
+  const t = parCle[cle];
+  const lignes = t.cols.map(c => "  " + c.nom + " " + c.type +
+    (c.nn ? " NOT NULL" : "") + (c.defaut ? " DEFAULT " + c.defaut : ""));
+  if (t.pk.length) lignes.push("  PRIMARY KEY (" + t.pk.join(", ") + ")");
+  fksVisibles().filter(f => f.de === cle).forEach(f => lignes.push(
+    "  FOREIGN KEY (" + f.col + ") REFERENCES " + nomCourt(f.vers) +
+    (f.colcible ? " (" + f.colcible + ")" : "")));
+  return "CREATE TABLE " + nomCourt(cle) + " (\n" + lignes.join(",\n") + "\n);";
+}
 
 // --- model summary card ---
 function montrerStats() {
@@ -952,6 +976,44 @@ function montrerStats() {
 }
 document.getElementById("btnStats").addEventListener("click", montrerStats);
 
+// --- probable missing FKs: an <x>_id column with no declared FK, when a table
+// named <x> (or its simple plural/singular) exists. A heuristic hint, not a
+// certainty — presented as a list, with the involved tables highlighted. ---
+function fkManquantes() {
+  const noms = {};
+  Object.keys(parCle).forEach(c => { noms[c.split(".").pop().toLowerCase()] = c; });
+  const dejaFk = new Set();
+  fksVisibles().forEach(f => dejaFk.add(f.de + "|" + f.col));
+  const sugg = [];
+  Object.keys(parCle).forEach(cle => {
+    parCle[cle].cols.forEach(col => {
+      if (dejaFk.has(cle + "|" + col.nom)) return;
+      const m = col.nom.toLowerCase().match(/^(.*[a-z])_?id$/);
+      if (!m) return;
+      const base = m[1];
+      const cand = noms[base] || noms[base + "s"] || noms[base.replace(/s$/, "")] ||
+                   noms[base.replace(/y$/, "ies")];
+      if (cand && cand !== cle) sugg.push({ de: cle, col: col.nom, vers: cand });
+    });
+  });
+  return sugg;
+}
+function montrerFkManquantes() {
+  const s = fkManquantes();
+  if (!s.length) { montrerIndice(TXT.aucuneFkManq); return; }
+  reinitVue();
+  const tables = new Set(), liens = new Set();
+  s.forEach(x => { tables.add(x.de); tables.add(x.vers); liens.add(cleLien(x.de, x.vers)); });
+  poserMev([...tables], liens);
+  panneau.innerHTML = `<h2>${ech(TXT.fkManqTitre)}</h2>` +
+    `<div class="encart ty">${ech(TXT.fkManqIntro)}</div><table>` +
+    s.map(x => `<tr><td><strong>${ech(nomCourt(x.de))}.${ech(x.col)}</strong></td>` +
+      `<td class="ty">→ ${ech(nomCourt(x.vers))}</td></tr>`).join("") + `</table>`;
+  reduirePanneau(false);
+  cadrer([...tables]);
+}
+document.getElementById("btnFkManq").addEventListener("click", montrerFkManquantes);
+
 // --- detail panel ---
 function lienTable(cle) {
   return `<a data-cible="${ech(cle)}">${ech(cle.split(".")[1])}</a>`;
@@ -966,9 +1028,10 @@ function detailler(cle) {
     `<h2>${ech(t.nom)}</h2><div class="schema">schéma ${ech(t.schema)}</div>` +
     (t.renomme_de ? `<div class="comm">renommée depuis <b>${ech(t.renomme_de)}</b></div>` : "") +
     (t.comment ? `<div class="comm">${ech(t.comment)}</div>` : "") +
+    `<div class="actions"><button id="copierDdl">${ech(TXT.copierDdl)}</button>` +
     ((sortants.length || entrants.length)
-      ? `<div class="actions"><button data-impact="amont">${ech(TXT.amont)}</button>` +
-        `<button data-impact="aval">${ech(TXT.aval)}</button></div>` : "") +
+      ? `<button data-impact="amont">${ech(TXT.amont)}</button>` +
+        `<button data-impact="aval">${ech(TXT.aval)}</button>` : "") + `</div>` +
     `<table>` + t.cols.map(c => {
       const ic = t.pk.includes(c.nom) ? "🔑" : fkDe[c.nom] ? "🔗" : "";
       const cible = fkDe[c.nom] ? ` → ${lienTable(fkDe[c.nom])}` : "";
@@ -993,6 +1056,11 @@ function detailler(cle) {
     a.addEventListener("click", () => isoler(a.dataset.cible)));
   panneau.querySelectorAll("button[data-impact]").forEach(b =>
     b.addEventListener("click", () => montrerImpact(cle, b.dataset.impact === "amont")));
+  const bd = document.getElementById("copierDdl");
+  if (bd) bd.addEventListener("click", () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(ddlDeTable(cle));
+    bd.textContent = TXT.copie;
+  });
   if (colonneCible) {  // a column search: highlight and reveal its row
     const rang = panneau.querySelector(`tr[data-col="${(window.CSS && CSS.escape ? CSS.escape(colonneCible) : colonneCible)}"]`);
     if (rang) { rang.classList.add("cible"); rang.scrollIntoView({ block: "center" }); }
@@ -1061,6 +1129,10 @@ const TXT = {
   rienTrouve: "Aucun résultat.",
   tablesAvecType: "tables avec une colonne de type",
   tablesRef: "tables référencent",
+  copierDdl: "⧉ DDL",
+  aucuneFkManq: "Aucune FK manquante probable.",
+  fkManqTitre: "FK manquantes probables",
+  fkManqIntro: "Colonnes en _id sans FK déclarée, avec une table du nom correspondant. Heuristique à vérifier.",
 };
 function afficherEncartJointure(a, b, chemin) {
   let corps;
