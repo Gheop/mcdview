@@ -73,6 +73,31 @@
   #panneau .ixrow.d-del { background: #ef444e2e; text-decoration: line-through; }
   #panneau .ixrow.d-mod { background: #f59e0b2e; }
   #panneau tr.cible td:first-child { border-left: 3px solid var(--ligne-vive); }
+  /* ---- graph analysis: highlight a set of tables, dim the rest, and light up
+     the FK edges inside the set (cycles, impact, join path) ---- */
+  body.graphe-actif .table:not(.mev) { opacity: .18; }
+  body.graphe-actif .table.mev { box-shadow: 0 2px 14px #0b74c455; }
+  .table.mev > h3 { box-shadow: inset 0 0 0 2px var(--ligne-vive); }
+  .table.depart > h3 { box-shadow: inset 0 0 0 2px #16a34a; }   /* join path: from */
+  .table.arrivee > h3 { box-shadow: inset 0 0 0 2px #dc2626; }  /* join path: to */
+  /* hub heatmap: a per-table --deg (0..1, set in JS) shades a red glow by degree */
+  body.hubs .table { box-shadow: 0 0 0 calc(var(--deg,0) * 5px)
+    rgba(224,74,58, calc(.1 + var(--deg,0) * .5)), 0 1px 4px #0002; }
+  .table .deg { display: none; margin-left: 6px; font-size: 11px; font-weight: 700; opacity: .7; }
+  body.hubs .table .deg { display: inline; }
+  #hud button.actif { border-color: var(--ligne-vive); color: var(--ligne-vive); font-weight: 600; }
+  #panneau .encart { margin: 10px 0; padding: 8px 10px; background: var(--fond);
+    border: 1px solid var(--bord); border-radius: 6px; font-size: 12.5px; }
+  #panneau .encart pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word;
+    font-size: 11.5px; font-family: ui-monospace, monospace; }
+  #panneau .actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+  #panneau .actions button { padding: 3px 8px; border: 1px solid var(--bord);
+    border-radius: 5px; background: var(--panneau); color: var(--encre); cursor: pointer;
+    font-size: 12px; }
+  #indice { position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+    background: var(--ligne-vive); color: #fff; padding: 5px 14px; border-radius: 6px;
+    font-size: 13px; z-index: 12; box-shadow: 0 2px 8px #0004; }
+  #indice[hidden] { display: none; }
   #legdiff { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
     display: none; gap: 14px; align-items: center; background: var(--voile);
     backdrop-filter: blur(4px); padding: 6px 14px; border-radius: 8px; z-index: 10;
@@ -177,6 +202,9 @@
   <datalist id="noms"></datalist>
   <button id="vueGenerale" hidden>← vue générale (Échap)</button>
   <button id="reorganiser" title="réétaler les tables pour dégager les liens">⇄ réorganiser</button>
+  <button id="btnHubs" data-graphe title="teinter les tables par nombre de relations">◉ hubs</button>
+  <button id="btnCycles" data-graphe title="surligner les cycles de clés étrangères">↻ cycles</button>
+  <button id="btnJointure" data-graphe title="chemin de jointure entre deux tables">⇢ jointure</button>
   <button id="theme" title="thème clair / sombre">◐</button>
   <button id="exportSvg" title="exporter le diagramme en SVG">⬇ SVG</button>
   <label id="labelAudit"><input type="checkbox" id="voirAudit"> FK d'audit</label>
@@ -190,6 +218,7 @@
 <div id="version">__VERSION__</div>
 <div id="legdiff"><span class="add">ajoutée</span><span class="mod">modifiée</span><span class="del">supprimée</span><button id="filtreTouchees" type="button"></button></div>
 <div id="credit">__CREDIT__</div>
+<div id="indice" hidden></div>
 <button id="togglePanneau" type="button" title="réduire / agrandir le panneau">›</button>
 <div id="panneau"><p class="vide">Cliquer sur une table pour l'isoler avec ses
 tables liées et voir son détail ici.<br><br>Molette : zoom.
@@ -206,6 +235,7 @@ const ckAudit = document.getElementById("voirAudit");
 const parCle = {}, elems = {}, origines = {};
 let focusCle = null, survolCle = null, x = 0, y = 0, k = 1;
 let filtreTouchees = false;  // diff: show only added/removed/changed tables
+let mev = null;   // graph highlight {tables:Set, liens:Set} — cycles/impact/join
 
 D.tables.forEach(t => { parCle[t.schema + "." + t.nom] = t; });
 
@@ -369,7 +399,8 @@ function dessinerLiens() {
     const a = centre(f.de), b = centre(f.vers);
     const mx = (a.x + b.x) / 2;
     const vif = ((focusCle && (f.de === focusCle || f.vers === focusCle)) ||
-                 (survolCle && (f.de === survolCle || f.vers === survolCle))) ? " vif" : "";
+                 (survolCle && (f.de === survolCle || f.vers === survolCle)) ||
+                 (mev && mev.liens.has(f.de + " " + f.vers))) ? " vif" : "";
     const dcls = f.diff ? " " + DCLS[f.diff] : "";
     morceaux.push(`<path class="lien${vif}${dcls}" d="M ${a.x} ${a.y} C ${mx} ${a.y}, ` +
       `${mx} ${b.y}, ${b.x} ${b.y}"/>`);
@@ -510,7 +541,10 @@ vp.addEventListener("pointerup", e => {
   }
   if (!fini.bouge) {
     const cible = document.elementFromPoint(e.clientX, e.clientY)?.closest(".table");
-    if (cible) isoler(cible.dataset.cle);
+    if (cible) {
+      if (jointure.actif) choisirJointure(cible.dataset.cle);  // pick join endpoints
+      else isoler(cible.dataset.cle);
+    }
   }
 });
 
@@ -562,6 +596,11 @@ btnToggle.addEventListener("click", () => {
 // --- DBeaver-like focus mode: the table in the center, its neighbours in a star ---
 const enrichis = new Set();   // huge-model nodes rebuilt with their columns (see isoler)
 function isoler(cle) {
+  sortirModes();  // drilling into a table drops any graph highlight / join mode
+  if (document.body.classList.contains("hubs")) {  // heatmap is an overview overlay
+    document.body.classList.remove("hubs");
+    document.getElementById("btnHubs").classList.remove("actif");
+  }
   focusCle = cle;
   finIntro();  // a table click ends the intro and keeps the panel open below
   if (autoExpand && panneauReduit) reduirePanneau(false, true);  // reveal detail
@@ -623,6 +662,7 @@ function isoler(cle) {
   svg.innerHTML = "";
 }
 function vueGenerale() {
+  sortirModes();  // back to overview clears any graph highlight / join mode
   focusCle = null;
   filtreTouchees = false;  // overview always shows everything
   const bf = document.getElementById("filtreTouchees");
@@ -856,6 +896,9 @@ function detailler(cle) {
     `<h2>${ech(t.nom)}</h2><div class="schema">schéma ${ech(t.schema)}</div>` +
     (t.renomme_de ? `<div class="comm">renommée depuis <b>${ech(t.renomme_de)}</b></div>` : "") +
     (t.comment ? `<div class="comm">${ech(t.comment)}</div>` : "") +
+    ((sortants.length || entrants.length)
+      ? `<div class="actions"><button data-impact="amont">${ech(TXT.amont)}</button>` +
+        `<button data-impact="aval">${ech(TXT.aval)}</button></div>` : "") +
     `<table>` + t.cols.map(c => {
       const ic = t.pk.includes(c.nom) ? "🔑" : fkDe[c.nom] ? "🔗" : "";
       const cible = fkDe[c.nom] ? ` → ${lienTable(fkDe[c.nom])}` : "";
@@ -878,6 +921,8 @@ function detailler(cle) {
       : "<span class='ty'>aucune table</span>");
   panneau.querySelectorAll("a[data-cible]").forEach(a =>
     a.addEventListener("click", () => isoler(a.dataset.cible)));
+  panneau.querySelectorAll("button[data-impact]").forEach(b =>
+    b.addEventListener("click", () => montrerImpact(cle, b.dataset.impact === "amont")));
   if (colonneCible) {  // a column search: highlight and reveal its row
     const rang = panneau.querySelector(`tr[data-col="${(window.CSS && CSS.escape ? CSS.escape(colonneCible) : colonneCible)}"]`);
     if (rang) { rang.classList.add("cible"); rang.scrollIntoView({ block: "center" }); }
@@ -900,6 +945,246 @@ document.getElementById("cherche").addEventListener("change", e => {
 });
 ckAudit.addEventListener("change", () => {
   if (focusCle) isoler(focusCle); else dessinerLiens();
+});
+
+// ===================== graph analysis & hub heatmap =====================
+// All of these operate on the FK graph. A "highlight set" (mev) emphasises a
+// group of tables and the FK edges among them, dimming the rest; cycles,
+// impact and the join path all reuse it. Hub heatmap is an independent overlay.
+const cleLien = (de, vers) => de + " " + vers;
+function fkSortantes(cle) { return fksVisibles().filter(f => f.de === cle); }
+function fkEntrantes(cle) { return fksVisibles().filter(f => f.vers === cle); }
+function arcEntre(a, b) {  // the FK connecting a and b, either direction
+  return fksVisibles().find(f => (f.de === a && f.vers === b) ||
+                                 (f.de === b && f.vers === a)) || null;
+}
+const indice = document.getElementById("indice");
+function montrerIndice(txt) { indice.textContent = txt; indice.hidden = false; }
+function cacherIndice() { indice.hidden = true; }
+// French UI strings built at runtime; the EN build swaps them via TRADUCTIONS
+const TXT = {
+  aucuneRelation: "Aucune table liée.",
+  aucunCycle: "Aucun cycle de clé étrangère.",
+  choisirPremiere: "Chemin de jointure : cliquez la première table.",
+  choisirSeconde: "Cliquez la seconde table (Échap pour annuler).",
+  jointureTitre: "Chemin de jointure",
+  aucunChemin: "Pas de chemin de jointure entre ces deux tables.",
+  sauts: "sauts",
+  copierSql: "Copier le SQL",
+  copie: "Copié",
+  amont: "▲ dépend de",
+  aval: "▼ dont dépendent",
+};
+function afficherEncartJointure(a, b, chemin) {
+  let corps;
+  if (!chemin) corps = `<p class="ty">${ech(TXT.aucunChemin)}</p>`;
+  else corps = `<div class="ty">${chemin.length - 1} ${ech(TXT.sauts)} : ` +
+      chemin.map(c => ech(nomCourt(c))).join(" → ") + `</div><pre>${ech(sqlDuChemin(chemin))}</pre>` +
+      `<div class="actions"><button id="copierSql">${ech(TXT.copierSql)}</button></div>`;
+  panneau.innerHTML = `<h2>${ech(TXT.jointureTitre)}</h2>` +
+    `<div class="schema">${ech(nomCourt(a))} → ${ech(nomCourt(b))}</div>` +
+    `<div class="encart">${corps}</div>`;
+  reduirePanneau(false);
+  const cp = document.getElementById("copierSql");
+  if (cp && chemin) cp.addEventListener("click", () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(sqlDuChemin(chemin));
+    cp.textContent = TXT.copie;
+  });
+}
+function choisirJointure(cle) {
+  if (!jointure.premier) {
+    jointure.premier = cle;
+    Object.keys(elems).forEach(c => elems[c].classList.remove("depart"));
+    elems[cle].classList.add("depart");
+    montrerIndice(TXT.choisirSeconde);
+  } else {
+    const a = jointure.premier, b = cle;
+    jointure.actif = false; jointure.premier = null;
+    document.getElementById("btnJointure").classList.remove("actif");
+    cacherIndice();
+    montrerJointure(a, b);
+  }
+}
+
+function effacerMev() {
+  if (mev) {
+    mev.tables.forEach(c => elems[c] && elems[c].classList.remove("mev"));
+    mev = null;
+    document.body.classList.remove("graphe-actif");
+  }
+  Object.keys(elems).forEach(c => elems[c].classList.remove("depart", "arrivee"));
+}
+function poserMev(cles, liens) {
+  effacerMev();
+  mev = { tables: new Set(cles), liens: liens || new Set() };
+  mev.tables.forEach(c => elems[c] && elems[c].classList.add("mev"));
+  document.body.classList.add("graphe-actif");
+  dessinerLiens();
+}
+// leaving focus/overview or pressing Escape drops any active graph mode
+function sortirModes() {
+  jointure.actif = false; jointure.premier = null;
+  document.getElementById("btnJointure").classList.remove("actif");
+  cacherIndice();
+  if (mev) { effacerMev(); dessinerLiens(); }
+}
+
+// ---- transitive reachable set (impact analysis) ----
+// amont = the tables this one depends on (follow outgoing FKs); aval = the
+// tables that depend on this one (follow incoming FKs). Returns {tables, liens}.
+function atteignable(depart, versLAmont) {
+  const vus = new Set([depart]), liens = new Set(), file = [depart];
+  while (file.length) {
+    const cur = file.shift();
+    (versLAmont ? fkSortantes(cur) : fkEntrantes(cur)).forEach(f => {
+      liens.add(cleLien(f.de, f.vers));
+      const suiv = versLAmont ? f.vers : f.de;
+      if (!vus.has(suiv)) { vus.add(suiv); file.push(suiv); }
+    });
+  }
+  return { tables: vus, liens };
+}
+function montrerImpact(cle, versLAmont) {
+  const r = atteignable(cle, versLAmont);
+  if (r.tables.size <= 1) { montrerIndice(TXT.aucuneRelation); return; }
+  // called from the isolated panel: leave isolation so the whole reachable set
+  // is visible (home positions), then highlight it. Keep the panel as-is.
+  focusCle = null; btnRetour.hidden = true;
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  Object.keys(elems).forEach(c => {
+    elems[c].classList.remove("efface", "choisie");
+    elems[c].style.left = origines[c].x + "px";
+    elems[c].style.top = origines[c].y + "px";
+  });
+  poserMev(r.tables, r.liens);
+  elems[cle].classList.add("depart");
+  cadrer([...r.tables]);
+}
+
+// ---- shortest join path between two tables (BFS on the undirected FK graph) ----
+function cheminEntre(a, b) {
+  if (a === b) return [a];
+  const prec = { [a]: null }, file = [a];
+  while (file.length) {
+    const cur = file.shift();
+    if (cur === b) break;
+    voisins(cur).forEach(v => { if (!(v in prec)) { prec[v] = cur; file.push(v); } });
+  }
+  if (!(b in prec)) return null;
+  const chemin = []; let n = b;
+  while (n !== null) { chemin.unshift(n); n = prec[n]; }
+  return chemin;
+}
+function nomCourt(cle) { return cle.split(".").slice(1).join("."); }
+function sqlDuChemin(chemin) {
+  // SELECT * FROM t0 JOIN t1 ON t1.fk = t0.pk … for each step, using whichever
+  // FK connects the pair and in whichever direction it points
+  const lignes = ["SELECT *", "FROM " + nomCourt(chemin[0])];
+  for (let i = 1; i < chemin.length; i++) {
+    const prev = chemin[i - 1], cur = chemin[i], f = arcEntre(prev, cur);
+    let cond = "/* no FK found */";
+    if (f) {
+      cond = f.de === prev
+        ? `${nomCourt(prev)}.${f.col} = ${nomCourt(cur)}.${f.colcible || "?"}`
+        : `${nomCourt(cur)}.${f.col} = ${nomCourt(prev)}.${f.colcible || "?"}`;
+    }
+    lignes.push(`JOIN ${nomCourt(cur)} ON ${cond}`);
+  }
+  return lignes.join("\n") + ";";
+}
+const jointure = { actif: false, premier: null };
+function montrerJointure(a, b) {
+  const chemin = cheminEntre(a, b);
+  if (!chemin) {  // disconnected: still name both ends
+    poserMev([a, b], new Set());
+    afficherEncartJointure(a, b, null);
+    return;
+  }
+  const liens = new Set();
+  for (let i = 1; i < chemin.length; i++) {
+    const f = arcEntre(chemin[i - 1], chemin[i]);
+    if (f) liens.add(cleLien(f.de, f.vers));
+  }
+  poserMev(chemin, liens);
+  elems[a].classList.add("depart"); elems[b].classList.add("arrivee");
+  cadrer(chemin);
+  afficherEncartJointure(a, b, chemin);
+}
+
+// ---- FK cycles: tables that sit on a circular dependency (Tarjan SCC) ----
+function tablesEnCycle() {
+  const adj = {}, boucleSoi = new Set();
+  Object.keys(parCle).forEach(c => { adj[c] = []; });
+  fksVisibles().forEach(f => {
+    if (f.de === f.vers) boucleSoi.add(f.de);
+    else if (adj[f.de]) adj[f.de].push(f.vers);
+  });
+  // iterative Tarjan (deep chains would overflow a recursive one)
+  let idx = 0; const num = {}, bas = {}, pile = [], surPile = new Set(), dans = new Set();
+  Object.keys(adj).forEach(depart => {
+    if (num[depart] !== undefined) return;
+    const trav = [[depart, 0]];
+    while (trav.length) {
+      const cadre = trav[trav.length - 1], v = cadre[0];
+      if (cadre[1] === 0) { num[v] = bas[v] = idx++; pile.push(v); surPile.add(v); }
+      if (cadre[1] < adj[v].length) {
+        const w = adj[v][cadre[1]++];
+        if (num[w] === undefined) trav.push([w, 0]);
+        else if (surPile.has(w)) bas[v] = Math.min(bas[v], num[w]);
+      } else {
+        if (bas[v] === num[v]) {
+          const comp = []; let w;
+          do { w = pile.pop(); surPile.delete(w); comp.push(w); } while (w !== v);
+          if (comp.length > 1) comp.forEach(x => dans.add(x));
+        }
+        trav.pop();
+        if (trav.length) { const p = trav[trav.length - 1][0]; bas[p] = Math.min(bas[p], bas[v]); }
+      }
+    }
+  });
+  boucleSoi.forEach(x => dans.add(x));
+  return dans;
+}
+function basculerCycles() {
+  const btn = document.getElementById("btnCycles");
+  if (btn.classList.contains("actif")) { btn.classList.remove("actif"); sortirModes(); return; }
+  sortirModes();
+  const dans = tablesEnCycle();
+  if (!dans.size) { montrerIndice(TXT.aucunCycle); return; }
+  const liens = new Set();
+  fksVisibles().forEach(f => { if (dans.has(f.de) && dans.has(f.vers)) liens.add(cleLien(f.de, f.vers)); });
+  poserMev(dans, liens);
+  btn.classList.add("actif");
+  cadrer([...dans]);
+}
+
+// ---- hub heatmap: shade each table by its FK degree ----
+const degre = {};
+Object.keys(parCle).forEach(c => { degre[c] = 0; });
+D.fks.forEach(f => { if (degre[f.de] !== undefined) degre[f.de]++; if (degre[f.vers] !== undefined) degre[f.vers]++; });
+const degreMax = Math.max(1, ...Object.values(degre));
+function basculerHubs() {
+  const btn = document.getElementById("btnHubs");
+  const on = !document.body.classList.contains("hubs");
+  document.body.classList.toggle("hubs", on);
+  btn.classList.toggle("actif", on);
+  if (on) Object.keys(elems).forEach(c => {
+    elems[c].style.setProperty("--deg", (degre[c] / degreMax).toFixed(3));
+    let b = elems[c].querySelector(".deg");
+    if (!b) { b = document.createElement("span"); b.className = "deg";
+              elems[c].querySelector("h3").appendChild(b); }
+    b.textContent = degre[c];
+  });
+}
+document.getElementById("btnHubs").addEventListener("click", basculerHubs);
+document.getElementById("btnCycles").addEventListener("click", basculerCycles);
+document.getElementById("btnJointure").addEventListener("click", () => {
+  const btn = document.getElementById("btnJointure");
+  if (jointure.actif) { btn.classList.remove("actif"); sortirModes(); return; }
+  sortirModes(); vueGenerale();
+  jointure.actif = true; jointure.premier = null;
+  btn.classList.add("actif");
+  montrerIndice(TXT.choisirPremiere);
 });
 
 if (!D.fks.some(f => f.audit)) document.getElementById("labelAudit").hidden = true;

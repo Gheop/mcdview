@@ -1239,6 +1239,28 @@ TRADUCTIONS = {
         '"del">supprimée<': '"del">removed<',
         'const MOT = "touchées";': 'const MOT = "touched";',
         'renommée depuis <b>': 'renamed from <b>',
+        # graph-analysis toolbar buttons and their tooltips
+        'title="teinter les tables par nombre de relations"':
+            'title="shade tables by number of relations"',
+        'title="surligner les cycles de clés étrangères"':
+            'title="highlight foreign-key cycles"',
+        'title="chemin de jointure entre deux tables">⇢ jointure':
+            'title="join path between two tables">⇢ join path',
+        # graph-analysis runtime strings (TXT + impact buttons)
+        '"Aucune table liée."': '"No related table."',
+        '"Aucun cycle de clé étrangère."': '"No foreign-key cycle."',
+        '"Chemin de jointure : cliquez la première table."':
+            '"Join path: click the first table."',
+        '"Cliquez la seconde table (Échap pour annuler)."':
+            '"Click the second table (Esc to cancel)."',
+        '"Chemin de jointure"': '"Join path"',
+        '"Pas de chemin de jointure entre ces deux tables."':
+            '"No join path between these two tables."',
+        '"sauts"': '"hops"',
+        '"Copier le SQL"': '"Copy the SQL"',
+        '"Copié"': '"Copied"',
+        '"▲ dépend de"': '"▲ depends on"',
+        '"▼ dont dépendent"': '"▼ depended on by"',
     },
 }
 

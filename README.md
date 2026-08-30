@@ -301,6 +301,22 @@ file's header.
 
 ## Changelog
 
+### v0.25.0 — Graph analysis: join paths, impact, cycles, hub heatmap (2026-08-30)
+
+- **Join path** (`⇢ jointure`): pick two tables and mcdview highlights the
+  shortest foreign-key path between them and writes the `SELECT … JOIN … ON …`
+  skeleton (copy button included) — the "how do I join these?" answer.
+- **Impact analysis**: from an isolated table, "▲ depends on" / "▼ depended on
+  by" highlight everything it reaches upstream (its dependencies) or downstream
+  (what would break if you change it), following FKs transitively.
+- **Cycles** (`↻ cycles`): highlight tables sitting on a circular foreign-key
+  dependency (Tarjan SCC), including self-references — a schema smell that
+  breaks insert ordering and dumps.
+- **Hub heatmap** (`◉ hubs`): shade every table by its number of FK relations,
+  so the central hub tables stand out at a glance, with a degree badge.
+- All are pure client-side, single-file, zero-dependency, and available in the
+  English UI too.
+
 ### v0.24.9 — Detect FKs declared inside CREATE TABLE (2026-08-30)
 
 - Foreign keys written inside the `CREATE TABLE` body are now detected: a
