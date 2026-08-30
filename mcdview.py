@@ -500,7 +500,10 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
             k = cle(tbl)
             cols, pk, colcomments = [], [], {}
             for d in stmt.find_all(exp.ColumnDef):
-                kinds = [c.kind for c in d.constraints]
+                # a constraint is usually a ColumnConstraint wrapping a .kind;
+                # some sqlglot nodes (InOutColumnConstraint…) sit in the list
+                # directly and have no .kind — keep the node itself then
+                kinds = [getattr(c, 'kind', c) for c in d.constraints]
                 typ = d.args.get('kind')
                 defc = next((c.this for c in kinds
                              if isinstance(c, exp.DefaultColumnConstraint)), None)
