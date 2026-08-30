@@ -174,7 +174,10 @@ def entrees_en_table(sch, nom, entrees):
     line (multi-line DDL) or a top-level comma (single-line DDL)."""
     cols, pk = [], []
     for e in entrees:
-        e = e.strip().rstrip(',').strip()
+        # strip a separating comma at EITHER end: leading-comma DDL style
+        # (",\n  col TYPE") is common in hand-written schemas, and left the
+        # comma glued to the column/constraint so it parsed as neither
+        e = e.strip().strip(',').strip()
         cm = RE_PK_TABLE.match(e) if 'PRIMARY' in e else None
         if cm:
             pk = identifiants(cm.group(1))

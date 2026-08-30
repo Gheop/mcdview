@@ -312,6 +312,9 @@ file's header.
   the built-in PostgreSQL parser.
 - `--diagnose` gained a soft `disconnected_tables` anomaly (several tables and
   not one FK), which is almost always a parser gap rather than a real model.
+- Leading-comma DDL style (`,\n  col TYPE`, common in hand-written schemas) now
+  parses: the comma leading each entry no longer hides the column, its
+  primary key, or a table-level foreign key.
 
 ### v0.24.8 — Version stamp moved into the detail panel (2026-08-30)
 

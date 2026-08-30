@@ -126,6 +126,33 @@ def principal():
     if got != {('b', 'a_id', 'a', 'id')}:
         echecs.append(f'FK inline single-line: {got}')
 
+    # leading-comma DDL style (",\n  col TYPE"): columns, PK and table-level FK
+    # must all parse despite the comma leading each entry
+    t = tables_de(
+        'CREATE TABLE zitadel.projects(\n'
+        '    instance_id TEXT NOT NULL\n'
+        '    , organization_id TEXT NOT NULL\n'
+        '    , id TEXT NOT NULL\n'
+        '    , PRIMARY KEY (instance_id, organization_id, id)\n);\n'
+        'CREATE TABLE zitadel.project_roles(\n'
+        '    instance_id TEXT NOT NULL\n'
+        '    , organization_id TEXT NOT NULL\n'
+        '    , project_id TEXT NOT NULL\n'
+        '    , key TEXT NOT NULL\n'
+        '    , PRIMARY KEY (instance_id, project_id, key)\n'
+        '    , FOREIGN KEY (instance_id, organization_id, project_id)'
+        ' REFERENCES zitadel.projects(instance_id, organization_id, id)\n);')
+    pr = t['zitadel.project_roles']
+    if [c['nom'] for c in pr['cols']] != ['instance_id', 'organization_id', 'project_id', 'key']:
+        echecs.append(f'virgule en tête: colonnes={[c["nom"] for c in pr["cols"]]}')
+    if pr['pk'] != ['instance_id', 'project_id', 'key']:
+        echecs.append(f'virgule en tête: PK={pr["pk"]}')
+    got = fks_de(
+        'CREATE TABLE p(\n  id TEXT NOT NULL\n  , PRIMARY KEY (id)\n);\n'
+        'CREATE TABLE c(\n  pid TEXT\n  , FOREIGN KEY (pid) REFERENCES p(id)\n);')
+    if got != {('c', 'pid', 'p', 'id')}:
+        echecs.append(f'virgule en tête FK: {got}')
+
     # single-line / compact CREATE TABLE (no newline after the open paren) is
     # parsed by the built-in parser, not only via sqlglot
     t = tables_de("CREATE TABLE t (a integer PRIMARY KEY, b numeric(10,2), c text);")
