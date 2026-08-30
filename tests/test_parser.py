@@ -59,6 +59,21 @@ def principal():
     if t['public.d']['pk'] != ['a', 'b']:
         echecs.append(f'PK composite table-level: {t["public.d"]["pk"]}')
 
+    # single-line / compact CREATE TABLE (no newline after the open paren) is
+    # parsed by the built-in parser, not only via sqlglot
+    t = tables_de("CREATE TABLE t (a integer PRIMARY KEY, b numeric(10,2), c text);")
+    tt = t.get('public.t', {})
+    noms = [c['nom'] for c in tt.get('cols', [])]
+    if noms != ['a', 'b', 'c'] or tt.get('pk') != ['a']:
+        echecs.append(f'single-line: cols={noms} pk={tt.get("pk")}')
+    typ_b = next((c['type'] for c in tt.get('cols', []) if c['nom'] == 'b'), None)
+    if typ_b != 'numeric(10,2)':  # comma inside the type must not split
+        echecs.append(f'single-line: type de b = {typ_b!r} (numeric(10,2) attendu)')
+    # a comma/paren inside a string literal must not split the body
+    t = tables_de("CREATE TABLE u (a text DEFAULT 'x,(y)', b integer);")
+    if [c['nom'] for c in t.get('public.u', {}).get('cols', [])] != ['a', 'b']:
+        echecs.append('single-line: littéral avec ,/() a cassé le découpage')
+
     # indexes and unique constraints are extracted
     t = tables_de(
         'CREATE TABLE public.e (\n id serial PRIMARY KEY,\n email text\n);\n'

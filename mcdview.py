@@ -28,6 +28,28 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 
+
+def version_mcdview():
+    """The single source of truth is pyproject.toml. When installed, read it
+    from the package metadata; in a source checkout, from the sibling file."""
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+        try:
+            return version('mcdview')
+        except PackageNotFoundError:
+            pass
+    except Exception:
+        pass
+    try:
+        txt = (Path(__file__).parent / 'pyproject.toml').read_text()
+        m = re.search(r'^version\s*=\s*"([^"]+)"', txt, re.M)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return 'unknown'
+
+
 PALETTE = ['#cdebc5', '#d6e6f5', '#a8d8b9', '#f5e3c8', '#e8d5f0',
            '#f0d0d0', '#d0e8e8', '#ede5c0', '#dcd6f7', '#f5d6a6']
 
@@ -129,6 +151,72 @@ def colonne_declare_pk(ligne):
     return bool(RE_PK_MOT.search(s))
 
 
+def entrees_en_table(sch, nom, entrees):
+    """Build a table record from the CREATE TABLE body split into entries (one
+    per column or table constraint). Same logic whether an entry came from a
+    line (multi-line DDL) or a top-level comma (single-line DDL)."""
+    cols, pk = [], []
+    for e in entrees:
+        e = e.strip().rstrip(',').strip()
+        cm = RE_PK_TABLE.match(e) if 'PRIMARY' in e else None
+        if cm:
+            pk = identifiants(cm.group(1))
+            continue
+        if not e or e.startswith('--') or e.startswith(MOTS_CONTRAINTE):
+            continue
+        col = analyser_colonne(e)
+        if col:
+            # a column-level PRIMARY KEY is not a separate constraint entry;
+            # catch it here, but only as a real constraint (not a
+            # literal/comment/CHECK that merely says "PRIMARY KEY")
+            if colonne_declare_pk(e):
+                pk.append(col['nom'])
+            cols.append(col)
+    return nouvelle_table(sch, nom, cols, pk)
+
+
+def decouper_corps(s, cap=100000):
+    """Split a CREATE TABLE body (the text right after the opening paren) into
+    top-level entries, stopping at the matching close paren. Depth-counted and
+    string-aware so a comma or paren inside numeric(10,2) or a 'literal' does
+    not split. Linear scan, bounded by `cap`, no regex — safe on hostile input.
+    Returns (entries, matched) where matched is True if the close paren was
+    found."""
+    entrees, cur, prof, en_chaine, i = [], [], 0, False, 0
+    n = min(len(s), cap)
+    while i < n:
+        c = s[i]
+        if en_chaine:
+            cur.append(c)
+            if c == "'":
+                if i + 1 < n and s[i + 1] == "'":
+                    cur.append("'")
+                    i += 2
+                    continue
+                en_chaine = False
+            i += 1
+            continue
+        if c == "'":
+            en_chaine = True
+            cur.append(c)
+        elif c == '(':
+            prof += 1
+            cur.append(c)
+        elif c == ')':
+            if prof == 0:
+                entrees.append(''.join(cur))
+                return entrees, True
+            prof -= 1
+            cur.append(c)
+        elif c == ',' and prof == 0:
+            entrees.append(''.join(cur))
+            cur = []
+        else:
+            cur.append(c)
+        i += 1
+    return entrees, False
+
+
 def analyser_sql(chemin):
     src = open(chemin).read()
     tables, fks = {}, []
@@ -149,24 +237,22 @@ def analyser_sql(chemin):
             continue
         sch = m.group(1) or 'public'
         nom = m.group(2)
-        cols, pk = [], []
-        for ligne in corps.split('\n'):
-            ligne = ligne.strip().rstrip(',')
-            cm = RE_PK_TABLE.match(ligne) if 'PRIMARY' in ligne else None
-            if cm:
-                pk = identifiants(cm.group(1))
-                continue
-            if not ligne or ligne.startswith('--') or ligne.startswith(MOTS_CONTRAINTE):
-                continue
-            col = analyser_colonne(ligne)
-            if col:
-                # a column-level PRIMARY KEY ("id serial PRIMARY KEY") is not a
-                # separate constraint line; catch it here, but only as a real
-                # constraint (not a literal/comment/CHECK saying "PRIMARY KEY")
-                if colonne_declare_pk(ligne):
-                    pk.append(col['nom'])
-                cols.append(col)
-        tables[f'{sch}.{nom}'] = nouvelle_table(sch, nom, cols, pk)
+        tables[f'{sch}.{nom}'] = entrees_en_table(sch, nom, corps.split('\n'))
+
+    # single-line / compact CREATE TABLE (open paren NOT followed by a newline):
+    # the fast pass above needs "(\n", so a one-line "CREATE TABLE t (a int);"
+    # would otherwise only parse through sqlglot. Handle it here, bounded to the
+    # opener's own line so a "CREATE TABLE a (\n" bomb (newline right after the
+    # paren) yields an empty body and costs nothing.
+    for m in re.finditer(
+            r'CREATE TABLE (?:IF NOT EXISTS )?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(', src):
+        cle = f"{m.group(1) or 'public'}.{m.group(2)}"
+        if cle in tables:  # already built by the multi-line pass
+            continue
+        ligne_reste = src[m.end():].split('\n', 1)[0]
+        entrees, ok = decouper_corps(ligne_reste)
+        if ok and entrees:
+            tables[cle] = entrees_en_table(m.group(1) or 'public', m.group(2), entrees)
 
     # partitions: constraints carried by a partition are folded back into
     # the parent, and the partitions themselves do not appear in the model
@@ -1343,6 +1429,7 @@ def vers_mermaid(tables, fks):
 
 def principal():
     ap = argparse.ArgumentParser(description="interactive HTML explorer for a PostgreSQL data model")
+    ap.add_argument('--version', action='version', version=f'mcdview {version_mcdview()}')
     ap.add_argument('sql', nargs='*', metavar='sql|dbm|dbml|mwb|rb|mmd|ts',
                     help='one or more model files (merged into one model); '
                          'omit with --db')

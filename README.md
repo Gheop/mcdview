@@ -299,6 +299,18 @@ file's header.
 
 ## Changelog
 
+### v0.23.3 — Single-line DDL, --version (2026-08-30)
+
+- The built-in PostgreSQL parser now reads a single-line / compact
+  `CREATE TABLE t (a int, b numeric(10,2));` (no newline after the open paren),
+  not only the `pg_dump` `(\n` layout. Before, such DDL only parsed when
+  sqlglot was installed. Body splitting is depth- and string-aware, so a comma
+  or paren inside a type or a `'literal'` never splits a column; still linear,
+  still within the DoS budget.
+- `--version` prints the installed version.
+- `--db` is now covered end-to-end in CI (against a throwaway PostgreSQL
+  service), not only manually.
+
 ### v0.23.2 — Index diff on the sqlglot path (2026-08-30)
 
 - Indexes and unique constraints are now extracted on the sqlglot path too

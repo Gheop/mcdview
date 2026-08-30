@@ -18,11 +18,26 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      # a throwaway PostgreSQL so the --db path is tested end-to-end
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: mcdview_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      MCDVIEW_TEST_DB: postgresql://postgres:secret@localhost:5432/mcdview_test
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
+      - name: postgresql client (psql, pg_dump for --db)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: lint (real errors only, no style)
         run: |
           pipx install ruff
@@ -36,6 +51,8 @@ jobs:
         run: ./tests/tester.py --rapide
       - name: parser edge cases (inline PK, phantom-PK traps)
         run: ./tests/test_parser.py
+      - name: live database via --db (against the postgres service)
+        run: ./tests/test_db.py
       - name: security (XSS escaping, ReDoS/DoS budget)
         run: ./tests/test_securite.py
       - name: dialects (MySQL, SQLite via sqlglot)
