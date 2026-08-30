@@ -300,6 +300,14 @@ file's header.
 
 ## Changelog
 
+### v0.24.5 — Deterministic, flash-free panel intro (2026-08-30)
+
+- The panel intro now plays the same way on every load: the page starts with
+  the panel collapsed (no flash of the panel before it tucks away), shows it
+  open, then slides it shut over ~1.8s. The collapsed/open choice is sticky
+  within the session (the toggle) but no longer remembered across loads — a
+  past click can't make the intro silently skip or the panel snap shut.
+
 ### v0.24.4 — Firefox initial-fit fix (2026-08-30)
 
 - Firefox computed the first zoom-to-fit before layout settled, so a freshly

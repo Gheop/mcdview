@@ -157,7 +157,7 @@
   path.lien.vif { stroke: var(--ligne-vive); stroke-width: 2; opacity: 1; }
 </style>
 </head>
-<body>
+<body class="panneau-reduit">
 <div id="hud">
   <span style='display:flex;align-items:center'>__LOGO__</span>
   <strong>__TITRE__</strong>
@@ -512,33 +512,30 @@ function finIntro() {  // stop the intro; leave the panel wherever it now is
   document.body.classList.remove("intro-panneau", "intro-ferme");
 }
 (function initPanneau() {
-  let pref = null;
-  try { pref = localStorage.getItem("mcdview:panneau"); } catch (e) { /* ignore */ }
-  if (pref === "ouvert") { autoExpand = false; reduirePanneau(false); return; }
-  if (pref === "reduit") { autoExpand = false; reduirePanneau(true); return; }
-  // no stored choice, and not opening straight on a table (permalink): play the
-  // intro — collapsed layout (full-width diagram) but the panel visible, then it
-  // slides shut over ~2s, revealing the space it frees
+  // deterministic on every load: the panel starts collapsed (the body carries
+  // the class so there is no flash), and unless the URL opens straight on a
+  // table, the intro plays — panel shown open, then it slides shut over ~2s,
+  // revealing the space it frees. The choice is sticky within the session (the
+  // toggle), but not remembered across loads, so the intro is never skipped
+  // "mysteriously" from a past click.
   reduirePanneau(true);
-  if (!location.hash) {
-    document.body.classList.add("intro-panneau");        // shown open on first paint
-    introTimer = setTimeout(() => {
-      // establish the slow (1.8s) transition first, then change the transform on
-      // the NEXT frame — changing duration and value in one frame is not animated
-      // reliably (Firefox especially), which made the panel snap shut instantly
-      document.body.classList.add("intro-ferme");
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        document.body.classList.remove("intro-panneau"); // now the slow close runs
-        introTimer = setTimeout(() => document.body.classList.remove("intro-ferme"), 1900);
-      }));
-    }, 1100);
-  }
+  if (location.hash) return;
+  document.body.classList.add("intro-panneau");          // shown open on first paint
+  introTimer = setTimeout(() => {
+    // establish the slow (1.8s) transition first, then change the transform on
+    // the NEXT frame — changing duration and value in one frame is not animated
+    // reliably (Firefox especially), which made the panel snap shut instantly
+    document.body.classList.add("intro-ferme");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.body.classList.remove("intro-panneau");   // now the slow close runs
+      introTimer = setTimeout(() => document.body.classList.remove("intro-ferme"), 1900);
+    }));
+  }, 1400);
 })();
 btnToggle.addEventListener("click", () => {
   finIntro();
-  autoExpand = false;                       // the viewer decides from now on
+  autoExpand = false;                       // the viewer decides for this session
   reduirePanneau(!panneauReduit, true);
-  try { localStorage.setItem("mcdview:panneau", panneauReduit ? "reduit" : "ouvert"); } catch (e) { /* ignore */ }
 });
 
 // --- DBeaver-like focus mode: the table in the center, its neighbours in a star ---
