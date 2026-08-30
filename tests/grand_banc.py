@@ -182,7 +182,10 @@ def principal():
                 pf['temps'].append(total_ms)
             else:
                 pf['anom'] += 1
-            (td / (chemin.stem + '.html')).write_text(html)
+            # only keep the pages on disk when --chrome will re-open them;
+            # otherwise writing ~13k pages per run just fills the temp dir
+            if args.chrome:
+                (td / (chemin.stem + '.html')).write_text(html)
             tailles_html.append(len(html))
             lignes.append((chemin.name, fmt, octets, len(tables), len(fks),
                            ms_parse, ms_place, ms_page, len(html), etat))
@@ -233,7 +236,12 @@ def principal():
                 rates += 1
                 print(f'  ! DOM {ligne[0]} : {rendues} tables rendues != {ligne[3]} parsées')
         print(f'chrome : {len(echantillon) - rates}/{len(echantillon)} pages conformes')
-    print(f'détail par fichier : {TSV}\npages : {td}')
+    print(f'détail par fichier : {TSV}')
+    if args.chrome:
+        print(f'pages : {td}')
+    else:
+        import shutil
+        shutil.rmtree(td, ignore_errors=True)  # nothing kept: don't leave it behind
 
     if args.strict:
         durs = [ligne for ligne in lignes if ligne[9].startswith('erreur')]
