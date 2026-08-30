@@ -300,6 +300,13 @@ file's header.
 
 ## Changelog
 
+### v0.24.2 — Collapsible detail panel (2026-08-30)
+
+- The detail panel can be collapsed to give the diagram the full width. It
+  starts collapsed and a table click auto-reveals it; once you use the toggle,
+  your choice sticks (collapsed stays collapsed on later clicks, open stays
+  open) and is remembered for next time.
+
 ### v0.24.1 — Soft-faded diagram edges (2026-08-30)
 
 - The viewport edges fade softly, so a foreign-key link to a table currently

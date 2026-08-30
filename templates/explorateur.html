@@ -99,7 +99,21 @@
   .table:hover { border-color: var(--ligne-vive); }
   #panneau { position: absolute; top: 0; right: 0; bottom: 0; width: 340px;
     background: var(--panneau); border-left: 1px solid var(--bord);
-    overflow-y: auto; padding: 14px 16px; box-sizing: border-box; }
+    overflow-y: auto; padding: 14px 16px; box-sizing: border-box;
+    transition: transform .25s ease; }
+  /* collapsed: the panel slides out and the diagram reclaims the width */
+  #viewport, #panneau { transition: right .25s ease, transform .25s ease; }
+  body.panneau-reduit #viewport { right: 0; }
+  body.panneau-reduit #panneau { transform: translateX(100%); }
+  /* the toggle sits on the panel's inner edge, and rides to the screen edge
+     when collapsed so it stays reachable */
+  #togglePanneau { position: absolute; top: 50%; right: 340px; z-index: 11;
+    transform: translateY(-50%); width: 20px; height: 46px; padding: 0;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    border: 1px solid var(--bord); border-right: none; border-radius: 6px 0 0 6px;
+    background: var(--voile); backdrop-filter: blur(4px); color: var(--encre);
+    transition: right .25s ease; }
+  body.panneau-reduit #togglePanneau { right: 0; border-radius: 6px 0 0 6px; }
   #panneau h2 { margin: 0 0 2px; font-size: 17px; }
   #panneau .schema { font-size: 12px; opacity: .7; margin-bottom: 8px; }
   #panneau .comm { font-style: italic; opacity: .8; margin: 6px 0 10px; }
@@ -159,6 +173,7 @@
 <div id="legende"></div>
 <div id="legdiff"><span class="add">ajoutée</span><span class="mod">modifiée</span><span class="del">supprimée</span><button id="filtreTouchees" type="button"></button></div>
 <div id="credit">__CREDIT__</div>
+<button id="togglePanneau" type="button" title="réduire / agrandir le panneau">›</button>
 <div id="panneau"><p class="vide">Cliquer sur une table pour l'isoler avec ses
 tables liées et voir son détail ici.<br><br>Molette : zoom.
 Glisser : déplacer. Échap : vue générale.</p></div>
@@ -474,9 +489,36 @@ vp.addEventListener("pointerup", e => {
   }
 });
 
+// --- collapsible detail panel ---
+// default collapsed for more canvas; a table click auto-expands it, until the
+// user takes manual control with the toggle — then it stays where they put it
+// (collapsed stays collapsed on clicks, open stays open) and the choice sticks.
+let panneauReduit = true, autoExpand = true;
+const btnToggle = document.getElementById("togglePanneau");
+function reduirePanneau(v, refit) {
+  panneauReduit = v;
+  document.body.classList.toggle("panneau-reduit", v);
+  btnToggle.textContent = v ? "‹" : "›";
+  if (refit) setTimeout(() => cadrer(focusCle ? [focusCle, ...voisins(focusCle)]
+                                              : Object.keys(elems)), 260);
+}
+(function initPanneau() {
+  let pref = null;
+  try { pref = localStorage.getItem("mcdview:panneau"); } catch (e) { /* ignore */ }
+  if (pref === "ouvert") { autoExpand = false; reduirePanneau(false); }
+  else reduirePanneau(true);  // default (and pref "reduit")
+  if (pref) autoExpand = false;
+})();
+btnToggle.addEventListener("click", () => {
+  autoExpand = false;                       // the viewer decides from now on
+  reduirePanneau(!panneauReduit, true);
+  try { localStorage.setItem("mcdview:panneau", panneauReduit ? "reduit" : "ouvert"); } catch (e) { /* ignore */ }
+});
+
 // --- DBeaver-like focus mode: the table in the center, its neighbours in a star ---
 function isoler(cle) {
   focusCle = cle;
+  if (autoExpand && panneauReduit) reduirePanneau(false, true);  // reveal detail
   survolCle = null;
   history.replaceState(null, "", "#" + encodeURIComponent(cle));
   btnRetour.hidden = false;
