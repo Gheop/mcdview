@@ -300,6 +300,13 @@ file's header.
 
 ## Changelog
 
+### v0.24.8 — Version stamp moved into the detail panel (2026-08-30)
+
+- The version stamp now sits discreetly in the detail panel's bottom-right
+  corner, like a signature, instead of the bottom-left corner where it pushed
+  the schema legend up. It rides with the panel: hidden while the panel is
+  collapsed (the default), shown when the panel is open.
+
 ### v0.24.7 — Discreet version stamp (2026-08-30)
 
 - Each generated page now shows which mcdview built it, faintly in the

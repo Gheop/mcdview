@@ -135,12 +135,15 @@
   #panneau h4 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase;
     letter-spacing: .04em; opacity: .7; }
   #panneau .vide { opacity: .6; font-style: italic; margin-top: 3em; }
-  #legende { position: fixed; left: 12px; bottom: 34px; display: flex; gap: 6px;
+  #legende { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 6px;
     flex-wrap: wrap; z-index: 10; max-width: 55%; }
-  /* which mcdview built this page — discreet, so a saved diagram is traceable
-     to a version (the site never regenerates old pages). Sits below the legend. */
-  #version { position: fixed; left: 13px; bottom: 12px; z-index: 8; font-size: 11px;
-    color: var(--encre); opacity: .35; pointer-events: none; }
+  /* which mcdview built this page — a discreet signature in the detail panel's
+     bottom-right corner, so a saved diagram is traceable to a version (the site
+     never regenerates old pages). Rides with the panel: hidden while collapsed
+     (the default), shown when the panel is open or during its intro. */
+  #version { position: fixed; right: 14px; bottom: 10px; z-index: 11; font-size: 11px;
+    color: var(--encre); opacity: 0; pointer-events: none; transition: opacity .25s ease; }
+  body:not(.panneau-reduit) #version, body.intro-panneau #version { opacity: .3; }
   #legende .puce { display: flex; gap: 6px; align-items: center; font: inherit;
     background: var(--voile); color: var(--encre); border: 1px solid var(--bord);
     border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer;
