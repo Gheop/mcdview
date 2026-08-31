@@ -261,6 +261,22 @@ def principal():
         if r.returncode != 0:
             echecs.append(f'--lint --fail-on error: exit {r.returncode} (attendu 0)')
 
+    # --to-dico: a Markdown data dictionary with a column/type/key table
+    with tempfile.TemporaryDirectory() as td:
+        f = Path(td) / 'a.sql'
+        f.write_text('CREATE TABLE client (id serial PRIMARY KEY, nom text NOT NULL);\n'
+                     'CREATE TABLE commande (\n  id serial PRIMARY KEY,\n  client_id integer,\n'
+                     '  FOREIGN KEY (client_id) REFERENCES client(id)\n);')
+        r = subprocess.run([sys.executable, str(RACINE / 'mcdview.py'), str(f), '--to-dico'],
+                           capture_output=True, text=True)
+        md = r.stdout
+        if ('## public.client' not in md or '## public.commande' not in md
+                or '| column | type | key |' not in md
+                or '| id | serial | PK |' not in md
+                or '| client_id | integer | FK → commande |' in md  # target, not source
+                or 'FK → client' not in md or 'NOT NULL' not in md):
+            echecs.append(f'--to-dico: sortie inattendue ({md[:200]!r})')
+
     # --to-preview: a valid standalone SVG naming the tables
     with tempfile.TemporaryDirectory() as td:
         f = Path(td) / 'a.sql'

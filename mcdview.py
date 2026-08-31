@@ -1606,6 +1606,36 @@ def vers_mermaid(tables, fks):
     return '\n'.join(lignes) + '\n'
 
 
+def vers_dico(tables, fks, titre):
+    """A Markdown data dictionary: one section per table with a
+    column / type / key row. Pastes into a wiki or a .md (GitHub/GitLab render
+    the tables). Same shape as the in-page "export → Markdown"."""
+    def cell(s):
+        return str(s).replace('|', '\\|')
+    fk_par = {}
+    for f in fks:
+        fk_par.setdefault(f['de'], {})[f['col']] = f['vers']
+    lignes = ['# ' + titre, '']
+    for cle in sorted(tables):
+        t = tables[cle]
+        fk = fk_par.get(cle, {})
+        lignes += ['## ' + cle, '']
+        if t.get('comment'):
+            lignes += ['> ' + t['comment'].replace('\n', ' '), '']
+        lignes += ['| column | type | key |', '| --- | --- | --- |']
+        for c in t['cols']:
+            if c['nom'] in t['pk']:
+                k = 'PK'
+            elif c['nom'] in fk:
+                k = 'FK → ' + fk[c['nom']].split('.', 1)[-1]
+            else:
+                k = ''
+            typ = c['type'] + (' NOT NULL' if c['nn'] else '')
+            lignes.append(f"| {cell(c['nom'])} | {cell(typ)} | {cell(k)} |")
+        lignes.append('')
+    return '\n'.join(lignes)
+
+
 def vers_svg(tables, fks, couleurs):
     """A static SVG snapshot of the diagram, for social/OpenGraph cards: the
     auto-layout positions, the same box sizing as the interactive page, table
@@ -1678,6 +1708,10 @@ def principal():
     ap.add_argument('--to-preview', action='store_true',
                     help='output a static SVG snapshot of the diagram (for a social '
                          'card / OpenGraph image) instead of the HTML page')
+    ap.add_argument('--to-dico', action='store_true',
+                    help='output a Markdown data dictionary (one section per table, '
+                         'column/type/key) instead of the HTML page; to -o if given, '
+                         'else stdout')
     ap.add_argument('--lint', action='store_true',
                     help='check the schema against a set of rules (missing PK, '
                          'unindexed FK, naming…) and print JSON violations instead '
@@ -1720,7 +1754,7 @@ def principal():
 
     generer(args, ap)
     if args.watch:
-        if args.db or args.to_mermaid or args.to_preview or not args.sql:
+        if args.db or args.to_mermaid or args.to_preview or args.to_dico or not args.sql:
             ap.error('--watch needs a model file (not --db or --to-mermaid)')
         surveiller(args, ap)
 
@@ -1920,6 +1954,15 @@ def generer(args, ap):
             print(f'{len(tables)} tables, {len(fks)} FKs → {args.sortie} (Mermaid)')
         else:
             sys.stdout.write(mmd)
+        return
+
+    if args.to_dico:
+        md = vers_dico(tables, fks, args.titre or nom_defaut)
+        if args.sortie:
+            Path(args.sortie).write_text(md)
+            print(f'{len(tables)} tables, {len(fks)} FKs → {args.sortie} (data dictionary)')
+        else:
+            sys.stdout.write(md)
         return
 
     if args.diff:

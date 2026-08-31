@@ -301,6 +301,13 @@ file's header.
 
 ## Changelog
 
+### v0.27.0 — `--to-dico` data dictionary on the CLI (2026-08-30)
+
+- `--to-dico` outputs a Markdown data dictionary (one `## schema.table` section
+  with a `column / type / key` table) instead of the HTML page — to `-o` if
+  given, else stdout. Same content as the in-page **export → Markdown**, now
+  scriptable for a docs/CI pipeline like `--to-mermaid` and `--to-preview`.
+
 ### v0.26.2 — Auto-dismiss the hint banner (2026-08-30)
 
 - The transient hint banner (e.g. "No probable missing FK", "No match", a
