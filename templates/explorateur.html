@@ -879,6 +879,19 @@ btnReorg.addEventListener("click", reorganiser);
 function exporterSVG() {
   const pad = 24, vis = Object.keys(elems).filter(c => !elems[c].classList.contains("efface"));
   if (!vis.length) return;
+  // The export always draws every column, but a zoomed-out (compact) page
+  // collapses each node to its header, which would size the boxes and anchor the
+  // FK links to the header alone. Drop compact for the measurement (synchronous,
+  // restored before we return, so no flicker) so the DOM reflows to full detail.
+  const etaitCompact = plan.classList.contains("compact");
+  if (etaitCompact) plan.classList.remove("compact");
+  try {
+    exporterSVGImpl(pad, vis);
+  } finally {
+    if (etaitCompact) plan.classList.add("compact");
+  }
+}
+function exporterSVGImpl(pad, vis) {
   let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
   vis.forEach(c => {
     const e = elems[c];

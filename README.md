@@ -301,6 +301,14 @@ file's header.
 
 ## Changelog
 
+### v0.27.1 — Fix SVG export from a zoomed-out diagram (2026-08-31)
+
+- SVG export now always draws full table boxes. Exporting while the diagram was
+  zoomed out (header-only, level-of-detail view) sized each box to its header
+  alone, so the columns spilled out with no background or border and the FK
+  links anchored to the header center. The export reflows to full detail before
+  measuring, so its output no longer depends on the current zoom level.
+
 ### v0.27.0 — `--to-dico` data dictionary on the CLI (2026-08-30)
 
 - `--to-dico` outputs a Markdown data dictionary (one `## schema.table` section
