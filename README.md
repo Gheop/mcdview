@@ -302,6 +302,16 @@ file's header.
 
 ## Changelog
 
+### v0.28.1 — Fix links pointing into space when saved positions load (2026-08-31)
+
+- A viewer who had dragged tables saw the FK links briefly point into empty
+  space on the next open. Restoring the saved layout re-applied each box's
+  position after the page had settled, so the boxes animated from their
+  auto-placement spot to their saved spot and the first links were drawn against
+  them mid-slide. The restore now jumps the boxes into place with no animation,
+  so the links are correct from the first paint. Added a headless-Chrome
+  regression test (`tests/test_positions.py`).
+
 ### v0.28.0 — Auto attribution badge on branded pages (2026-08-31)
 
 - A branded page (`--logo` or `--home-url`) now carries a discreet clickable

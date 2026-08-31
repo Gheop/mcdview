@@ -46,6 +46,10 @@
     box-shadow: 0 2px 12px #0b74c455; }
   .table.efface { opacity: 0; pointer-events: none; }
   .table.deplace { transition: none; cursor: grabbing; }
+  /* restoring saved positions must be instant, never an animated slide from the
+     auto-placement spot (the initial links would be drawn against the moving box
+     and point into space until a redraw); see restaurerPositions */
+  #plan.instant .table { transition: none; }
   .table h3 { margin: 0; padding: 4px 10px; font-size: 13px; color: #1c1e22;
     border-radius: 4px 4px 0 0; white-space: nowrap; }
   .table ul { margin: 0; padding: 3px 10px 5px; list-style: none; }
@@ -392,6 +396,12 @@ function sauverPositions() {
   let pos = null;
   try { pos = JSON.parse(localStorage.getItem(CLE_POS)); } catch (e) { return; }
   if (!pos) return;
+  // the position snapshot above forced a layout at the auto-placement spot, so
+  // changing left/top here would animate (the .table left/top transition). Kill
+  // the transition while we jump the boxes to their saved spots, flush the
+  // layout, then re-enable it — otherwise the boxes slide in and the first links
+  // are drawn against them mid-flight, pointing into space until the next redraw.
+  plan.classList.add("instant");
   Object.keys(elems).forEach(cle => {
     if (pos[cle] && typeof pos[cle].x === "number") {
       origines[cle] = pos[cle];
@@ -399,6 +409,8 @@ function sauverPositions() {
       elems[cle].style.top = pos[cle].y + "px";
     }
   });
+  plan.offsetLeft;  // flush the jump so it never animates
+  plan.classList.remove("instant");
 })();
 
 // --- schema legend: one chip per schema, click to frame its zone ---

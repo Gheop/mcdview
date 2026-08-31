@@ -95,6 +95,8 @@ jobs:
             echo "$p : $n tables rendues"
             [ "$n" -gt 0 ] || { echo "aucune table rendue dans $p"; exit 1; }
           done
+      - name: saved positions restore without animating (links never point into space)
+        run: ./tests/test_positions.py
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with:
