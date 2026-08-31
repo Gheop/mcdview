@@ -1737,9 +1737,12 @@ def principal():
     ap.add_argument('--logo', default=None, metavar='FILE',
                     help="replace the header logo (svg/png/jpg…, shown 22×22)")
     ap.add_argument('--credit', default=None, metavar='TEXT',
-                    help="discreet attribution badge, bottom-right (off by default)")
+                    help="discreet attribution badge, bottom-right; auto-set to "
+                         "'mcdview' (linking mcdview.dev) on a branded page")
     ap.add_argument('--credit-url', default=None, metavar='URL',
                     help="make the --credit badge a link to this URL")
+    ap.add_argument('--no-credit', action='store_true',
+                    help="never place the attribution badge, even on a branded page")
     args = ap.parse_args()
     if args.summary and not args.diff:
         ap.error('--summary only applies with --diff')
@@ -1994,9 +1997,19 @@ def generer(args, ap):
 
     titre = args.titre or nom_defaut
     sortie = args.sortie or sortie_defaut
+    # Attribution badge. A branded page (--logo or --home-url) drops the header
+    # link back to mcdview, so unless the caller opts out or sets its own credit,
+    # stamp a discreet clickable "mcdview". An explicit --credit keeps its own
+    # text/url; a plain page (unbranded) stays bare.
+    credit, credit_url = args.credit, args.credit_url
+    if args.no_credit:
+        credit = None
+    elif credit is None and (args.logo or args.home_url):
+        credit = 'mcdview'
+        credit_url = credit_url or 'https://mcdview.dev'
     Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs,
                                           dialecte, args.home_url, args.logo,
-                                          args.credit, args.credit_url, bool(args.diff)))
+                                          credit, credit_url, bool(args.diff)))
     if args.diff:
         if args.summary:
             resume = resume_diff(tables, fks, args.diff)

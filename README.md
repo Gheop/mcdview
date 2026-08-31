@@ -188,8 +188,9 @@ In the page:
 | `--dialect NAME` | Input SQL dialect (default: `auto`); non-PostgreSQL needs `sqlglot` |
 | `--home-url URL` | Wrap the header logo in a link to this URL |
 | `--logo FILE` | Replace the header logo with this image (svg/png/jpg…, shown 22×22) |
-| `--credit TEXT` | Discreet attribution badge, bottom-right (off by default) |
+| `--credit TEXT` | Discreet attribution badge, bottom-right; auto-set to `mcdview` (linking mcdview.dev) on a branded page |
 | `--credit-url URL` | Make the `--credit` badge a link to this URL |
+| `--no-credit` | Never place the attribution badge, even on a branded page |
 | `--db URL` | Read a live database's schema instead of a file (`postgresql://…` via `pg_dump`, `mysql://…` via `mysqldump`); CLI only |
 | `--diff BASELINE` | Compare against an older model (any supported format); added/removed/changed tables, columns and FKs are colored |
 | `--summary FILE` | With `--diff`: also write a JSON summary of the changes (counts + change list) to `FILE` |
@@ -300,6 +301,14 @@ security suite and the strict corpus campaign.
 file's header.
 
 ## Changelog
+
+### v0.28.0 — Auto attribution badge on branded pages (2026-08-31)
+
+- A branded page (`--logo` or `--home-url`) now carries a discreet clickable
+  `mcdview` badge by default, linking to https://mcdview.dev. Branding drops the
+  header link back to mcdview, so the badge keeps the attribution. An explicit
+  `--credit` still sets its own text and url; a plain, unbranded page stays bare.
+- New `--no-credit` opts out of the badge, even on a branded page.
 
 ### v0.27.1 — Fix SVG export from a zoomed-out diagram (2026-08-31)
 
