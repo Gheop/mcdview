@@ -1135,8 +1135,18 @@ function arcEntre(a, b) {  // the FK connecting a and b, either direction
                                  (f.de === b && f.vers === a)) || null;
 }
 const indice = document.getElementById("indice");
-function montrerIndice(txt) { indice.textContent = txt; indice.hidden = false; }
-function cacherIndice() { indice.hidden = true; }
+let indiceTimer = null;
+function montrerIndice(txt, persistant) {
+  indice.textContent = txt; indice.hidden = false;
+  if (indiceTimer) { clearTimeout(indiceTimer); indiceTimer = null; }
+  // transient info (no result, no cycle…) clears itself so it never sits over
+  // the menus that open below it; a persistent prompt (join mode) stays put
+  if (!persistant) indiceTimer = setTimeout(cacherIndice, 2600);
+}
+function cacherIndice() {
+  if (indiceTimer) { clearTimeout(indiceTimer); indiceTimer = null; }
+  indice.hidden = true;
+}
 // French UI strings built at runtime; the EN build swaps them via TRADUCTIONS
 const TXT = {
   aucuneRelation: "Aucune table liée.",
@@ -1186,7 +1196,7 @@ function choisirJointure(cle) {
     jointure.premier = cle;
     Object.keys(elems).forEach(c => elems[c].classList.remove("depart"));
     elems[cle].classList.add("depart");
-    montrerIndice(TXT.choisirSeconde);
+    montrerIndice(TXT.choisirSeconde, true);
   } else {
     const a = jointure.premier, b = cle;
     jointure.actif = false; jointure.premier = null;
@@ -1410,7 +1420,7 @@ document.getElementById("btnJointure").addEventListener("click", () => {
   sortirModes(); vueGenerale();
   jointure.actif = true; jointure.premier = null;
   btn.classList.add("actif");
-  montrerIndice(TXT.choisirPremiere);
+  montrerIndice(TXT.choisirPremiere, true);
 });
 
 if (!D.fks.some(f => f.audit)) document.getElementById("labelAudit").hidden = true;

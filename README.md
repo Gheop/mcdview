@@ -301,6 +301,13 @@ file's header.
 
 ## Changelog
 
+### v0.26.2 — Auto-dismiss the hint banner (2026-08-30)
+
+- The transient hint banner (e.g. "No probable missing FK", "No match", a
+  cycle/type/ref count) now clears itself after ~2.6 s, so it no longer sits
+  over the menus that open below it. The join-path prompts stay put until you
+  pick the two tables.
+
 ### v0.26.1 — Parse inline-opening multi-line CREATE TABLE (2026-08-30)
 
 - The built-in PostgreSQL parser now reads a `CREATE TABLE` whose `(` is
