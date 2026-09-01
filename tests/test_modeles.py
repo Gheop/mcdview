@@ -45,6 +45,19 @@ def principal():
             echecs.append(f'{rel}: {len(fks)} FKs != {nf}')
         etat = 'FAIL' if any(rel in e for e in echecs) else 'ok  '
         print(f'{etat} {rel}: {len(tables)} tables, {len(fks)} FKs')
+    # Rails legacy: pre-2012 hashrocket options (`:id => false`) must be
+    # honored — an id:false join table gets no phantom primary key
+    leg = RACINE / 'tests' / 'modeles' / 'legacy.schema.rb'
+    if leg.exists():
+        tl, _ = mcdview.analyser_schema_rb(str(leg))
+        tg = tl.get('public.taggings', {})
+        faits += 1
+        if tg.get('pk') != []:
+            echecs.append(f'rails legacy: taggings pk={tg.get("pk")} (:id => false ignored)')
+            print('FAIL modeles/legacy.schema.rb')
+        else:
+            print('ok   modeles/legacy.schema.rb: hashrocket ":id => false" honored')
+
     if echecs:
         print('\nÉCHECS modèles :')
         for e in echecs:

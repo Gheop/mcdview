@@ -931,11 +931,15 @@ def analyser_schema_rb(chemin):
         corps = src[m.end():f.start()]
         cle = f'public.{nom}'
         cols, pk = [], []
-        if 'id: false' not in opts:
-            mpk = re.search(r'primary_key:\s*["\']([^"\']+)["\']', opts)
-            pkn = mpk.group(1) if mpk else 'id'
-            mid = re.search(r'\bid:\s*:(\w+)', opts)
-            cols.append(nouvelle_colonne(pkn, mid.group(1) if mid else 'bigint', True))
+        # options accept both the modern hash (`id: false`, `primary_key: "x"`)
+        # and the pre-2012 hashrocket form (`:id => false`, `:primary_key => "x"`)
+        if 'id: false' not in opts and not re.search(r':id\s*=>\s*false', opts):
+            mpk = re.search(r'primary_key:\s*["\']([^"\']+)["\']'
+                            r'|:primary_key\s*=>\s*["\']([^"\']+)["\']', opts)
+            pkn = (mpk.group(1) or mpk.group(2)) if mpk else 'id'
+            mid = re.search(r'\bid:\s*:(\w+)|:id\s*=>\s*:(\w+)', opts)
+            typ = (mid.group(1) or mid.group(2)) if mid else 'bigint'
+            cols.append(nouvelle_colonne(pkn, typ, True))
             pk = [pkn]
         for cm in re.finditer(r'\b' + re.escape(var) + r'\.(\w+)\s+["\'"]([^"\'"]+)["\'"]([^\n]*)', corps):
             typ, cn, reste = cm.groups()

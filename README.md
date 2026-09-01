@@ -334,6 +334,14 @@ file's header.
 
 ## Changelog
 
+### v0.29.2 — Parse pre-2012 Rails schema.rb options (2026-09-01)
+
+- A Rails `db/schema.rb` written with the old hashrocket option syntax
+  (`create_table "x", :id => false`) no longer gets a phantom `id` primary key
+  on its `id: false` tables. The native parser only recognised the modern hash
+  form (`id: false`); it now reads both, so schemas from before ~2012 (and their
+  join tables) come out right. Added a legacy fixture and test.
+
 ### v0.29.1 — Remember the collapsed detail panel (2026-09-01)
 
 - Folding the detail panel is now remembered across loads (localStorage, like
