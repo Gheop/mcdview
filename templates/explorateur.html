@@ -236,6 +236,7 @@
   <datalist id="noms"></datalist>
   <button id="vueGenerale" hidden>← vue générale (Échap)</button>
   <button id="reorganiser" title="réétaler les tables pour dégager les liens">⇄ réorganiser</button>
+  <button id="annuler" title="annuler la dernière disposition (Ctrl+Z)" hidden>↶ annuler</button>
   <button id="btnHubs" data-graphe title="teinter les tables par nombre de relations">◉ hubs</button>
   <button id="btnCycles" data-graphe title="surligner les cycles de clés étrangères">↻ cycles</button>
   <button id="btnJointure" data-graphe title="chemin de jointure entre deux tables">⇢ jointure</button>
@@ -582,6 +583,42 @@ vp.addEventListener("wheel", e => {
   rendre();
 }, { passive: false });
 let drag = null, lienPrevus = false;
+// --- undo stack for overview layout changes (rearrange, dragging a table).
+// Pure runtime state (positions), nothing extra written into the HTML file. ---
+const btnAnnuler = document.getElementById("annuler");
+const histoireDispo = [];
+function instantaneDispo() {
+  const s = {};
+  Object.keys(elems).forEach(c => { s[c] = { x: elems[c].offsetLeft, y: elems[c].offsetTop }; });
+  return s;
+}
+function majBoutonAnnuler() { btnAnnuler.hidden = histoireDispo.length === 0; }
+function pousserDispo(snap) {
+  histoireDispo.push(snap);
+  if (histoireDispo.length > 30) histoireDispo.shift();
+  majBoutonAnnuler();
+}
+function annulerDispo() {
+  if (!histoireDispo.length) return;
+  const snap = histoireDispo.pop();
+  Object.keys(snap).forEach(c => {
+    const e = elems[c];
+    if (!e) return;
+    e.style.left = snap[c].x + "px";
+    e.style.top = snap[c].y + "px";
+    origines[c] = { x: snap[c].x, y: snap[c].y };
+  });
+  sauverPositions();
+  // let the boxes glide back over the CSS transition, links following each frame
+  const t0 = performance.now();
+  (function suivre() {
+    dessinerLiens();
+    if (performance.now() - t0 < 380) requestAnimationFrame(suivre);
+    else cadrer(Object.keys(elems).filter(c => !elems[c].classList.contains("efface")));
+  })();
+  majBoutonAnnuler();
+}
+btnAnnuler.addEventListener("click", annulerDispo);
 function liensAuProchainRendu() {
   // one link redraw per frame while a table is being dragged
   if (lienPrevus) return;
@@ -591,7 +628,9 @@ function liensAuProchainRendu() {
 vp.addEventListener("pointerdown", e => {
   const table = e.target.closest(".table");
   drag = { px: e.clientX, py: e.clientY, ox: x, oy: y, bouge: false,
-           table, tx: table ? table.offsetLeft : 0, ty: table ? table.offsetTop : 0 };
+           table, tx: table ? table.offsetLeft : 0, ty: table ? table.offsetTop : 0,
+           // snapshot the layout before a possible overview move, for undo
+           snap: (table && !focusCle) ? instantaneDispo() : null };
   if (table) table.classList.add("deplace");
   else vp.classList.add("drag");
   vp.setPointerCapture(e.pointerId);
@@ -621,6 +660,7 @@ vp.addEventListener("pointerup", e => {
     fini.table.classList.remove("deplace");
     if (fini.bouge && !focusCle) {
       // moved in the overview: the new position becomes the home position
+      if (fini.snap) pousserDispo(fini.snap);  // keep the pre-move layout for undo
       const cle = fini.table.dataset.cle;
       origines[cle] = { x: fini.table.offsetLeft, y: fini.table.offsetTop };
       sauverPositions();
@@ -794,6 +834,10 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") { vueGenerale(); champRecherche.blur(); }
   else if (e.key === "/") { e.preventDefault(); champRecherche.focus(); champRecherche.select(); }
   else if (e.key === "r" && !btnReorg.disabled) reorganiser();
+  else if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
+    e.preventDefault();  // undo the last layout change (rearrange / table move)
+    annulerDispo();
+  }
 });
 
 // theme toggle: cycle system → light → dark, remembered per viewer. A click
@@ -839,6 +883,7 @@ function reorganiser() {
   const cles = Object.keys(elems).filter(c => !elems[c].classList.contains("efface"));
   const n = cles.length;
   if (n < 2 || n > REORG_MAX) return;
+  if (!focusCle) pousserDispo(instantaneDispo());  // keep the pre-rearrange layout for undo
   btnReorg.disabled = true;
   const idx = {}, taille = {};
   const px = new Float64Array(n), py = new Float64Array(n);

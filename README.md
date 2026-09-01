@@ -334,6 +334,15 @@ file's header.
 
 ## Changelog
 
+### v0.30.0 — Undo a layout change (2026-09-02)
+
+- Rearranging or dragging tables can be undone. Press Ctrl+Z, or the new **undo**
+  button (shown only when there is something to undo), to put the previous
+  overview layout back — the boxes glide to their old spots. The button walks a
+  small stack, so several changes undo in turn. This is runtime state only
+  (positions), nothing added to the HTML file. Added a regression test
+  (`tests/test_undo.py`).
+
 ### v0.29.2 — Parse pre-2012 Rails schema.rb options (2026-09-01)
 
 - A Rails `db/schema.rb` written with the old hashrocket option syntax

@@ -1240,6 +1240,9 @@ TRADUCTIONS = {
             'related tables and see its details here.<br><br>Wheel: zoom.\n'
             'Drag: pan. Escape: overview.',
         '⇄ réorganiser': '⇄ rearrange',
+        '↶ annuler': '↶ undo',
+        '"annuler la dernière disposition (Ctrl+Z)"':
+            '"undo the last layout change (Ctrl+Z)"',
         '"réétaler les tables pour dégager les liens"':
             '"spread the tables out to unclutter the links"',
         '"trop de tables pour réorganiser ("': '"too many tables to rearrange ("',

@@ -101,6 +101,8 @@ jobs:
         run: ./tests/test_liens.py
       - name: detail-panel intro remembered across loads
         run: ./tests/test_panneau.py
+      - name: layout undo (drag a table, Ctrl+Z puts it back)
+        run: ./tests/test_undo.py
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with:
