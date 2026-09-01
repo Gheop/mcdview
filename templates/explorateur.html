@@ -654,13 +654,16 @@ function finIntro() {  // stop the intro; leave the panel wherever it now is
   document.body.classList.remove("intro-panneau", "intro-ferme");
 }
 (function initPanneau() {
-  // deterministic on every load: the panel starts collapsed (the body carries
-  // the class so there is no flash), and unless the URL opens straight on a
-  // table, the intro plays — panel shown open, then it slides shut over ~2s,
-  // revealing the space it frees. The choice is sticky within the session (the
-  // toggle), but not remembered across loads, so the intro is never skipped
-  // "mysteriously" from a past click.
+  // the panel starts collapsed (the body carries the class so there is no
+  // flash). Unless the URL opens straight on a table, the intro plays — panel
+  // shown open, then it slides shut over ~2s, revealing the space it frees.
+  // A viewer who has folded the panel before (remembered globally) starts
+  // collapsed with no intro: replaying the open-then-close on every reload is
+  // exactly what annoys in an iframe/time-lapse.
   reduirePanneau(true);
+  let pref = null;
+  try { pref = localStorage.getItem("mcdview:panneau"); } catch (e) { /* ignore */ }
+  if (pref === "reduit") return;  // remembered collapsed: skip the intro
   if (location.hash) return;
   document.body.classList.add("intro-panneau");          // shown open on first paint
   introTimer = setTimeout(() => {
@@ -678,6 +681,9 @@ btnToggle.addEventListener("click", () => {
   finIntro();
   autoExpand = false;                       // the viewer decides for this session
   reduirePanneau(!panneauReduit, true);
+  // remember the choice across loads (global, like the theme) so a page reopened
+  // in an iframe/time-lapse does not replay the open-then-close intro every time
+  try { localStorage.setItem("mcdview:panneau", panneauReduit ? "reduit" : "ouvert"); } catch (e) { /* ignore */ }
 });
 
 // --- DBeaver-like focus mode: the table in the center, its neighbours in a star ---

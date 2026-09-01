@@ -302,6 +302,15 @@ file's header.
 
 ## Changelog
 
+### v0.29.1 — Remember the collapsed detail panel (2026-09-01)
+
+- Folding the detail panel is now remembered across loads (localStorage, like
+  the theme). A page reopened with the panel folded starts folded and skips the
+  open-then-close intro, instead of replaying it every time — the annoyance when
+  the same page is reloaded in an iframe or a time-lapse viewer. A first,
+  never-seen visit still plays the intro. Added a regression test
+  (`tests/test_panneau.py`).
+
 ### v0.29.0 — Edge-anchored links, self-reference loops (2026-09-01)
 
 - Links attach to the box side facing the other table (left/right when side by

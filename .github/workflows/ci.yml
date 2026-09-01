@@ -99,6 +99,8 @@ jobs:
         run: ./tests/test_positions.py
       - name: link routing (edge anchoring, self-loop, highlighted-edge overlay)
         run: ./tests/test_liens.py
+      - name: detail-panel intro remembered across loads
+        run: ./tests/test_panneau.py
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with:
