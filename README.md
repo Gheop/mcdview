@@ -16,7 +16,7 @@ dependencies — the page opens straight from `file://`.
 
 **[Try it on mcdview.dev](https://mcdview.dev/)** (drop a `.sql`/`.dbm`, get a
 shareable link) · **[Live demo](https://gheop.github.io/mcdview/)** ·
-**[Example diagrams](docs/diagrams.md)**
+**[Example diagrams](docs/diagrams.md)** · **[Blog](https://blog.mcdview.dev/)**
 
 [![mcdview: overview, rearrange, isolate a table with its relations, search](docs/demo.gif)](https://gheop.github.io/mcdview/exemples/chinook.html)
 
@@ -100,7 +100,7 @@ erDiagram
 - **Zero dependency by default.** Python stdlib in, vanilla JS out. Hostile
   input is HTML-escaped and DoS-budgeted; the upload surface is hardened
   (XML/zip caps, converter timeouts).
-- **Tested at scale.** 839 real-world schemas, synthetic models to 5000
+- **Tested at scale.** 13,408 real-world schemas, synthetic models to 5000
   tables, zero crashes.
 
 ### Compare two versions
@@ -195,8 +195,12 @@ In the page:
 | `--diff BASELINE` | Compare against an older model (any supported format); added/removed/changed tables, columns and FKs are colored |
 | `--summary FILE` | With `--diff`: also write a JSON summary of the changes (counts + change list) to `FILE` |
 | `--to-mermaid` | Output a Mermaid `erDiagram` (paste in a `.md`; GitHub/GitLab render it) instead of the HTML page |
+| `--to-dico` | Output a Markdown data dictionary (one section per table: column / type / key) instead of the HTML page |
+| `--to-preview` | Output a static SVG snapshot of the diagram (a social / OpenGraph card) instead of the HTML page |
 | `--watch` | Regenerate the page whenever the input file changes (Ctrl-C to stop); file input only |
 | `--diagnose` | Print a JSON diagnosis of the input (status ok/no_table/anomaly/error, dialect, counts, anomalies) instead of a page; exits 0 even on failure |
+| `--lint` | Check the schema against rules (missing PK, unindexed FK, naming…) and print JSON violations instead of a page — a finer CI gate than `--diagnose` |
+| `--fail-on {error,warning,info}` | With `--lint`, exit non-zero when a violation of at least this severity is found |
 
 Without `--dbm`, mcdview computes an automatic layout: one zone per schema,
 tables arranged in balanced columns, related tables pulled together.
@@ -235,6 +239,28 @@ that table into a hub linked to everything and clutter the graph.
 - `COMMENT ON TABLE` and `COMMENT ON COLUMN`.
 
 A `pg_dump -s` dump works as is. Views, functions and data are ignored.
+
+## Use it in CI
+
+mcdview prints machine-readable output and sets an exit code, so it fits a
+pipeline with no browser:
+
+- **Gate a schema.** `mcdview schema.sql --lint --fail-on warning` checks the
+  model against rules (missing primary key, unindexed foreign key, naming) and
+  exits non-zero on a violation of that severity or worse. Use `--diagnose` for
+  a JSON status that never fails when you only want a report.
+- **Publish artifacts.** `--to-mermaid` writes a Mermaid `erDiagram` for a
+  Markdown page, `--to-dico` a Markdown data dictionary, `--to-preview` a static
+  SVG card. Commit them or attach them to a release.
+
+To publish to the hosted instance ([mcdview.dev](https://mcdview.dev/)) from
+CI — push a schema, get a shareable link back — two integrations are maintained
+in their own repositories:
+
+- GitHub Action — [`Gheop/mcdview-action`](https://github.com/Gheop/mcdview-action):
+  `uses: Gheop/mcdview-action@v1`
+- GitLab CI/CD component — [`gitlab.com/Gheop/mcdview`](https://gitlab.com/Gheop/mcdview):
+  `include: component: gitlab.com/Gheop/mcdview/mcdview@~latest`
 
 ## Examples
 
@@ -299,6 +325,12 @@ security suite and the strict corpus campaign.
 
 [MIT](LICENSE). The example schemas keep their own licenses, noted in each
 file's header.
+
+## README changelog
+
+| Version | Date       | Changes |
+|---------|------------|---------|
+| 1.0.0   | 2026-09-01 | Initialize; add a CI section (local flags + hosted GitHub/GitLab integrations), document `--to-dico`/`--to-preview`/`--lint`/`--fail-on`, add the blog link, reconcile the tested-at-scale figure |
 
 ## Changelog
 
