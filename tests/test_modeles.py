@@ -20,6 +20,7 @@ spec.loader.exec_module(mcdview)
 CAS = [
     ('modeles/boutique.dbml', 'dbml2sql', mcdview.sql_depuis_dbml, 3, 2),
     ('modeles/boutique.prisma', 'prisma', getattr(mcdview, 'sql_depuis_prisma', None), 3, 2),
+    ('modeles/edge.prisma', 'prisma', getattr(mcdview, 'sql_depuis_prisma', None), 2, 1),  # view/@db/no-url
     ('modeles/boutique.mwb', None, mcdview.analyser_mwb, 2, 1),  # native, no tool
     ('modeles/boutique.schema.rb', None, mcdview.analyser_schema_rb, 3, 2),  # native
     ('modeles/boutique.mmd', None, mcdview.analyser_mermaid, 3, 2),  # native
@@ -29,6 +30,23 @@ CAS = [
 
 def principal():
     echecs, faits = [], 0
+
+    # pretraiter_prisma loosens three P1012 triggers without a prisma install
+    p = mcdview.pretraiter_prisma(
+        'datasource db {\n  provider = "postgresql"\n}\n'
+        'model a {\n  id Int @id\n  n Int @db.Int\n}\n'
+        'view v {\n  id Int @id @unique\n  x String\n}')
+    import re as _re
+    vue = _re.search(r'view\s+v\s*\{[^}]*\}', p).group(0)
+    if 'url =' not in p:
+        echecs.append('pretraiter_prisma: url not injected into a url-less datasource')
+    if '@db.' in p:
+        echecs.append('pretraiter_prisma: native type @db.* not stripped')
+    if '@id' in vue:
+        echecs.append('pretraiter_prisma: @id not removed from a view block')
+    if '@id' not in _re.search(r'model\s+a\s*\{[^}]*\}', p).group(0):
+        echecs.append('pretraiter_prisma: model @id wrongly removed')
+    print('ok   pretraiter_prisma: url injected, @db.* stripped, view @id dropped')
     for rel, outil, fonction, nt, nf in CAS:
         chemin = RACINE / 'tests' / rel
         if fonction is None or not chemin.exists() or (outil and not shutil.which(outil)):

@@ -1,0 +1,31 @@
+// Edge cases that break `prisma migrate diff --from-empty` validation on real
+// schemas but must not stop mcdview: a datasource with no url, a wrong-provider
+// native type (@db.Int on postgresql), and a `view` with @id. Expected result
+// after preprocessing: 2 tables (author, book), 1 FK; the view yields no table.
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["views"]
+}
+
+model author {
+  id    Int    @id
+  name  String
+  count Int    @db.Int
+  books book[]
+}
+
+model book {
+  id       Int    @id
+  title    String
+  authorId Int
+  author   author @relation(fields: [authorId], references: [id])
+}
+
+view active_author {
+  id   Int    @id @unique
+  name String
+}

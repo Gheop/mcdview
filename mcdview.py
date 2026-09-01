@@ -761,13 +761,41 @@ def sql_depuis_dbml(chemin):
         ['dbml2sql', '{entree}', '--postgres', '-o', '{sortie}'], 'DBML')
 
 
+def pretraiter_prisma(src):
+    """Loosen three things `migrate diff --from-empty` validates strictly and
+    that break real-world schemas — none of them change the tables/columns/FKs
+    we extract, so the ER model is unaffected:
+      - a datasource with no `url` (from-empty never connects to one);
+      - native type attributes (`@db.Int`, `@db.VarChar(255)`…), which only set
+        the SQL column type; a wrong-provider one (a MySQL `@db.Int` in a
+        postgresql schema) is a hard P1012 error;
+      - `@id` / `@@id` inside a `view` block: Prisma views cannot have a primary
+        key, so the diff refuses the whole schema."""
+    def injecter_url(m):
+        corps = m.group(2)
+        if re.search(r'\burl\s*=', corps):
+            return m.group(0)
+        return m.group(1) + '{\n  url = "postgresql://u:p@localhost:5432/d"' + corps + '}'
+    src = re.sub(r'(datasource\s+\w+\s*)\{([^}]*)\}', injecter_url, src)
+    src = re.sub(r'@db\.\w+(\([^)]*\))?', '', src)
+    src = re.sub(r'view\s+\w+\s*\{[^}]*\}',
+                 lambda m: re.sub(r'@@?id(\([^)]*\))?', '', m.group(0)), src)
+    return src
+
+
 def sql_depuis_prisma(chemin):
     """Convert a Prisma schema to SQL through `prisma migrate diff` (writes to
     stdout). A dummy DATABASE_URL is set so `url = env(...)` schemas resolve;
-    no database is contacted (--from-empty diffs against an empty datamodel)."""
+    no database is contacted (--from-empty diffs against an empty datamodel).
+    The schema is preprocessed (see pretraiter_prisma) so common real-world
+    schemas survive the strict diff validation."""
+    if not shutil.which('prisma'):
+        sys.exit('reading a Prisma file requires prisma in PATH')
+    tmp = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'schema.prisma'
+    tmp.write_text(pretraiter_prisma(Path(chemin).read_text(errors='replace')))
     env = dict(os.environ, DATABASE_URL='postgresql://u:p@localhost:5432/d')
     return sql_depuis_convertisseur(
-        chemin, 'prisma',
+        str(tmp), 'prisma',
         ['prisma', 'migrate', 'diff', '--from-empty', '--to-schema-datamodel',
          '{entree}', '--script'], 'Prisma', vers_stdout=True, env=env)
 

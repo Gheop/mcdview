@@ -334,6 +334,15 @@ file's header.
 
 ## Changelog
 
+### v0.30.1 — Convert more real-world Prisma schemas (2026-09-02)
+
+- Prisma schemas that `prisma migrate diff` refused now convert. The schema is
+  preprocessed first, without changing the tables, columns or foreign keys read
+  from it: `@id` is dropped from `view` blocks (Prisma forbids a primary key on
+  a view), a missing datasource `url` is filled in (the diff never connects),
+  and wrong-provider native types (`@db.Int` in a postgresql schema) are
+  stripped. Added an edge-case fixture and a preprocessing test.
+
 ### v0.30.0 — Undo a layout change (2026-09-02)
 
 - Rearranging or dragging tables can be undone. Press Ctrl+Z, or the new **undo**
