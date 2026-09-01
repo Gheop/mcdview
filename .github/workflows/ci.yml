@@ -97,6 +97,8 @@ jobs:
           done
       - name: saved positions restore without animating (links never point into space)
         run: ./tests/test_positions.py
+      - name: link routing (edge anchoring, self-loop, highlighted-edge overlay)
+        run: ./tests/test_liens.py
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with:

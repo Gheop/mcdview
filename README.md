@@ -302,6 +302,19 @@ file's header.
 
 ## Changelog
 
+### v0.29.0 — Edge-anchored links, self-reference loops (2026-09-01)
+
+- Links attach to the box side facing the other table (left/right when side by
+  side, top/bottom when stacked) instead of running box-centre to box-centre. No
+  more edges starting inside a table or cutting straight through it; the layout
+  reads like a proper ERD.
+- A self-referencing foreign key (e.g. `reports_to`) now draws a small loop on
+  the table's corner, so the hierarchy is visible — the old routing collapsed it
+  to an invisible point.
+- The hovered or isolated table's links are painted above the tables, so a
+  highlighted relationship is never hidden behind a box. The SVG export uses the
+  same anchoring. Added a headless-Chrome regression test (`tests/test_liens.py`).
+
 ### v0.28.2 — Fix the theme toggle and a stuck audit-FK checkbox (2026-09-01)
 
 - The theme button no longer needs two clicks to reach dark from a light OS. It

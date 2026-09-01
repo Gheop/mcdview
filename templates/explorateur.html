@@ -39,6 +39,9 @@
      Firefox never flashes the provisional (mis-placed) edges — revealed with a
      short fade. Tables stay visible throughout (no cold-start blank screen). */
   #liens.avant-refit { opacity: 0; transition: none; }
+  /* highlighted edges are painted here, after the tables, so a focused/hovered
+     link rides above the boxes instead of being hidden under them */
+  #liensVif { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
   .table { position: absolute; min-width: 150px; background: var(--panneau);
     border: 1.5px solid var(--bord); border-radius: 6px; cursor: pointer;
     box-shadow: 0 1px 4px #0002; transition: left .35s ease, top .35s ease, opacity .25s; }
@@ -359,6 +362,10 @@ D.tables.forEach(t => {
   });
 });
 plan.appendChild(fragTables);
+// overlay for highlighted edges, appended after the tables so it paints on top
+const svgVif = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+svgVif.id = "liensVif";
+plan.appendChild(svgVif);
 dl.appendChild(fragNoms);
 if (D.diff) {
   const leg = document.getElementById("legdiff");
@@ -439,22 +446,51 @@ function centre(cle) {
   return { x: e.offsetLeft + e.offsetWidth / 2, y: e.offsetTop + e.offsetHeight / 2,
            w: e.offsetWidth, h: e.offsetHeight };
 }
+// A link attaches to the middle of the box side that faces the other box:
+// left/right when the boxes sit side by side, top/bottom when stacked. Keeps the
+// visible line off the box bodies and off the old center-to-center diagonals.
+function boite(cle) {
+  const e = elems[cle];
+  return { l: e.offsetLeft, t: e.offsetTop, w: e.offsetWidth, h: e.offsetHeight,
+           cx: e.offsetLeft + e.offsetWidth / 2, cy: e.offsetTop + e.offsetHeight / 2 };
+}
+function ancres(a, b) {
+  const dx = b.cx - a.cx, dy = b.cy - a.cy;
+  if (Math.abs(dx) >= Math.abs(dy))
+    return { ax: dx >= 0 ? a.l + a.w : a.l, ay: a.cy, bx: dx >= 0 ? b.l : b.l + b.w, by: b.cy, h: true };
+  return { ax: a.cx, ay: dy >= 0 ? a.t + a.h : a.t, bx: b.cx, by: dy >= 0 ? b.t : b.t + b.h, h: false };
+}
+function cheminLien(p) {  // a smooth cubic that leaves each side perpendicular
+  if (p.h) { const mx = (p.ax + p.bx) / 2; return `M ${p.ax} ${p.ay} C ${mx} ${p.ay}, ${mx} ${p.by}, ${p.bx} ${p.by}`; }
+  const my = (p.ay + p.by) / 2; return `M ${p.ax} ${p.ay} C ${p.ax} ${my}, ${p.bx} ${my}, ${p.bx} ${p.by}`;
+}
+function cheminBoucle(a) {  // a self-reference (e.g. reports_to): a small corner loop
+  const r = a.l + a.w, t = a.t;
+  return `M ${r} ${t + 16} C ${r + 30} ${t + 16}, ${r - 16} ${t - 26}, ${r - 16} ${t}`;
+}
+function trace(f, boites) {  // the path for one FK, self-reference or not
+  const a = boites[f.de];
+  return f.de === f.vers ? cheminBoucle(a) : cheminLien(ancres(a, boites[f.vers]));
+}
 function dessinerLiens() {
-  // built as one markup string: thousands of paths in a single DOM write
-  const visibles = new Set(Object.keys(elems).filter(c => !elems[c].classList.contains("efface")));
-  const morceaux = [];
+  // two markup strings in one DOM write each: normal edges under the tables
+  // (#liens), highlighted ones over them (#liensVif) so a focused/hovered link
+  // is never hidden behind a box
+  const visibles = Object.keys(elems).filter(c => !elems[c].classList.contains("efface"));
+  const vus = new Set(visibles);
+  const boites = {};
+  visibles.forEach(c => boites[c] = boite(c));
+  const norm = [], vif = [];
   fksVisibles().forEach(f => {
-    if (!visibles.has(f.de) || !visibles.has(f.vers)) return;
-    const a = centre(f.de), b = centre(f.vers);
-    const mx = (a.x + b.x) / 2;
-    const vif = ((focusCle && (f.de === focusCle || f.vers === focusCle)) ||
-                 (survolCle && (f.de === survolCle || f.vers === survolCle)) ||
-                 (mev && mev.liens.has(f.de + " " + f.vers))) ? " vif" : "";
+    if (!vus.has(f.de) || !vus.has(f.vers)) return;
+    const estVif = (focusCle && (f.de === focusCle || f.vers === focusCle)) ||
+                   (survolCle && (f.de === survolCle || f.vers === survolCle)) ||
+                   (mev && mev.liens.has(f.de + " " + f.vers));
     const dcls = f.diff ? " " + DCLS[f.diff] : "";
-    morceaux.push(`<path class="lien${vif}${dcls}" d="M ${a.x} ${a.y} C ${mx} ${a.y}, ` +
-      `${mx} ${b.y}, ${b.x} ${b.y}"/>`);
+    (estVif ? vif : norm).push(`<path class="lien${estVif ? " vif" : ""}${dcls}" d="${trace(f, boites)}"/>`);
   });
-  svg.innerHTML = morceaux.join("");
+  svg.innerHTML = norm.join("");
+  svgVif.innerHTML = vif.join("");
 }
 
 // --- hover: light up the links of the table under the pointer ---
@@ -924,12 +960,17 @@ function exporterSVGImpl(pad, vis) {
   p.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" ` +
     `viewBox="0 0 ${W} ${H}" font-family="ui-sans-serif,system-ui,sans-serif">`);
   p.push(`<rect width="${W}" height="${H}" fill="#f4f4f6"/>`);
+  // same edge anchoring as the page, offset into the export's coordinate space
+  const boiteDec = cle => {
+    const e = elems[cle];
+    return { l: e.offsetLeft + ox, t: e.offsetTop + oy, w: e.offsetWidth, h: e.offsetHeight,
+             cx: e.offsetLeft + e.offsetWidth / 2 + ox, cy: e.offsetTop + e.offsetHeight / 2 + oy };
+  };
   fksVisibles().forEach(f => {
     if (!visSet.has(f.de) || !visSet.has(f.vers)) return;
-    const a = centre(f.de), b = centre(f.vers);
-    const ax = a.x + ox, ay = a.y + oy, bx = b.x + ox, by = b.y + oy, mx = (ax + bx) / 2;
-    p.push(`<path d="M ${ax} ${ay} C ${mx} ${ay}, ${mx} ${by}, ${bx} ${by}" ` +
-      `fill="none" stroke="#9aa3ad" stroke-width="1.2"/>`);
+    const a = boiteDec(f.de);
+    const d = f.de === f.vers ? cheminBoucle(a) : cheminLien(ancres(a, boiteDec(f.vers)));
+    p.push(`<path d="${d}" fill="none" stroke="#9aa3ad" stroke-width="1.2"/>`);
   });
   vis.forEach(c => {
     const e = elems[c], t = parCle[c], w = e.offsetWidth;
