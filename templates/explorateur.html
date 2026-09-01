@@ -155,6 +155,7 @@
   #hud button { padding: 4px 10px; border: 1px solid var(--bord); border-radius: 5px;
     background: var(--panneau); color: var(--encre); cursor: pointer; }
   #hud label { display: flex; gap: 4px; align-items: center; font-size: 13px; }
+  #hud label[hidden] { display: none; }  /* author display:flex beats [hidden]; restore it */
   #compte { font-size: 12px; opacity: .55; white-space: nowrap; }
   .table:hover { border-color: var(--ligne-vive); }
   #panneau { position: absolute; top: 0; right: 0; bottom: 0; width: 340px;
@@ -753,7 +754,10 @@ document.addEventListener("keydown", e => {
   else if (e.key === "r" && !btnReorg.disabled) reorganiser();
 });
 
-// theme toggle: cycle system → light → dark, remembered per viewer
+// theme toggle: cycle system → light → dark, remembered per viewer. A click
+// always changes the visible theme: when the next state would render the same
+// as now (e.g. "system" equals "light" on a light OS), skip it — otherwise the
+// first click after load looked like a no-op (system → light on a light OS)
 const btnTheme = document.getElementById("theme");
 (function initTheme() {
   // a ?theme= deep-link wins over the remembered choice (see view deep-links)
@@ -765,8 +769,12 @@ const btnTheme = document.getElementById("theme");
 })();
 btnTheme.addEventListener("click", () => {
   const ordre = ["", "light", "dark"];
+  const sysSombre = matchMedia("(prefers-color-scheme: dark)").matches;
+  const rendu = e => e || (sysSombre ? "dark" : "light");  // what a state looks like
   const actuel = document.documentElement.dataset.theme || "";
-  const suivant = ordre[(ordre.indexOf(actuel) + 1) % ordre.length];
+  let i = ordre.indexOf(actuel), suivant;
+  do { i = (i + 1) % ordre.length; suivant = ordre[i]; }
+  while (rendu(suivant) === rendu(actuel));  // never a step that looks identical
   if (suivant) document.documentElement.dataset.theme = suivant;
   else delete document.documentElement.dataset.theme;
   try {

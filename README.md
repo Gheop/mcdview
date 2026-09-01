@@ -302,6 +302,16 @@ file's header.
 
 ## Changelog
 
+### v0.28.2 — Fix the theme toggle and a stuck audit-FK checkbox (2026-09-01)
+
+- The theme button no longer needs two clicks to reach dark from a light OS. It
+  cycled system → light → dark, but "system" and "light" look identical on a
+  light OS, so the first click seemed to do nothing. A click now always changes
+  the visible theme, skipping any step that would look the same.
+- The "audit FKs" checkbox is hidden again when a model has no audit FKs. A
+  `#hud label { display: flex }` rule overrode the `hidden` attribute, so the
+  checkbox showed even with nothing to toggle.
+
 ### v0.28.1 — Fix links pointing into space when saved positions load (2026-08-31)
 
 - A viewer who had dragged tables saw the FK links briefly point into empty
