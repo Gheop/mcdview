@@ -243,11 +243,12 @@
   <button id="btnStats" title="résumé du modèle">∑ résumé</button>
   <button id="theme" title="thème clair / sombre">◐</button>
   <details id="menuExport" class="menu">
-    <summary title="exporter : SVG, Markdown, DOT">⬇ export</summary>
+    <summary title="exporter : SVG, Markdown, DOT, HTML">⬇ export</summary>
     <div class="menu-liste">
       <button id="exportSvg">SVG</button>
       <button id="exportDico">Markdown</button>
       <button id="exportDot">DOT (Graphviz)</button>
+      <button id="exportHtml" title="page HTML autonome avec la disposition actuelle">HTML (mise en page)</button>
     </div>
   </details>
   <button id="btnFkManq" title="colonnes _id sans clé étrangère déclarée">≈ FK ?</button>
@@ -1088,6 +1089,30 @@ document.getElementById("exportDico").addEventListener("click",
   () => telecharger(nomFichier("md"), dicoMarkdown(), "text/markdown"));
 document.getElementById("exportDot").addEventListener("click",
   () => telecharger(nomFichier("dot"), dotGraphe(), "text/vnd.graphviz"));
+// export a self-contained copy of this page with the current overview layout
+// baked in: clone the document, strip the runtime-rendered nodes so it is a
+// pristine template again, and rewrite the one-line `const D = …` island with
+// the current positions. Same size as a freshly generated page (the positions
+// were already in the island; only the numbers change).
+function exporterHTML() {
+  const doc = document.documentElement.cloneNode(true);
+  const plan = doc.querySelector("#plan");
+  if (plan) plan.innerHTML = '<svg id="liens" class="avant-refit"></svg>';  // drop table nodes, overlay, paths
+  const noms = doc.querySelector("#noms"); if (noms) noms.innerHTML = "";     // datalist options
+  const leg = doc.querySelector("#legende"); if (leg) leg.innerHTML = "";     // schema chips
+  const corps = doc.querySelector("body"); if (corps) corps.className = "panneau-reduit";  // fresh state
+  doc.removeAttribute("data-theme");                                          // do not bake a theme choice
+  const d2 = JSON.parse(JSON.stringify(D));   // clone, then bake the overview positions
+  d2.tables.forEach(t => {
+    const o = origines[t.schema + "." + t.nom];
+    if (o) { t.x = o.x; t.y = o.y; }
+  });
+  const json = JSON.stringify(d2).replace(/</g, "\\u003c");  // keep the no-raw-"<" island invariant
+  const sc = [...doc.querySelectorAll("script")].find(s => s.textContent.includes("const D ="));
+  sc.textContent = sc.textContent.replace(/const D = .*;/, () => "const D = " + json + ";");
+  telecharger(nomFichier("html"), "<!doctype html>\n" + doc.outerHTML, "text/html");
+}
+document.getElementById("exportHtml").addEventListener("click", exporterHTML);
 const menuExport = document.getElementById("menuExport");
 menuExport.querySelectorAll("button").forEach(b =>
   b.addEventListener("click", () => menuExport.removeAttribute("open")));

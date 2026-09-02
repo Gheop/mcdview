@@ -334,6 +334,15 @@ file's header.
 
 ## Changelog
 
+### v0.31.0 — Export the page with your layout baked in (2026-09-02)
+
+- New **HTML (with layout)** export in the export menu: download a
+  self-contained copy of the page with the tables where you arranged them. It
+  writes your positions into the data island of a clean copy, so the file is the
+  same size as a freshly generated one — not a dump of the rendered page. The
+  layout now travels with the file, not just in your browser's localStorage.
+  Added a regression test (`tests/test_export_html.py`).
+
 ### v0.30.1 — Convert more real-world Prisma schemas (2026-09-02)
 
 - Prisma schemas that `prisma migrate diff` refused now convert. The schema is

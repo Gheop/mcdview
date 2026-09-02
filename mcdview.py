@@ -1308,8 +1308,10 @@ TRADUCTIONS = {
         '"▼ dont dépendent"': '"▼ depended on by"',
         # model-summary card + export buttons
         'title="résumé du modèle">∑ résumé': 'title="model summary">∑ summary',
-        'title="exporter : SVG, Markdown, DOT">⬇ export':
-            'title="export: SVG, Markdown, DOT">⬇ export',
+        'title="exporter : SVG, Markdown, DOT, HTML">⬇ export':
+            'title="export: SVG, Markdown, DOT, HTML">⬇ export',
+        'title="page HTML autonome avec la disposition actuelle">HTML (mise en page)':
+            'title="standalone HTML page with the current layout">HTML (with layout)',
         '"Résumé"': '"Summary"',
         '"Schémas"': '"Schemas"',
         '"Colonnes / table (moy.)"': '"Columns / table (avg.)"',
