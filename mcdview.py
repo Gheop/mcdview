@@ -1369,8 +1369,14 @@ MIMES_LOGO = {'.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg'
 
 def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgresql',
                   home_url=None, logo_file=None, credit=None, credit_url=None,
-                  mode_diff=False):
-    """Assemble the final HTML page from parsed and positioned tables."""
+                  mode_diff=False, tampon=True):
+    """Assemble the final HTML page from parsed and positioned tables.
+
+    tampon: place the attribution stamp (default on). With no explicit `credit`
+    it defaults to a discreet "mcdview" linking mcdview.dev. The caller sets it
+    off for a page that already carries mcdview's own branding (the official
+    site's default render); mcdview cannot tell that apart from a plain CLI run
+    (both have no custom logo/home_url), hence the flag."""
     couleurs = dict(couleurs or {})
     for i, s in enumerate(sorted({t['schema'] for t in tables.values()})):
         couleurs.setdefault(s, PALETTE[i % len(PALETTE)])
@@ -1395,9 +1401,11 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
                 f'title="{echapper(url_sure(home_url))}">{logo}</a>')
     html = html.replace('__LOGO__', logo)
 
-    # optional attribution stamp: the mcdview logo + caller-supplied text
-    # (escaped), empty by default. The logo goes in as a data-URI <img> (no id
-    # clash with the header SVG). mcdview-site passes its own; CLI users don't.
+    # attribution stamp: on by default (tampon), a discreet "mcdview" linking
+    # mcdview.dev unless the caller set its own text. The logo goes in as a
+    # data-URI <img> (no id clash with the header SVG). The stamp is escaped.
+    if tampon and not credit:
+        credit, credit_url = 'mcdview', credit_url or 'https://mcdview.dev'
     badge = ''
     if credit:
         b64 = base64.b64encode(ressource('logo.svg').read_bytes()).decode()
@@ -1774,12 +1782,12 @@ def principal():
     ap.add_argument('--logo', default=None, metavar='FILE',
                     help="replace the header logo (svg/png/jpg…, shown 22×22)")
     ap.add_argument('--credit', default=None, metavar='TEXT',
-                    help="discreet attribution badge, bottom-right; auto-set to "
-                         "'mcdview' (linking mcdview.dev) on a branded page")
+                    help="attribution badge text, bottom-right; defaults to "
+                         "'mcdview' (linking mcdview.dev) unless --no-credit")
     ap.add_argument('--credit-url', default=None, metavar='URL',
                     help="make the --credit badge a link to this URL")
     ap.add_argument('--no-credit', action='store_true',
-                    help="never place the attribution badge, even on a branded page")
+                    help="do not place the attribution badge")
     args = ap.parse_args()
     if args.summary and not args.diff:
         ap.error('--summary only applies with --diff')
@@ -2034,19 +2042,14 @@ def generer(args, ap):
 
     titre = args.titre or nom_defaut
     sortie = args.sortie or sortie_defaut
-    # Attribution badge. A branded page (--logo or --home-url) drops the header
-    # link back to mcdview, so unless the caller opts out or sets its own credit,
-    # stamp a discreet clickable "mcdview". An explicit --credit keeps its own
-    # text/url; a plain page (unbranded) stays bare.
-    credit, credit_url = args.credit, args.credit_url
-    if args.no_credit:
-        credit = None
-    elif credit is None and (args.logo or args.home_url):
-        credit = 'mcdview'
-        credit_url = credit_url or 'https://mcdview.dev'
+    # Attribution stamp: on by default (composer_page defaults it to a discreet
+    # "mcdview" linking mcdview.dev); --no-credit turns it off, --credit sets a
+    # custom text/url. The official site turns it off for its own branded render.
+    credit = None if args.no_credit else args.credit
     Path(sortie).write_text(composer_page(tables, fks, titre, args.lang, couleurs,
                                           dialecte, args.home_url, args.logo,
-                                          credit, credit_url, bool(args.diff)))
+                                          credit, args.credit_url, bool(args.diff),
+                                          tampon=not args.no_credit))
     if args.diff:
         if args.summary:
             resume = resume_diff(tables, fks, args.diff)

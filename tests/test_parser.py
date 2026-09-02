@@ -294,6 +294,31 @@ def principal():
         if '<svg' not in svg or 'client' not in svg or 'commande' not in svg:
             echecs.append('--to-preview: SVG sans <svg> ou sans les tables')
 
+    # attribution stamp: on by default, off with --no-credit, custom with
+    # --credit; composer_page(tampon=False) lets the official site drop it
+    with tempfile.TemporaryDirectory() as td:
+        f = Path(td) / 'a.sql'
+        f.write_text('CREATE TABLE t (id int PRIMARY KEY);')
+        o = Path(td) / 'd.html'
+
+        def gen(*extra):
+            subprocess.run([sys.executable, str(RACINE / 'mcdview.py'), str(f),
+                            '-o', str(o), *extra], capture_output=True, text=True)
+            return o.read_text()
+
+        if '<b>mcdview</b>' not in gen():
+            echecs.append('stamp: absent by default (should be on)')
+        if '<b>mcdview</b>' in gen('--no-credit'):
+            echecs.append('stamp: still present with --no-credit')
+        h = gen('--credit', 'Maison')
+        if '<b>Maison</b>' not in h or '<b>mcdview</b>' in h:
+            echecs.append('stamp: --credit did not override the default text')
+        tbl, fkl = mcdview.analyser_sql(str(f))
+        if '<b>mcdview</b>' in mcdview.composer_page(tbl, fkl, 'x', tampon=False):
+            echecs.append('stamp: composer_page(tampon=False) still stamped')
+        if '<b>mcdview</b>' not in mcdview.composer_page(tbl, fkl, 'x'):
+            echecs.append('stamp: composer_page default did not stamp')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:

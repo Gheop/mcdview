@@ -70,16 +70,18 @@ jobs:
       - name: generate example pages
         run: |
           mkdir -p _site/exemples
+          # --no-credit: these are the official mcdview showcase (default
+          # branding), so the attribution stamp would just duplicate it
           ./mcdview.py exemples/mediatheque.sql -o _site/exemples/mediatheque.html \
-              --titre "Médiathèque (démo)" --fk-audit '_idmodificateur_fk$' --lang en
+              --titre "Médiathèque (démo)" --fk-audit '_idmodificateur_fk$' --lang en --no-credit
           ./mcdview.py exemples/pagila.sql -o _site/exemples/pagila.html \
-              --titre "Pagila (DVD rental)" --lang en
+              --titre "Pagila (DVD rental)" --lang en --no-credit
           ./mcdview.py exemples/northwind.sql -o _site/exemples/northwind.html \
-              --titre "Northwind" --lang en
+              --titre "Northwind" --lang en --no-credit
           ./mcdview.py exemples/chinook.sql -o _site/exemples/chinook.html \
-              --titre "Chinook (music store)" --lang en
+              --titre "Chinook (music store)" --lang en --no-credit
           ./mcdview.py exemples/boutique_v2.sql --diff exemples/boutique_v1.sql \
-              -o _site/exemples/boutique-diff.html --titre "Shop schema v1 → v2 (diff)" --lang en
+              -o _site/exemples/boutique-diff.html --titre "Shop schema v1 → v2 (diff)" --lang en --no-credit
           cp docs/index.html _site/index.html
       - name: validate generated HTML (structure + data island)
         run: ./tests/valider_html.py _site/exemples/*.html

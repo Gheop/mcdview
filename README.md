@@ -188,9 +188,9 @@ In the page:
 | `--dialect NAME` | Input SQL dialect (default: `auto`); non-PostgreSQL needs `sqlglot` |
 | `--home-url URL` | Wrap the header logo in a link to this URL |
 | `--logo FILE` | Replace the header logo with this image (svg/png/jpg…, shown 22×22) |
-| `--credit TEXT` | Discreet attribution badge, bottom-right; auto-set to `mcdview` (linking mcdview.dev) on a branded page |
+| `--credit TEXT` | Attribution badge text, bottom-right; defaults to `mcdview` (linking mcdview.dev) unless `--no-credit` |
 | `--credit-url URL` | Make the `--credit` badge a link to this URL |
-| `--no-credit` | Never place the attribution badge, even on a branded page |
+| `--no-credit` | Do not place the attribution badge |
 | `--db URL` | Read a live database's schema instead of a file (`postgresql://…` via `pg_dump`, `mysql://…` via `mysqldump`); CLI only |
 | `--diff BASELINE` | Compare against an older model (any supported format); added/removed/changed tables, columns and FKs are colored |
 | `--summary FILE` | With `--diff`: also write a JSON summary of the changes (counts + change list) to `FILE` |
@@ -333,6 +333,14 @@ file's header.
 | 1.0.0   | 2026-09-01 | Initialize; add a CI section (local flags + hosted GitHub/GitLab integrations), document `--to-dico`/`--to-preview`/`--lint`/`--fail-on`, add the blog link, reconcile the tested-at-scale figure |
 
 ## Changelog
+
+### v0.32.0 — Attribution stamp on by default (2026-09-02)
+
+- The bottom-right `mcdview` stamp (linking mcdview.dev) is now on by default on
+  every page, not only branded ones. `--no-credit` removes it; `--credit TEXT`
+  sets a custom label. `composer_page` gains a `tampon` parameter (default on) so
+  a caller that already shows mcdview's branding can drop the stamp. The
+  published example pages set `--no-credit` (they are the official showcase).
 
 ### v0.31.0 — Export the page with your layout baked in (2026-09-02)
 
