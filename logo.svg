@@ -9,8 +9,11 @@
   <style>
     .logomcd .lg-tables { transition: transform .25s ease; transform-box: view-box; transform-origin: 56px 56px; }
     .logomcd:hover .lg-tables { transform: scale(1.06); }
+    .logomcd .eclat { animation: lg-sweep 3.2s ease-in-out infinite; }
+    @keyframes lg-sweep { 0% { transform: translateX(-46px); } 55%, 100% { transform: translateX(150px); } }
     @media (prefers-reduced-motion: reduce) {
       .logomcd .flux { display: none; }
+      .logomcd .eclat { animation: none; }
       .logomcd .lg-tables { transition: none; }
       .logomcd:hover .lg-tables { transform: none; }
     }
@@ -44,5 +47,11 @@
     <circle class="flux" r="3" fill="#1d4ed8">
       <animateMotion dur="4s" repeatCount="indefinite" rotate="auto" path="M47 54c0 6 5 4 9 8"/>
     </circle>
+  </g>
+  <!-- glint sweeping across the glass (clip = upright lens; inner group tilts the strip) -->
+  <g clip-path="url(#verre-clip)">
+    <g transform="rotate(18 56 56)">
+      <rect class="eclat" x="20" y="-10" width="14" height="150" fill="#fff" opacity=".5"/>
+    </g>
   </g>
 </svg>

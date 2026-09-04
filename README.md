@@ -334,6 +334,12 @@ file's header.
 
 ## Changelog
 
+### v0.33.2 — Logo glass glint (2026-09-04)
+
+- The logo's magnifier glass now catches a light glint that sweeps across it,
+  matching the mark used on the website. Still declarative SVG (CSS animation,
+  clipped to the glass) and dropped under `prefers-reduced-motion`.
+
 ### v0.33.1 — New animated logo (2026-09-04)
 
 - The header logo (and the attribution stamp) is the new official mark — a
