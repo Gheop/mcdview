@@ -334,6 +334,17 @@ file's header.
 
 ## Changelog
 
+### v0.33.0 — Crow's-foot cardinalities (2026-09-04)
+
+- A new **cardinalities** toolbar button draws crow's-foot markers on the
+  foreign-key links, deduced from the schema with no extra input: the child
+  (FK-holding) end is *many*, the referenced end is *one* — mandatory when the
+  FK is NOT NULL, optional (a ring, `0..1`) when it is nullable. Join tables
+  read as N-N through their two links. Off by default; hovering or isolating a
+  table turns its markers blue and shows a short label (`*`, `1`, `0..1`) at each
+  end. The link now leaves the tip of the marker. The SVG export includes the
+  markers when they are on. Added a regression test (`tests/test_cardinalites.py`).
+
 ### v0.32.1 — Search lists matching tables before columns (2026-09-02)
 
 - Typing a table name that several tables share (e.g. `etabli` →

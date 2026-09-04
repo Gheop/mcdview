@@ -226,6 +226,12 @@
   #credit > a:hover { opacity: .9; }
   path.lien { stroke: var(--ligne); stroke-width: 1.2; fill: none; opacity: .5; }
   path.lien.vif { stroke: var(--ligne-vive); stroke-width: 2; opacity: 1; }
+  /* crow's-foot cardinality markers (off unless the toolbar toggle is on): grey
+     like the links, blue on the hovered/isolated table's links */
+  .marque { stroke: var(--ligne); stroke-width: 1.2; fill: none; opacity: .5; }
+  .marque.vif { stroke: var(--ligne-vive); stroke-width: 1.4; opacity: 1; }
+  circle.marque { fill: var(--voile); }
+  text.cardtxt { fill: var(--ligne-vive); font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
 </style>
 </head>
 <body class="panneau-reduit">
@@ -241,6 +247,7 @@
   <button id="btnCycles" data-graphe title="surligner les cycles de clés étrangères">↻ cycles</button>
   <button id="btnJointure" data-graphe title="chemin de jointure entre deux tables">⇢ jointure</button>
   <button id="btnStats" title="résumé du modèle">∑ résumé</button>
+  <button id="btnCard" title="afficher les cardinalités (patte d'oie)">⋈ cardinalités</button>
   <button id="theme" title="thème clair / sombre">◐</button>
   <details id="menuExport" class="menu">
     <summary title="exporter : SVG, Markdown, DOT, HTML">⬇ export</summary>
@@ -480,6 +487,35 @@ function trace(f, boites) {  // the path for one FK, self-reference or not
   const a = boites[f.de];
   return f.de === f.vers ? cheminBoucle(a) : cheminLien(ancres(a, boites[f.vers]));
 }
+let cardOn = false;  // crow's-foot cardinalities: off unless the toolbar toggles them
+// Deduced cardinalities on one FK (child holds the FK, points at the parent):
+// child end = crow's foot (many); parent end = a bar (one), plus a ring when the
+// FK column is nullable (0..1). Returns the marker markup and the two points the
+// LINK should run between (da = crow's-foot apex, db = the outer parent marker),
+// so the line leaves the tip of each marker instead of the box edge. `vif` picks
+// the blue class + a short label at each end; `pourExport` emits inline strokes
+// for the static SVG export (no label, no theme var).
+function marqueCardin(p, nn, vif, pourExport) {
+  let ux, uy;
+  if (p.h) { ux = Math.sign(p.bx - p.ax) || 1; uy = 0; } else { ux = 0; uy = Math.sign(p.by - p.ay) || 1; }
+  const vx = -ux, vy = -uy, px = -uy, py = ux, L = 13, W = 6.5, pin = nn ? 11 : 21;
+  const ax = p.ax, ay = p.ay, bx = p.bx, by = p.by;
+  const cls = vif ? "marque vif" : "marque";
+  const at = pourExport ? 'fill="none" stroke="#9aa3ad" stroke-width="1.2"' : `class="${cls}"`;
+  const seg = (x1, y1, x2, y2) => `<path ${at} d="M ${x1} ${y1} L ${x2} ${y2}"/>`;
+  let s = seg(ax + ux * L, ay + uy * L, ax, ay)
+        + seg(ax + ux * L, ay + uy * L, ax + px * W, ay + py * W)
+        + seg(ax + ux * L, ay + uy * L, ax - px * W, ay - py * W)
+        + seg(bx + vx * 9 - px * 6, by + vy * 9 - py * 6, bx + vx * 9 + px * 6, by + vy * 9 + py * 6);
+  if (!nn) {
+    const ra = pourExport ? 'fill="#f4f4f6" stroke="#9aa3ad" stroke-width="1.2"' : `class="${cls}"`;
+    s += `<circle ${ra} cx="${bx + vx * 17}" cy="${by + vy * 17}" r="3.3"/>`;
+  }
+  if (vif && !pourExport)
+    s += `<text class="cardtxt" x="${ax + ux * 17 + px * 10}" y="${ay + uy * 17 + py * 10}">*</text>` +
+         `<text class="cardtxt" x="${bx + vx * pin + vx * 4 + px * 10}" y="${by + vy * pin + vy * 4 + py * 10}">${nn ? "1" : "0..1"}</text>`;
+  return { da: { x: ax + ux * L, y: ay + uy * L }, db: { x: bx + vx * pin, y: by + vy * pin }, s };
+}
 function dessinerLiens() {
   // two markup strings in one DOM write each: normal edges under the tables
   // (#liens), highlighted ones over them (#liensVif) so a focused/hovered link
@@ -495,7 +531,19 @@ function dessinerLiens() {
                    (survolCle && (f.de === survolCle || f.vers === survolCle)) ||
                    (mev && mev.liens.has(f.de + " " + f.vers));
     const dcls = f.diff ? " " + DCLS[f.diff] : "";
-    (estVif ? vif : norm).push(`<path class="lien${estVif ? " vif" : ""}${dcls}" d="${trace(f, boites)}"/>`);
+    let d, extra = "";
+    if (f.de === f.vers) {
+      d = cheminBoucle(boites[f.de]);  // self-reference: a corner loop, no markers
+    } else if (cardOn) {
+      const p = ancres(boites[f.de], boites[f.vers]);
+      const col = parCle[f.de].cols.find(c => c.nom === f.col);
+      const mk = marqueCardin(p, !!(col && col.nn), estVif, false);
+      d = cheminLien({ ax: mk.da.x, ay: mk.da.y, bx: mk.db.x, by: mk.db.y, h: p.h });
+      extra = mk.s;
+    } else {
+      d = trace(f, boites);
+    }
+    (estVif ? vif : norm).push(`<path class="lien${estVif ? " vif" : ""}${dcls}" d="${d}"/>` + extra);
   });
   svg.innerHTML = norm.join("");
   svgVif.innerHTML = vif.join("");
@@ -1027,8 +1075,17 @@ function exporterSVGImpl(pad, vis) {
   fksVisibles().forEach(f => {
     if (!visSet.has(f.de) || !visSet.has(f.vers)) return;
     const a = boiteDec(f.de);
-    const d = f.de === f.vers ? cheminBoucle(a) : cheminLien(ancres(a, boiteDec(f.vers)));
-    p.push(`<path d="${d}" fill="none" stroke="#9aa3ad" stroke-width="1.2"/>`);
+    if (f.de === f.vers) {
+      p.push(`<path d="${cheminBoucle(a)}" fill="none" stroke="#9aa3ad" stroke-width="1.2"/>`);
+    } else if (cardOn) {  // bake the cardinality markers into the export too
+      const pa = ancres(a, boiteDec(f.vers));
+      const col = parCle[f.de].cols.find(c => c.nom === f.col);
+      const mk = marqueCardin(pa, !!(col && col.nn), false, true);
+      p.push(`<path d="${cheminLien({ ax: mk.da.x, ay: mk.da.y, bx: mk.db.x, by: mk.db.y, h: pa.h })}" ` +
+             `fill="none" stroke="#9aa3ad" stroke-width="1.2"/>` + mk.s);
+    } else {
+      p.push(`<path d="${cheminLien(ancres(a, boiteDec(f.vers)))}" fill="none" stroke="#9aa3ad" stroke-width="1.2"/>`);
+    }
   });
   vis.forEach(c => {
     const e = elems[c], t = parCle[c], w = e.offsetWidth;
@@ -1162,6 +1219,11 @@ function montrerStats() {
   reduirePanneau(false);
 }
 document.getElementById("btnStats").addEventListener("click", montrerStats);
+document.getElementById("btnCard").addEventListener("click", e => {
+  cardOn = !cardOn;
+  e.currentTarget.classList.toggle("actif", cardOn);
+  dessinerLiens();
+});
 
 // --- probable missing FKs: an <x>_id column with no declared FK, when a table
 // named <x> (or its simple plural/singular) exists. A heuristic hint, not a

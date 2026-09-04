@@ -1268,6 +1268,8 @@ TRADUCTIONS = {
             'related tables and see its details here.<br><br>Wheel: zoom.\n'
             'Drag: pan. Escape: overview.',
         '⇄ réorganiser': '⇄ rearrange',
+        '⋈ cardinalités': '⋈ cardinalities',
+        '"afficher les cardinalités (patte d\'oie)"': '"show cardinalities (crow\'s foot)"',
         '↶ annuler': '↶ undo',
         '"annuler la dernière disposition (Ctrl+Z)"':
             '"undo the last layout change (Ctrl+Z)"',

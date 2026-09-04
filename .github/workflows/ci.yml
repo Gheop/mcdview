@@ -109,6 +109,8 @@ jobs:
         run: ./tests/test_export_html.py
       - name: search suggestions list tables before columns
         run: ./tests/test_recherche.py
+      - name: crow's-foot cardinalities (toggle, deduced markers, vif labels)
+        run: ./tests/test_cardinalites.py
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with:
