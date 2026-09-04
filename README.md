@@ -334,6 +334,14 @@ file's header.
 
 ## Changelog
 
+### v0.32.1 — Search lists matching tables before columns (2026-09-02)
+
+- Typing a table name that several tables share (e.g. `etabli` →
+  `etablissement`, `etablissementindividu`, `etablissementtelephone`) now lists
+  all the matching tables. The search datalist put each table's columns right
+  after it, so one table's columns crowded its siblings out of the browser's
+  suggestion popup. All table names are now inserted before any column name.
+
 ### v0.32.0 — Attribution stamp on by default (2026-09-02)
 
 - The bottom-right `mcdview` stamp (linking mcdview.dev) is now on by default on

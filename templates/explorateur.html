@@ -311,7 +311,8 @@ function voisins(cle) {
 const dl = document.getElementById("noms");
 // single fragment append: one layout instead of thousands on big models
 const fragTables = document.createDocumentFragment();
-const fragNoms = document.createDocumentFragment();
+const fragNoms = document.createDocumentFragment();      // table names
+const fragNomsCols = document.createDocumentFragment();  // column names, listed after
 const parColonne = {};      // "table.col" and bare "col" -> {cle, col} for search
 let colonneCible = null;    // a column to highlight after the search isolates its table
 const colonnesEnAuto = D.tables.length <= 300;  // suggest columns only on small models
@@ -359,7 +360,7 @@ D.tables.forEach(t => {
     if (colonnesEnAuto) {
       const oc = document.createElement("option");
       oc.value = t.nom + "." + c.nom;
-      fragNoms.appendChild(oc);
+      fragNomsCols.appendChild(oc);
     }
   });
 });
@@ -368,7 +369,12 @@ plan.appendChild(fragTables);
 const svgVif = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 svgVif.id = "liensVif";
 plan.appendChild(svgVif);
+// all table names first, then all column names: a table-name query (e.g. a
+// name shared by several tables) then lists the matching TABLES before any of
+// their columns in the native datalist, instead of one table's columns
+// crowding out its siblings
 dl.appendChild(fragNoms);
+dl.appendChild(fragNomsCols);
 if (D.diff) {
   const leg = document.getElementById("legdiff");
   leg.classList.add("on");

@@ -107,6 +107,8 @@ jobs:
         run: ./tests/test_undo.py
       - name: export HTML with the current layout (clean copy, no bloat)
         run: ./tests/test_export_html.py
+      - name: search suggestions list tables before columns
+        run: ./tests/test_recherche.py
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with:
