@@ -52,10 +52,20 @@ def principal():
         if fonction is None or not chemin.exists() or (outil and not shutil.which(outil)):
             print(f'skip {rel} ({outil} absent)')
             continue
-        if outil is None:  # native parser returns (tables, fks) directly
-            tables, fks = fonction(str(chemin))
-        else:  # converter returns an SQL path to parse
-            tables, fks = mcdview.analyser_sql(fonction(str(chemin)))
+        try:
+            if outil is None:  # native parser returns (tables, fks) directly
+                tables, fks = fonction(str(chemin))
+            else:  # converter returns an SQL path to parse
+                tables, fks = mcdview.analyser_sql(fonction(str(chemin)))
+        except SystemExit:
+            # the converter exits when the external tool cannot run. For prisma
+            # that happens when the locally installed version has no `migrate
+            # diff` (prisma>=7/8) — skip rather than fail; CI pins prisma@6, the
+            # authoritative check. A churning local prisma no longer blocks work.
+            if outil == 'prisma':
+                print(f'skip {rel} (local prisma cannot convert; needs prisma@6, CI pins it)')
+                continue
+            raise
         faits += 1
         if len(tables) != nt:
             echecs.append(f'{rel}: {len(tables)} tables != {nt}')
