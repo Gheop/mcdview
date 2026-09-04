@@ -334,6 +334,15 @@ file's header.
 
 ## Changelog
 
+### v0.33.1 — New animated logo (2026-09-04)
+
+- The header logo (and the attribution stamp) is the new official mark — a
+  magnifier inspecting two linked tables — with a packet that circulates along
+  the foreign key, and a slight "focus" zoom of the tables (clipped to the
+  glass) when you hover it. It is declarative SVG only (SMIL + CSS, no script),
+  self-contained, and honors `prefers-reduced-motion`: the motion is dropped for
+  viewers who ask their OS for reduced motion.
+
 ### v0.33.0 — Crow's-foot cardinalities (2026-09-04)
 
 - A new **cardinalities** toolbar button draws crow's-foot markers on the
