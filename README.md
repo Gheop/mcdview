@@ -334,6 +334,17 @@ file's header.
 
 ## Changelog
 
+### v0.33.3 — Favicon and input robustness (2026-09-05)
+
+- Generated pages now carry an inline favicon (a still SVG data URI), so the
+  tab shows the mcdview mark — or your `--logo` on a white-label page — with no
+  network request and no `/favicon.ico` 404, even opened offline.
+- A non-UTF-8 model file (a legitimate latin-1 SQL dump) is now read instead of
+  crashing the reader; every reader tolerates invalid bytes.
+- A malformed `.dbm` (valid XML but unexpected structure) no longer crashes page
+  generation while reading table positions; such a table falls back to the
+  automatic layout.
+
 ### v0.33.2 — Logo glass glint (2026-09-04)
 
 - The logo's magnifier glass now catches a light glint that sweeps across it,
