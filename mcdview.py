@@ -50,6 +50,15 @@ def version_mcdview():
     return 'unknown'
 
 
+def lire_texte(chemin, limite=None):
+    """Read a model file as text, tolerating non-UTF-8 bytes — real-world dumps
+    are not always UTF-8 (a latin-1 pg_dump is legitimate), and a hosted service
+    parses files it did not write. `limite` caps the read for the dialect
+    sniffers; the handle is always closed."""
+    with open(chemin, errors='replace') as f:
+        return f.read(limite)
+
+
 PALETTE = ['#cdebc5', '#d6e6f5', '#a8d8b9', '#f5e3c8', '#e8d5f0',
            '#f0d0d0', '#d0e8e8', '#ede5c0', '#dcd6f7', '#f5d6a6']
 
@@ -238,7 +247,7 @@ def decouper_corps(s, cap=100000):
 
 
 def analyser_sql(chemin):
-    src = open(chemin).read()
+    src = lire_texte(chemin)
     tables, fks = {}, []
     corps_par_cle = {}   # cle -> raw CREATE TABLE body, for inline/table-level FKs
 
@@ -430,7 +439,7 @@ DIALECTES = ['auto', 'postgres', 'mysql', 'mariadb', 'sqlite', 'tsql',
 
 
 def flairer_dialecte(chemin):
-    src = open(chemin, errors='replace').read(300000)
+    src = lire_texte(chemin, 300000)
     if 'AUTOINCREMENT' in src:
         return 'sqlite'
     if re.search(r'\[\w+\]\s+\w', src):
@@ -451,7 +460,7 @@ def ressemble_postgres(chemin):
     """False when the DDL is clearly another dialect the regex parser would
     mangle: backticks (never valid PostgreSQL), AUTOINCREMENT (SQLite) or
     bracket-quoted identifiers like `[column] type` (SQL Server)."""
-    src = open(chemin, errors='replace').read(300000)
+    src = lire_texte(chemin, 300000)
     return ('`' not in src and 'AUTOINCREMENT' not in src.upper()
             and not re.search(r'\[\w+\]\s+\w', src))
 
@@ -491,7 +500,7 @@ def analyser(chemin, dialecte='auto'):
         # try is a full sqlglot parse (O(size)); on a big file, pick the
         # dialect on a bounded prefix, then parse it in full just once.
         candidats = list(dict.fromkeys([flairer_dialecte(chemin)] + DIALECTES_ESSAI))
-        src = open(chemin, errors='replace').read()
+        src = lire_texte(chemin)
 
         def essayer(d, texte):
             # defense in depth: an unforeseen sqlglot AST shape must not crash
@@ -528,7 +537,7 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
             return {}, []
         sys.exit(f'reading {dialecte} DDL needs sqlglot (pip install sqlglot)')
     if src is None:
-        src = open(chemin, errors='replace').read()
+        src = lire_texte(chemin)
     try:
         # IGNORE: a single unparseable statement must not abort the whole model
         arbre = sqlglot.parse(src, read=dialecte, error_level=ErrorLevel.IGNORE)
@@ -666,7 +675,7 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
 
 def indice_dialecte(chemin):
     """A hint appended when no table parses but another dialect shows through."""
-    src = open(chemin, errors='replace').read(300000)
+    src = lire_texte(chemin, 300000)
     if re.search(r'CREATE TABLE[^(]*`', src):
         return ' (backquoted names: this looks like MySQL DDL, mcdview reads PostgreSQL)'
     if 'AUTOINCREMENT' in src:
@@ -945,7 +954,7 @@ def analyser_schema_rb(chemin):
     """Parse a Rails db/schema.rb natively (the create_table / add_foreign_key
     DSL is regular). The implicit `id` primary key is added unless `id: false`;
     `add_foreign_key "from", "to"` defaults its column to <singular(to)>_id."""
-    src = open(chemin, errors='replace').read()
+    src = lire_texte(chemin)
     tables, fks = {}, []
     # opener + string-search for the block's `end` (not a lazy `.*?` spanning to
     # `end`, which backtracks on many unterminated create_table openers)
@@ -1009,7 +1018,7 @@ def analyser_mermaid(chemin):
     fence). Entities become tables, their attributes columns (PK marker → key);
     each relationship becomes an FK from the "many" side (crow's foot) to the
     "one" side — Mermaid does not name the FK column, so it is left blank."""
-    src = open(chemin, errors='replace').read()
+    src = lire_texte(chemin)
     d = src.find('erDiagram')
     if d == -1:
         return {}, []
@@ -1103,7 +1112,7 @@ def analyser_drizzle(chemin):
     `pgTable("name", { field: type("col").notNull().primaryKey()
     .references(() => other.col) })` becomes a table; `.references()` gives the
     foreign keys, resolved against the map of const-variable → table."""
-    src = open(chemin, errors='replace').read()
+    src = lire_texte(chemin)
     # drop comments so a commented-out table is not parsed (line comments only
     # at line start, to leave "https://" inside strings alone) and block ones
     src = re.sub(r'/\*.*?\*/', '', src, flags=re.S)
@@ -1976,7 +1985,7 @@ def generer(args, ap):
         if len(args.sql) == 1:
             tables, fks, dialecte = charger(source, args.dialect)
         elif all(not f.endswith(speciales) for f in args.sql):
-            combine = '\n\n'.join(open(f, errors='replace').read() for f in args.sql)
+            combine = '\n\n'.join(lire_texte(f) for f in args.sql)
             tmp = Path(tempfile.mkdtemp(prefix='mcdview-')) / 'merged.sql'
             tmp.write_text(combine)
             tables, fks, dialecte = analyser(str(tmp), args.dialect)

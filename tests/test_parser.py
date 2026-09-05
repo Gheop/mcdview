@@ -319,6 +319,19 @@ def principal():
         if '<b>mcdview</b>' not in mcdview.composer_page(tbl, fkl, 'x'):
             echecs.append('stamp: composer_page default did not stamp')
 
+    # a non-UTF-8 dump (a legitimate latin-1 pg_dump) must parse, not crash on
+    # decode — every reader tolerates invalid bytes (see lire_texte)
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'latin1.sql'
+        p.write_bytes('CREATE TABLE cafe (\n  nom text, -- caf\xe9 au lait\n  id int\n);\n'
+                      .encode('latin-1'))
+        try:
+            t = dict(mcdview.analyser_sql(str(p))[0])
+            if len(t) != 1:
+                echecs.append(f'latin-1: {len(t)} tables != 1')
+        except UnicodeDecodeError:
+            echecs.append('latin-1: reader crashed on non-UTF-8 input')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:
