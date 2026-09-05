@@ -246,8 +246,9 @@ def decouper_corps(s, cap=100000):
     return entrees, False
 
 
-def analyser_sql(chemin):
-    src = lire_texte(chemin)
+def analyser_sql(chemin, src=None):
+    if src is None:
+        src = lire_texte(chemin)
     tables, fks = {}, []
     corps_par_cle = {}   # cle -> raw CREATE TABLE body, for inline/table-level FKs
 
@@ -438,8 +439,9 @@ DIALECTES = ['auto', 'postgres', 'mysql', 'mariadb', 'sqlite', 'tsql',
              'clickhouse', 'trino', 'spark', 'hive']
 
 
-def flairer_dialecte(chemin):
-    src = lire_texte(chemin, 300000)
+def flairer_dialecte(chemin, src=None):
+    if src is None:
+        src = lire_texte(chemin, 300000)
     if 'AUTOINCREMENT' in src:
         return 'sqlite'
     if re.search(r'\[\w+\]\s+\w', src):
@@ -456,11 +458,13 @@ DIALECTES_ESSAI = ['mysql', 'sqlite', 'postgres', 'tsql', 'oracle', 'clickhouse'
 SEUIL_ECHANTILLON = 25000
 
 
-def ressemble_postgres(chemin):
+def ressemble_postgres(chemin, src=None):
     """False when the DDL is clearly another dialect the regex parser would
     mangle: backticks (never valid PostgreSQL), AUTOINCREMENT (SQLite) or
-    bracket-quoted identifiers like `[column] type` (SQL Server)."""
-    src = lire_texte(chemin, 300000)
+    bracket-quoted identifiers like `[column] type` (SQL Server). `src` may be
+    a pre-read prefix, to avoid re-reading the file on the auto path."""
+    if src is None:
+        src = lire_texte(chemin, 300000)
     return ('`' not in src and 'AUTOINCREMENT' not in src.upper()
             and not re.search(r'\[\w+\]\s+\w', src))
 
@@ -490,17 +494,20 @@ def analyser(chemin, dialecte='auto'):
         tables, fks = analyser_sql(chemin)
         return (*normaliser_casse(tables, fks), 'postgresql')
     if dialecte == 'auto':
+        # read the file once and thread it through: the dialect sniffers see a
+        # bounded prefix, the parsers the full text (avoids 2-3 re-reads here)
+        src = lire_texte(chemin)
+        apercu = src[:300000]
         # PostgreSQL regex parser first, but only trust it when the file isn't
         # obviously another dialect it would mis-parse (MySQL backtick PKs...)
-        if ressemble_postgres(chemin):
-            tables, fks = analyser_sql(chemin)
+        if ressemble_postgres(chemin, apercu):
+            tables, fks = analyser_sql(chemin, src)
             if tables:
                 return (*normaliser_casse(tables, fks), 'postgresql')
         # otherwise try several sqlglot dialects, keep the most tables. Each
         # try is a full sqlglot parse (O(size)); on a big file, pick the
         # dialect on a bounded prefix, then parse it in full just once.
-        candidats = list(dict.fromkeys([flairer_dialecte(chemin)] + DIALECTES_ESSAI))
-        src = lire_texte(chemin)
+        candidats = list(dict.fromkeys([flairer_dialecte(chemin, apercu)] + DIALECTES_ESSAI))
 
         def essayer(d, texte):
             # defense in depth: an unforeseen sqlglot AST shape must not crash
