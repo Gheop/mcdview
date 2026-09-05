@@ -319,6 +319,30 @@ def principal():
         if '<b>mcdview</b>' not in mcdview.composer_page(tbl, fkl, 'x'):
             echecs.append('stamp: composer_page default did not stamp')
 
+        # favicon: a still, well-formed SVG data URI by default; the custom
+        # --logo drives it (with its own mime) on a white-label page
+        import base64
+        import re
+        import xml.etree.ElementTree as ET
+        page = gen()
+        mfav = re.search(r'<link rel="icon" type="image/svg\+xml" '
+                         r'href="data:image/svg\+xml;base64,([^"]+)"', page)
+        if not mfav:
+            echecs.append('favicon: no SVG data-URI icon by default')
+        else:
+            svg = base64.b64decode(mfav.group(1)).decode()
+            try:
+                ET.fromstring(svg)  # a favicon data URI must be well-formed XML
+            except ET.ParseError:
+                echecs.append('favicon: default icon SVG is malformed')
+            if '<animate' in svg or '<style' in svg:
+                echecs.append('favicon: default icon still carries animation')
+        logo = Path(td) / 'x.svg'
+        logo.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"/>')
+        if 'type="image/svg+xml" href="data:image/svg+xml;base64,' not in \
+                gen('--logo', str(logo)):
+            echecs.append('favicon: --logo did not drive the icon')
+
     # a non-UTF-8 dump (a legitimate latin-1 pg_dump) must parse, not crash on
     # decode — every reader tolerates invalid bytes (see lire_texte)
     with tempfile.TemporaryDirectory() as td:

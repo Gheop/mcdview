@@ -64,7 +64,10 @@ def verifier_xss(echecs):
         tables, fks, 'x', 'en',
         home_url='javascript:alert(1)', credit='<b>x</b>',
         credit_url='javascript:alert(2)')
-    if re.search(r'href="\s*(javascript|data|vbscript):', page, re.I):
+    # the favicon <link> legitimately carries a base64 data: URI (our own SVG,
+    # not caller-controlled), so exclude it before scanning caller-driven hrefs
+    sans_favicon = re.sub(r'<link rel="icon"[^>]*>', '', page)
+    if re.search(r'href="\s*(javascript|data|vbscript):', sans_favicon, re.I):
         echecs.append('credit/home_url: schéma d\'URL dangereux dans un href')
     if '<b>x</b>' in page:
         echecs.append('credit: texte non échappé')

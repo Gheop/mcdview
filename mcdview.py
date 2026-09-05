@@ -1392,6 +1392,22 @@ MIMES_LOGO = {'.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg'
               '.ico': 'image/x-icon'}
 
 
+def logo_statique(svg):
+    """A still version of the animated logo, for the favicon: browsers do not
+    animate favicons, and a static mark stays crisp at 16px. Drop the <style>
+    (CSS animation + hover zoom) and the two animated decorations — the packet
+    circulating along the FK and the glass glint — which would otherwise freeze
+    mid-motion as a stray dot and a bright band across the lens."""
+    # comments first: a descriptive comment mentions "<style>", which would
+    # otherwise make the style strip match from there to the real </style> and
+    # leave an unterminated comment (invalid XML → the favicon would not render)
+    svg = re.sub(r'<!--.*?-->', '', svg, flags=re.S)
+    svg = re.sub(r'<style>.*?</style>', '', svg, flags=re.S)
+    svg = re.sub(r'<circle class="flux".*?</circle>', '', svg, flags=re.S)
+    svg = re.sub(r'<rect class="eclat"[^>]*/>', '', svg)
+    return svg
+
+
 def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgresql',
                   home_url=None, logo_file=None, credit=None, credit_url=None,
                   mode_diff=False, tampon=True):
@@ -1419,12 +1435,21 @@ def composer_page(tables, fks, titre, lang='fr', couleurs=None, dialecte='postgr
         mime = MIMES_LOGO.get(Path(logo_file).suffix.lower(), 'image/png')
         b64 = base64.b64encode(Path(logo_file).read_bytes()).decode()
         logo = f'<img src="data:{mime};base64,{b64}" width="22" height="22" alt="">'
+        # same source drives the favicon (a white-label page keeps its own mark)
+        favicon_href, favicon_mime = f'data:{mime};base64,{b64}', mime
     else:
         logo = logo.replace('width="128" height="128"', 'width="22" height="22"')
+        b64_fav = base64.b64encode(logo_statique(
+            ressource('logo.svg').read_text()).encode()).decode()
+        favicon_href, favicon_mime = f'data:image/svg+xml;base64,{b64_fav}', 'image/svg+xml'
     if home_url:
         logo = (f'<a href="{echapper(url_sure(home_url))}" style="display:flex" '
                 f'title="{echapper(url_sure(home_url))}">{logo}</a>')
     html = html.replace('__LOGO__', logo)
+    # inline favicon so a generated single-file page has a tab icon offline and
+    # never 404s on /favicon.ico. Data URI (base64) keeps it self-contained.
+    html = html.replace('__FAVICON__',
+                        f'<link rel="icon" type="{favicon_mime}" href="{favicon_href}">')
 
     # attribution stamp: on by default (tampon), a discreet "mcdview" linking
     # mcdview.dev unless the caller set its own text. The logo goes in as a
