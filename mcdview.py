@@ -1191,12 +1191,19 @@ def positions_dbm(chemin, tables):
         if s.get('fill-color'):
             couleurs[s.get('name')] = s.get('fill-color')
     for t in root.iter('table'):
-        sch = t.find('schema').get('name')
-        cle = f"{sch}.{t.get('name')}"
-        if cle in tables:
-            pos = t.find('position')
-            tables[cle]['x'] = float(pos.get('x'))
-            tables[cle]['y'] = float(pos.get('y'))
+        # an uploaded .dbm is untrusted: a <table> may lack the <schema>/
+        # <position> children (or their attributes) this reads. Skip such a
+        # table rather than crash the whole generation on a malformed model.
+        sch_el, pos = t.find('schema'), t.find('position')
+        if sch_el is None or pos is None:
+            continue
+        cle = f"{sch_el.get('name')}.{t.get('name')}"
+        if cle in tables and pos.get('x') is not None and pos.get('y') is not None:
+            try:
+                tables[cle]['x'] = float(pos.get('x'))
+                tables[cle]['y'] = float(pos.get('y'))
+            except ValueError:
+                pass  # non-numeric coordinate: leave the auto-layout default
     return couleurs
 
 

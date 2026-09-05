@@ -189,6 +189,22 @@ def verifier_uploads(echecs):
     finally:
         Path(nom).unlink(missing_ok=True)
 
+    # 3b. a malformed-but-valid-XML .dbm (a <table> missing its <schema>/
+    # <position>, or a non-numeric coordinate) must not crash position reading
+    for xml in (b'<dbmodel><table name="a"><position x="1" y="2"/></table></dbmodel>',
+                b'<dbmodel><table name="a"><schema name="public"/></table></dbmodel>',
+                b'<dbmodel><table name="a"><schema name="public"/>'
+                b'<position x="NaN-ish" y="2"/></table></dbmodel>'):
+        with tempfile.NamedTemporaryFile(suffix='.dbm', delete=False) as f:
+            f.write(xml)
+            nom = f.name
+        try:
+            mcdview.positions_dbm(nom, {'public.a': mcdview.nouvelle_table('public', 'a')})
+        except Exception as e:
+            echecs.append(f'positions_dbm: .dbm malformé plante ({type(e).__name__})')
+        finally:
+            Path(nom).unlink(missing_ok=True)
+
     # 4. a converter that hangs is killed by the timeout (shrunk for the test)
     delai = mcdview.DELAI_OUTIL
     mcdview.DELAI_OUTIL = 1
