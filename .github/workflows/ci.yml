@@ -44,9 +44,11 @@ jobs:
           python -m py_compile mcdview.py tests/*.py
           ruff check --select F,E9 mcdview.py tests/*.py
       - name: install sqlglot (optional backend for non-PostgreSQL dialects)
-        run: pip install sqlglot
+        # pinned: a sqlglot release can shift dialect table counts (ATTENDUS),
+        # so bump this deliberately rather than let CI drift on every release
+        run: pip install sqlglot==30.18.0
       - name: install model-file converters (DBML, Prisma)
-        run: npm install -g @dbml/cli prisma@6
+        run: npm install -g @dbml/cli@10.1.1 prisma@6
       - name: pinned regression (examples; .dbm samples skipped without pgmodeler-cli)
         run: ./tests/tester.py --rapide
       - name: parser edge cases (inline PK, phantom-PK traps)

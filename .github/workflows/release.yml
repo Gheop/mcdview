@@ -28,7 +28,7 @@ jobs:
           pipx install ruff
           python -m py_compile mcdview.py tests/*.py
           ruff check --select F,E9 mcdview.py tests/*.py
-          pip install sqlglot
+          pip install sqlglot==30.18.0
           ./tests/tester.py --rapide
           ./tests/test_parser.py
           ./tests/test_securite.py
