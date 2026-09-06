@@ -402,6 +402,12 @@ def analyser_sql(chemin, src=None):
         de = resoudre(cle)
         if de not in tables:
             continue
+        # this pass only ever yields FKs from a REFERENCES token (RE_FK_TABLE /
+        # RE_FK_INLINE both require it). A body without one — every table in a
+        # pg_dump, where FKs live in ALTER TABLE — produces nothing, so skip the
+        # per-character body scan entirely (it was ~35 % of the parse time)
+        if 'REFERENCES' not in corps.upper():
+            continue
         # terminate the body so decouper_corps emits the final entry too (it only
         # flushes the buffer at a depth-0 ')' or comma; a multi-line body has
         # neither after its last column, and a single-line one stops at its real
