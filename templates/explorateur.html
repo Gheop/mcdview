@@ -43,6 +43,9 @@ __FAVICON__
   /* highlighted edges are painted here, after the tables, so a focused/hovered
      link rides above the boxes instead of being hidden under them */
   #liensVif { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+  /* invisible fat hit-strokes under the tables so a thin link can be clicked */
+  #liensClic { position: absolute; left: 0; top: 0; overflow: visible; }
+  #liensClic path { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
   .table { position: absolute; min-width: 150px; background: var(--panneau);
     border: 1.5px solid var(--bord); border-radius: 6px; cursor: pointer;
     box-shadow: 0 1px 4px #0002; transition: left .35s ease, top .35s ease, opacity .25s; }
@@ -377,6 +380,13 @@ plan.appendChild(fragTables);
 const svgVif = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 svgVif.id = "liensVif";
 plan.appendChild(svgVif);
+// clickable link layer, inserted BELOW the tables (right after #liens) so a
+// table click still wins where a link crosses a box
+const svgClic = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+svgClic.id = "liensClic";
+plan.insertBefore(svgClic, plan.children[1]);
+let liensVus = [];      // index (data-fk on a hit path) -> the FK it draws
+let focusLien = null;   // the FK whose detail is shown in the panel
 // all table names first, then all column names: a table-name query (e.g. a
 // name shared by several tables) then lists the matching TABLES before any of
 // their columns in the native datalist, instead of one table's columns
@@ -525,10 +535,12 @@ function dessinerLiens() {
   const vus = new Set(visibles);
   const boites = {};
   visibles.forEach(c => boites[c] = boite(c));
-  const norm = [], vif = [];
+  const norm = [], vif = [], clic = [];
+  liensVus = [];
   fksVisibles().forEach(f => {
     if (!vus.has(f.de) || !vus.has(f.vers)) return;
-    const estVif = (focusCle && (f.de === focusCle || f.vers === focusCle)) ||
+    const estVif = f === focusLien ||
+                   (focusCle && (f.de === focusCle || f.vers === focusCle)) ||
                    (survolCle && (f.de === survolCle || f.vers === survolCle)) ||
                    (mev && mev.liens.has(f.de + " " + f.vers));
     const dcls = f.diff ? " " + DCLS[f.diff] : "";
@@ -545,9 +557,12 @@ function dessinerLiens() {
       d = trace(f, boites);
     }
     (estVif ? vif : norm).push(`<path class="lien${estVif ? " vif" : ""}${dcls}" d="${d}"/>` + extra);
+    const i = liensVus.push(f) - 1;   // a fat transparent hit path per link
+    clic.push(`<path data-fk="${i}" d="${d}"/>`);
   });
   svg.innerHTML = norm.join("");
   svgVif.innerHTML = vif.join("");
+  svgClic.innerHTML = clic.join("");
 }
 
 // --- hover: light up the links of the table under the pointer ---
@@ -723,10 +738,14 @@ vp.addEventListener("pointerup", e => {
     }
   }
   if (!fini.bouge) {
-    const cible = document.elementFromPoint(e.clientX, e.clientY)?.closest(".table");
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const cible = el?.closest(".table");
     if (cible) {
       if (jointure.actif) choisirJointure(cible.dataset.cle);  // pick join endpoints
       else isoler(cible.dataset.cle);
+    } else {  // no table under the pointer — maybe a link
+      const lp = el?.closest("#liensClic path");
+      if (lp && !jointure.actif) detaillerLien(liensVus[+lp.dataset.fk]);
     }
   }
 });
@@ -791,6 +810,7 @@ function isoler(cle) {
     document.getElementById("btnHubs").classList.remove("actif");
   }
   focusCle = cle;
+  focusLien = null;  // leaving a link's detail clears its highlight
   finIntro();  // a table click ends the intro and keeps the panel open below
   if (autoExpand && panneauReduit) reduirePanneau(false, true);  // reveal detail
   survolCle = null;
@@ -853,6 +873,7 @@ function isoler(cle) {
 function vueGenerale() {
   sortirModes();  // back to overview clears any graph highlight / join mode
   focusCle = null;
+  focusLien = null;
   filtreTouchees = false;  // overview always shows everything
   const bf = document.getElementById("filtreTouchees");
   if (bf) bf.classList.remove("actif");
@@ -1317,6 +1338,53 @@ function detailler(cle) {
     colonneCible = null;
   }
 }
+// One FK link's detail in the right panel, symmetric to detailler(). Shows the
+// two endpoints (child holds the FK, points at the parent), the deduced
+// cardinality in the same crow's-foot notation as the toolbar toggle, the
+// referential actions (ON DELETE / ON UPDATE) when the DDL declares them, and
+// the carrier column. The child end is 1:1 when its FK column is unique.
+function detaillerLien(f) {
+  if (!f) return;
+  focusLien = f; focusCle = null;
+  finIntro();
+  if (autoExpand && panneauReduit) reduirePanneau(false, true);
+  survolCle = null;
+  dessinerLiens();
+  const src = parCle[f.de], col = (src.cols || []).find(c => c.nom === f.col);
+  const nn = !!(col && col.nn);
+  // 1:1 when the FK column is unique on the source (its sole PK, or a
+  // single-column unique index); otherwise the child side is "many"
+  const uniqueSeule = (src.pk.length === 1 && src.pk[0] === f.col) ||
+    (src.index || []).some(ix => ix.unique && ix.cols.length === 1 && ix.cols[0] === f.col);
+  const deNom = f.de.split(".")[1], versNom = f.vers.split(".")[1];
+  const cardParent = nn ? "1" : "0..1";                 // parent end (one / zero-or-one)
+  const cardEnfant = uniqueSeule ? cardParent : "*";    // child end (unique → 1:1, else many)
+  const actions = [
+    f.on_delete ? `ON DELETE ${ech(f.on_delete)}` : "",
+    f.on_update ? `ON UPDATE ${ech(f.on_update)}` : "",
+  ].filter(Boolean);
+  panneau.innerHTML =
+    `<h2>🔗 ${ech(deNom)} → ${ech(versNom)}</h2>` +
+    `<div class="schema">${ech(TXT.lienFk)} · ${ech(uniqueSeule ? TXT.unUn : TXT.unN)}</div>` +
+    (f.de === f.vers ? `<div class="comm">${ech(TXT.autoRef)}</div>` : "") +
+    `<table>` +
+    `<tr><td class="ic">${cardEnfant}</td><td><strong>${lienTable(f.de)}</strong>` +
+      `<div class="ccom">${ech(f.col || "?")}${nn ? " NOT NULL" : ` (${ech(TXT.nullable)})`}</div></td></tr>` +
+    `<tr><td class="ic">${cardParent}</td><td><strong>${lienTable(f.vers)}</strong>` +
+      `<div class="ccom">${ech(f.colcible || "?")}</div></td></tr>` +
+    `</table>` +
+    `<h4>${ech(TXT.cardinalite)}</h4>` +
+    `<div class="ixrow"><span class="ty">${ech(versNom)} ${cardParent} —— ${cardEnfant} ${ech(deNom)}</span></div>` +
+    (actions.length
+      ? `<h4>${ech(TXT.actionsRef)}</h4>` +
+        actions.map(a => `<div class="ixrow"><span class="ty">${a}</span></div>`).join("")
+      : "") +
+    `<h4>${ech(TXT.colPorteuse)}</h4>` +
+    `<div class="ixrow"><span class="ty">${ech(deNom)}.${ech(f.col || "?")} : ` +
+      `${ech((col && col.type) || "?")}</span></div>`;
+  panneau.querySelectorAll("a[data-cible]").forEach(a =>
+    a.addEventListener("click", () => isoler(a.dataset.cible)));
+}
 
 // --- search ---
 document.getElementById("cherche").addEventListener("change", e => {
@@ -1393,6 +1461,14 @@ const TXT = {
   aucuneFkManq: "Aucune FK manquante probable.",
   fkManqTitre: "FK manquantes probables",
   fkManqIntro: "Colonnes en _id sans FK déclarée, avec une table du nom correspondant. Heuristique à vérifier.",
+  lienFk: "clé étrangère",
+  cardinalite: "Cardinalité",
+  colPorteuse: "Colonne porteuse",
+  actionsRef: "Actions référentielles",
+  unUn: "un-à-un",
+  unN: "un-à-plusieurs",
+  autoRef: "auto-référence",
+  nullable: "nullable",
 };
 function afficherEncartJointure(a, b, chemin) {
   let corps;

@@ -150,11 +150,25 @@ def nouvelle_colonne(nom, typ, nn=False, defaut=''):
     return {'nom': nom, 'type': typ, 'nn': nn, 'defaut': defaut}
 
 
-def nouvelle_fk(de, col, vers, colcible, nom=''):
+def nouvelle_fk(de, col, vers, colcible, nom='', on_delete='', on_update=''):
     """The foreign-key record every parser produces (one line from `de.col` to
-    `vers.colcible`); `nom` is the constraint name, used only by --fk-audit."""
+    `vers.colcible`); `nom` is the constraint name, used only by --fk-audit.
+    on_delete/on_update carry the referential action (CASCADE, RESTRICT…) when
+    the DDL declares one, empty otherwise."""
     return {'de': de, 'col': col, 'vers': vers, 'colcible': colcible,
-            'nom': nom, 'audit': False}
+            'nom': nom, 'audit': False, 'on_delete': on_delete, 'on_update': on_update}
+
+
+RE_ON_DELETE = re.compile(r'ON\s+DELETE\s+(CASCADE|RESTRICT|NO\s+ACTION|SET\s+NULL|SET\s+DEFAULT)', re.I)
+RE_ON_UPDATE = re.compile(r'ON\s+UPDATE\s+(CASCADE|RESTRICT|NO\s+ACTION|SET\s+NULL|SET\s+DEFAULT)', re.I)
+
+
+def actions_ref(tail):
+    """Extract ON DELETE / ON UPDATE actions from the text trailing a REFERENCES
+    clause (order varies, e.g. pagila writes ON UPDATE before ON DELETE)."""
+    d, u = RE_ON_DELETE.search(tail), RE_ON_UPDATE.search(tail)
+    norm = lambda m: re.sub(r'\s+', ' ', m.group(1)).upper() if m else ''
+    return norm(d), norm(u)
 
 
 RE_LITTERAL = re.compile(r"'(?:[^']|'')*'")
@@ -370,9 +384,9 @@ def analyser_sql(chemin, src=None):
     vues = set()
     for m in re.finditer(
             r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD (?:CONSTRAINT "?(\w+)"?\s+)?'
-            r'FOREIGN KEY\s*\(([^)]+)\)\s*REFERENCES (?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?',
+            r'FOREIGN KEY\s*\(([^)]+)\)\s*REFERENCES (?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?([^;,\n]*)',
             src):
-        ssch, stab, cname, scols, dsch, dtab, dcols = m.groups()
+        ssch, stab, cname, scols, dsch, dtab, dcols, suite = m.groups()
         de = resoudre(f"{ssch or 'public'}.{stab}")
         vers = resoudre(f"{dsch or 'public'}.{dtab}")
         if de not in tables or vers not in tables:
@@ -380,23 +394,24 @@ def analyser_sql(chemin, src=None):
         sources = identifiants(scols)
         cibles = (identifiants(dcols) if dcols
                   else tables[vers]['pk'])
+        od, ou = actions_ref(suite or '')
         for i, scol in enumerate(sources):
             dcol = cibles[i] if i < len(cibles) else ''
             if (de, scol, vers, dcol) in vues:
                 continue
             vues.add((de, scol, vers, dcol))
-            fks.append(nouvelle_fk(de, scol, vers, dcol, cname or ''))
+            fks.append(nouvelle_fk(de, scol, vers, dcol, cname or '', od, ou))
 
     # FKs embedded in the CREATE TABLE body (hand-written schemas): a column-level
     # inline `col type REFERENCES tgt(id)` and a table-level `FOREIGN KEY (...)
     # REFERENCES tgt(...)`, mono or composite, possibly self-referential. Scanned
     # on the stored bodies once every table exists (so a column-less REFERENCES
     # can fall back to the target PK), deduplicated against the ALTER pass above.
-    def ajouter_fk(de, scol, vers, dcol, nom):
+    def ajouter_fk(de, scol, vers, dcol, nom, od='', ou=''):
         if (de, scol, vers, dcol) in vues:
             return
         vues.add((de, scol, vers, dcol))
-        fks.append(nouvelle_fk(de, scol, vers, dcol, nom))
+        fks.append(nouvelle_fk(de, scol, vers, dcol, nom, od, ou))
 
     for cle, corps in corps_par_cle.items():
         de = resoudre(cle)
@@ -432,8 +447,9 @@ def analyser_sql(chemin, src=None):
             if vers not in tables:
                 continue
             cibles = identifiants(dcols) if dcols else tables[vers]['pk']
+            od, ou = actions_ref(e)
             for i, scol in enumerate(sources):
-                ajouter_fk(de, scol, vers, cibles[i] if i < len(cibles) else '', '')
+                ajouter_fk(de, scol, vers, cibles[i] if i < len(cibles) else '', '', od, ou)
     return tables, fks
 
 
@@ -588,12 +604,15 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
         vers = cle(cible)
         sch = ref.find(exp.Schema)
         cibles = [i.name for i in sch.expressions] if sch else []
+        # referential actions live on the Reference node's options, rendered as
+        # "ON DELETE CASCADE" / "ON UPDATE SET NULL"; reuse the regex extractor
+        od, ou = actions_ref(' '.join(str(o) for o in (ref.args.get('options') or [])))
         for i, col in enumerate(cols):
             dcol = cibles[i] if i < len(cibles) else ''
             if (de, col, vers, dcol) in vues:
                 continue
             vues.add((de, col, vers, dcol))
-            fks.append(nouvelle_fk(de, col, vers, dcol, nom or ''))
+            fks.append(nouvelle_fk(de, col, vers, dcol, nom or '', od, ou))
 
     for stmt in arbre:
         if isinstance(stmt, exp.Create) and stmt.kind == 'TABLE':
@@ -933,6 +952,9 @@ def analyser_mwb(chemin):
         dsts = [e.text.strip() for e in objets(fk, 'referencedColumns') if e.text]
         cible_tbl = tbl_par_id.get(txt(fk, 'referencedTable'))
         nom = txt(fk, 'name')
+        # GRT stores the referential actions as plain strings ("CASCADE",
+        # "SET NULL"…), empty when the model leaves them at the default
+        od, ou = txt(fk, 'deleteRule').upper(), txt(fk, 'updateRule').upper()
         for i, scid in enumerate(srcs):
             if scid not in col_par_id:
                 continue
@@ -940,7 +962,7 @@ def analyser_mwb(chemin):
             dcol, vers = col_par_id.get(dsts[i] if i < len(dsts) else None, ('', cible_tbl))
             vers = vers or cible_tbl
             if de in tables and vers in tables:
-                fks.append(nouvelle_fk(de, scol, vers, dcol, nom))
+                fks.append(nouvelle_fk(de, scol, vers, dcol, nom, od, ou))
     return tables, fks
 
 
@@ -1022,7 +1044,16 @@ def analyser_schema_rb(chemin):
             if col not in reels:
                 col = next((c for c in (singulariser(verst) + '_id', verst[:-2] + '_id',
                                         verst[:-1] + '_id', verst + '_id') if c in reels), col)
-        fks.append(nouvelle_fk(de, col, vers, mp.group(1) if mp else 'id'))
+        # Rails writes the actions as symbols (on_delete: :cascade / :nullify /
+        # :restrict); :nullify is SQL SET NULL, the others map by name
+        def action_rails(cle_opt):
+            ma = re.search(cle_opt + r':\s*:(\w+)', reste)
+            if not ma:
+                return ''
+            v = ma.group(1).lower()
+            return 'SET NULL' if v == 'nullify' else v.upper()
+        fks.append(nouvelle_fk(de, col, vers, mp.group(1) if mp else 'id',
+                               '', action_rails('on_delete'), action_rails('on_update')))
     return tables, fks
 
 
@@ -1359,6 +1390,15 @@ TRADUCTIONS = {
         '"FK manquantes probables"': '"Probable missing FKs"',
         '"Colonnes en _id sans FK déclarée, avec une table du nom correspondant. Heuristique à vérifier."':
             '"_id columns with no declared FK, when a table of that name exists. A heuristic to check."',
+        # FK-link detail panel
+        '"clé étrangère"': '"foreign key"',
+        '"Cardinalité"': '"Cardinality"',
+        '"Colonne porteuse"': '"Carrier column"',
+        '"Actions référentielles"': '"Referential actions"',
+        '"un-à-un"': '"one-to-one"',
+        '"un-à-plusieurs"': '"one-to-many"',
+        '"auto-référence"': '"self-reference"',
+        '"nullable"': '"nullable"',
     },
 }
 

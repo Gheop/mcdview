@@ -334,6 +334,17 @@ file's header.
 
 ## Changelog
 
+### v0.34.0 — Clickable foreign-key links (2026-09-10)
+
+- Click a foreign-key link to see its detail in the right panel, the way a table
+  does: the two endpoints (child column → parent column), the deduced
+  cardinality in crow's-foot notation (one-to-one when the FK column is unique,
+  one-to-many otherwise), and the carrier column. The clicked link is
+  highlighted.
+- Referential actions (`ON DELETE` / `ON UPDATE`) are now parsed and shown when
+  the model declares them, from PostgreSQL, the sqlglot dialects, MySQL
+  Workbench `.mwb`, and Rails `add_foreign_key`.
+
 ### v0.33.3 — Favicon and input robustness (2026-09-05)
 
 - Generated pages now carry an inline favicon (a still SVG data URI), so the

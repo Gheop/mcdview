@@ -113,6 +113,8 @@ jobs:
         run: ./tests/test_recherche.py
       - name: crow's-foot cardinalities (toggle, deduced markers, vif labels)
         run: ./tests/test_cardinalites.py
+      - name: FK link detail (click a link, panel shows endpoints/cardinality/actions)
+        run: ./tests/test_lien_detail.py
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with:

@@ -356,6 +356,21 @@ def principal():
         except UnicodeDecodeError:
             echecs.append('latin-1: reader crashed on non-UTF-8 input')
 
+    # referential actions captured from an ALTER TABLE FK (order varies: pagila
+    # writes ON UPDATE before ON DELETE)
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'a.sql'
+        p.write_text('CREATE TABLE a (id int PRIMARY KEY);\n'
+                     'CREATE TABLE b (id int PRIMARY KEY, a_id int);\n'
+                     'ALTER TABLE b ADD CONSTRAINT b_a FOREIGN KEY (a_id) '
+                     'REFERENCES a(id) ON UPDATE CASCADE ON DELETE RESTRICT;')
+        fk = next((f for f in mcdview.analyser_sql(str(p))[1] if f['col'] == 'a_id'), None)
+        if not fk:
+            echecs.append('actions: FK a_id not parsed')
+        elif (fk['on_delete'], fk['on_update']) != ('RESTRICT', 'CASCADE'):
+            echecs.append(f"actions: got {fk['on_delete']!r}/{fk['on_update']!r} "
+                          "!= RESTRICT/CASCADE")
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:
