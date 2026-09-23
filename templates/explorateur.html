@@ -386,7 +386,8 @@ const svgClic = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 svgClic.id = "liensClic";
 plan.insertBefore(svgClic, plan.children[1]);
 let liensVus = [];      // index (data-fk on a hit path) -> the FK it draws
-let liensEls = null;    // index -> its visible path, built lazily on the first hover
+let liensEls = null;    // index -> its visible path, built lazily (hover, drag)
+let liensClics = null;  // index -> its hit path, built with liensEls
 let focusLien = null;   // the FK whose detail is shown in the panel
 // all table names first, then all column names: a table-name query (e.g. a
 // name shared by several tables) then lists the matching TABLES before any of
@@ -568,7 +569,15 @@ function dessinerLiens() {
   svg.innerHTML = norm.join("");
   svgVif.innerHTML = vif.join("");
   svgClic.innerHTML = clic.join("");
-  liensEls = null;
+  liensEls = liensClics = null;
+}
+// index -> path elements, for the incremental updates below. Without markers
+// (cardinalities off) each layer child is exactly one link path.
+function indexerLiens() {
+  liensEls = []; liensClics = [];
+  for (const el of svg.children) liensEls[+el.dataset.fk] = el;
+  for (const el of svgVif.children) liensEls[+el.dataset.fk] = el;
+  for (const el of svgClic.children) liensClics[+el.dataset.fk] = el;
 }
 // A hover only changes which links are highlighted, never where they run: move
 // the few paths of the old and new hovered tables between the two layers
@@ -580,11 +589,7 @@ function survoler(cle) {
   const avant = survolCle;
   survolCle = cle;
   if (cardOn) { dessinerLiens(); return; }
-  if (!liensEls) {  // without markers, each layer child is exactly one link path
-    liensEls = [];
-    for (const el of svg.children) liensEls[+el.dataset.fk] = el;
-    for (const el of svgVif.children) liensEls[+el.dataset.fk] = el;
-  }
+  if (!liensEls) indexerLiens();
   liensVus.forEach((f, i) => {
     if (f.de !== avant && f.vers !== avant && f.de !== cle && f.vers !== cle) return;
     const vif = estVifLien(f), el = liensEls[i];
@@ -717,11 +722,28 @@ function annulerDispo() {
   majBoutonAnnuler();
 }
 btnAnnuler.addEventListener("click", annulerDispo);
-function liensAuProchainRendu() {
-  // one link redraw per frame while a table is being dragged
+function liensAuProchainRendu(cle) {
+  // one link update per frame while a table is being dragged
   if (lienPrevus) return;
   lienPrevus = true;
-  requestAnimationFrame(() => { lienPrevus = false; dessinerLiens(); });
+  requestAnimationFrame(() => { lienPrevus = false; majLiensDe(cle); });
+}
+// A dragged table is the only box that moves, so only its own links change
+// shape: reroute those (visible + hit path) instead of redrawing every link each
+// frame (~100 ms per frame on a 5000-table model). Markers follow the geometry,
+// so with cardinalities shown the full redraw still runs.
+function majLiensDe(cle) {
+  if (cardOn) { dessinerLiens(); return; }
+  if (!liensEls) indexerLiens();
+  const boites = {};
+  liensVus.forEach((f, i) => {
+    if (f.de !== cle && f.vers !== cle) return;
+    boites[f.de] = boites[f.de] || boite(f.de);
+    boites[f.vers] = boites[f.vers] || boite(f.vers);
+    const d = trace(f, boites);
+    if (liensEls[i]) liensEls[i].setAttribute("d", d);
+    if (liensClics[i]) liensClics[i].setAttribute("d", d);
+  });
 }
 vp.addEventListener("pointerdown", e => {
   const table = e.target.closest(".table");
@@ -741,7 +763,7 @@ vp.addEventListener("pointermove", e => {
     // pointer deltas are in screen pixels, the plan is scaled by k
     drag.table.style.left = Math.round(drag.tx + (e.clientX - drag.px) / k) + "px";
     drag.table.style.top = Math.round(drag.ty + (e.clientY - drag.py) / k) + "px";
-    liensAuProchainRendu();
+    liensAuProchainRendu(drag.table.dataset.cle);
   } else {
     vuePrise = true;  // the viewer is panning
     x = drag.ox + e.clientX - drag.px;
