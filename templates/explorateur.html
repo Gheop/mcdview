@@ -388,6 +388,7 @@ plan.insertBefore(svgClic, plan.children[1]);
 let liensVus = [];      // index (data-fk on a hit path) -> the FK it draws
 let liensEls = null;    // index -> its visible path, built lazily (hover, drag)
 let liensClics = null;  // index -> its hit path, built with liensEls
+let miniCouche = null;  // cached table layer of the minimap (see dessinerMinimap)
 let focusLien = null;   // the FK whose detail is shown in the panel
 // all table names first, then all column names: a table-name query (e.g. a
 // name shared by several tables) then lists the matching TABLES before any of
@@ -570,6 +571,7 @@ function dessinerLiens() {
   svgVif.innerHTML = vif.join("");
   svgClic.innerHTML = clic.join("");
   liensEls = liensClics = null;
+  miniCouche = null;  // boxes may have moved: the minimap table layer is stale
 }
 // index -> path elements, for the incremental updates below. Without markers
 // (cardinalities off) each layer child is exactly one link path.
@@ -628,24 +630,40 @@ const miniCanvas = document.getElementById("minimap");
 const miniCtx = miniCanvas.getContext("2d");
 const MINI_ACTIVE = D.tables.length >= 25;
 if (MINI_ACTIVE) miniCanvas.classList.add("on");
+// The table layer of the minimap only changes when boxes move or resize; a pan
+// or zoom only moves the viewport rectangle. Keep that layer in an offscreen
+// canvas and redraw it only after a geometry change: every such change already
+// goes through dessinerLiens()/majLiensDe() (links must follow the boxes) or
+// cadrer(), and each of them drops this cache. Rebuilding it re-reads every
+// box (~50 000 offset reads on a 5000-table model), once per pan frame before.
+// (miniCouche is declared with the link indexes, near the top.)
 function dessinerMinimap() {
   if (!MINI_ACTIVE) return;
   const W = miniCanvas.width, H = miniCanvas.height, pad = 6;
-  let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
-  Object.values(elems).forEach(e => {
-    bx0 = Math.min(bx0, e.offsetLeft); by0 = Math.min(by0, e.offsetTop);
-    bx1 = Math.max(bx1, e.offsetLeft + e.offsetWidth);
-    by1 = Math.max(by1, e.offsetTop + e.offsetHeight);
-  });
-  const s = Math.min((W - 2 * pad) / (bx1 - bx0 || 1), (H - 2 * pad) / (by1 - by0 || 1));
-  const ox = pad - bx0 * s, oy = pad - by0 * s;
+  if (!miniCouche) {
+    let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+    const g = {};
+    Object.entries(elems).forEach(([cle, e]) => {
+      const b = g[cle] = { l: e.offsetLeft, t: e.offsetTop, w: e.offsetWidth, h: e.offsetHeight };
+      bx0 = Math.min(bx0, b.l); by0 = Math.min(by0, b.t);
+      bx1 = Math.max(bx1, b.l + b.w); by1 = Math.max(by1, b.t + b.h);
+    });
+    const s = Math.min((W - 2 * pad) / (bx1 - bx0 || 1), (H - 2 * pad) / (by1 - by0 || 1));
+    const ox = pad - bx0 * s, oy = pad - by0 * s;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const cx = c.getContext("2d");
+    Object.entries(elems).forEach(([cle, e]) => {
+      if (e.classList.contains("efface")) return;
+      const b = g[cle];
+      cx.fillStyle = D.schemas[parCle[cle].schema] || "#9aa3ad";
+      cx.fillRect(b.l * s + ox, b.t * s + oy, Math.max(1, b.w * s), Math.max(1, b.h * s));
+    });
+    miniCouche = { c, s, ox, oy };
+  }
+  const { s, ox, oy } = miniCouche;
   miniCtx.clearRect(0, 0, W, H);
-  Object.entries(elems).forEach(([cle, e]) => {
-    if (e.classList.contains("efface")) return;
-    miniCtx.fillStyle = D.schemas[parCle[cle].schema] || "#9aa3ad";
-    miniCtx.fillRect(e.offsetLeft * s + ox, e.offsetTop * s + oy,
-                     Math.max(1, e.offsetWidth * s), Math.max(1, e.offsetHeight * s));
-  });
+  miniCtx.drawImage(miniCouche.c, 0, 0);
   const vx0 = -x / k, vy0 = -y / k;
   miniCtx.strokeStyle = getComputedStyle(document.documentElement)
     .getPropertyValue("--ligne-vive") || "#0b74c4";
@@ -662,6 +680,7 @@ miniCanvas.addEventListener("click", e => {
   rendre();
 });
 function cadrer(cles) {
+  miniCouche = null;  // framing follows a layout change (isolate, overview, fonts settled)
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   cles.forEach(c => {
     const e = elems[c];
@@ -733,6 +752,7 @@ function liensAuProchainRendu(cle) {
 // frame (~100 ms per frame on a 5000-table model). Markers follow the geometry,
 // so with cardinalities shown the full redraw still runs.
 function majLiensDe(cle) {
+  miniCouche = null;  // the dragged box moved
   if (cardOn) { dessinerLiens(); return; }
   if (!liensEls) indexerLiens();
   const boites = {};

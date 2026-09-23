@@ -117,6 +117,8 @@ jobs:
         run: ./tests/test_lien_detail.py
       - name: incremental hover and drag (same layers as a full redraw)
         run: ./tests/test_survol.py
+      - name: minimap cache never stale (pan, drag, isolate, overview, compact)
+        run: ./tests/test_minimap.py
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with:
