@@ -334,6 +334,24 @@ file's header.
 
 ## Changelog
 
+### v0.34.2 — Right SQL dialect on large MySQL and Prisma models (2026-09-23)
+
+- `--dialect auto` now chooses the dialect on the whole file. On files over
+  25 KB it used to decide on the first 25 KB, cut mid-statement, and could pick
+  the wrong one: tables went missing (some MySQL dumps showed none at all) and
+  column types were rewritten (`VARCHAR(191)` shown as `text(191)`, `BOOLEAN`
+  as `integer`). Across the test corpus, 36 files regain 2,406 tables and none
+  loses any.
+- A MySQL dump with a stray `[word] word` inside a comment is no longer taken
+  for SQL Server.
+- A Prisma schema with a `mysql` or `sqlite` provider is parsed straight in that
+  dialect instead of trying up to seven in turn: about 100 ms less per run.
+- Parsing non-PostgreSQL SQL is about twice as fast overall (median 92 ms to
+  21 ms per file on the corpus). If you already converted a Prisma schema to SQL
+  yourself, pass `--dialect mysql` (or `sqlite`) to skip the dialect trial.
+- Some MySQL and SQLite models now render differently: more tables, and column
+  types as written in the DDL.
+
 ### v0.34.1 — Smoother pan, hover and drag on large models (2026-09-23)
 
 - Panning and zooming no longer re-read every table to repaint the minimap: a
