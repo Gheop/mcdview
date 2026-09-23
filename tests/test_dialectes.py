@@ -79,6 +79,16 @@ def principal():
     if idx.get('client_ville_idx', {}).get('unique') is not False:
         echecs.append(f'sqlglot index: index non-unique non capté ({list(idx)})')
 
+    # flair: a stray `name[key] word` inside a MySQL COMMENT string must not turn
+    # a backquoted dump into SQL Server; a real bracket-quoted DDL stays tsql
+    melange = ("CREATE TABLE `t` (\n  `lang` char(10) COMMENT 'see CFG[language] array',\n"
+               "  `a` int, `b` int, `c` int\n);")
+    if mcdview.flairer_dialecte(None, melange) != 'mysql':
+        echecs.append(f'flair: MySQL with a stray [x] y -> {mcdview.flairer_dialecte(None, melange)}')
+    tsql = 'CREATE TABLE [dbo].[t] (\n [id] int NOT NULL,\n [nom] nvarchar(50)\n);'
+    if mcdview.flairer_dialecte(None, tsql) != 'tsql':
+        echecs.append(f'flair: bracket-quoted DDL -> {mcdview.flairer_dialecte(None, tsql)}')
+
     # auto on a MySQL file over the sampling threshold: whatever statement the
     # threshold cuts through, every table must come back, as MySQL, with its
     # types intact. (The old 25 KB prefix pick, cut mid-statement, could choose
@@ -106,7 +116,7 @@ def principal():
         for e in echecs:
             print('  !', e)
         sys.exit(1)
-    print('\ndialectes : MySQL/SQLite + index + choix auto > 25 Ko (chemin sqlglot) OK')
+    print('\ndialectes : MySQL/SQLite + index + flair + choix auto > 25 Ko (chemin sqlglot) OK')
 
 
 if __name__ == '__main__':

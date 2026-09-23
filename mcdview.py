@@ -466,7 +466,12 @@ def flairer_dialecte(chemin, src=None):
         src = lire_texte(chemin, 300000)
     if 'AUTOINCREMENT' in src:
         return 'sqlite'
-    if re.search(r'\[\w+\]\s+\w', src):
+    # `[name] type` points at SQL Server only when such bracket identifiers
+    # outnumber backquoted ones: a MySQL dump can carry a stray one inside a
+    # COMMENT string (glpi: one `CFG_GLPI[language] array` against ~10 000
+    # backquoted names). A wrong first guess costs a whole wasted parse.
+    crochets = len(re.findall(r'\[\w+\]\s+\w', src))
+    if crochets and crochets > src.count('`') // 2:
         return 'tsql'
     return 'mysql'  # backticks or anything else: MySQL is the sensible default
 
