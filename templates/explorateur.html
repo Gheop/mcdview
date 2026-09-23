@@ -386,6 +386,7 @@ const svgClic = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 svgClic.id = "liensClic";
 plan.insertBefore(svgClic, plan.children[1]);
 let liensVus = [];      // index (data-fk on a hit path) -> the FK it draws
+let liensEls = null;    // index -> its visible path, built lazily on the first hover
 let focusLien = null;   // the FK whose detail is shown in the panel
 // all table names first, then all column names: a table-name query (e.g. a
 // name shared by several tables) then lists the matching TABLES before any of
@@ -527,6 +528,13 @@ function marqueCardin(p, nn, vif, pourExport) {
          `<text class="cardtxt" x="${bx + vx * pin + vx * 4 + px * 10}" y="${by + vy * pin + vy * 4 + py * 10}">${nn ? "1" : "0..1"}</text>`;
   return { da: { x: ax + ux * L, y: ay + uy * L }, db: { x: bx + vx * pin, y: by + vy * pin }, s };
 }
+// whether a link is highlighted (drawn blue in the overlay above the tables)
+function estVifLien(f) {
+  return f === focusLien ||
+         (focusCle && (f.de === focusCle || f.vers === focusCle)) ||
+         (survolCle && (f.de === survolCle || f.vers === survolCle)) ||
+         (mev && mev.liens.has(f.de + " " + f.vers));
+}
 function dessinerLiens() {
   // two markup strings in one DOM write each: normal edges under the tables
   // (#liens), highlighted ones over them (#liensVif) so a focused/hovered link
@@ -539,10 +547,8 @@ function dessinerLiens() {
   liensVus = [];
   fksVisibles().forEach(f => {
     if (!vus.has(f.de) || !vus.has(f.vers)) return;
-    const estVif = f === focusLien ||
-                   (focusCle && (f.de === focusCle || f.vers === focusCle)) ||
-                   (survolCle && (f.de === survolCle || f.vers === survolCle)) ||
-                   (mev && mev.liens.has(f.de + " " + f.vers));
+    const estVif = estVifLien(f);
+    const i = liensVus.push(f) - 1;
     const dcls = f.diff ? " " + DCLS[f.diff] : "";
     let d, extra = "";
     if (f.de === f.vers) {
@@ -556,24 +562,45 @@ function dessinerLiens() {
     } else {
       d = trace(f, boites);
     }
-    (estVif ? vif : norm).push(`<path class="lien${estVif ? " vif" : ""}${dcls}" d="${d}"/>` + extra);
-    const i = liensVus.push(f) - 1;   // a fat transparent hit path per link
-    clic.push(`<path data-fk="${i}" d="${d}"/>`);
+    (estVif ? vif : norm).push(`<path data-fk="${i}" class="lien${estVif ? " vif" : ""}${dcls}" d="${d}"/>` + extra);
+    clic.push(`<path data-fk="${i}" d="${d}"/>`);  // a fat transparent hit path per link
   });
   svg.innerHTML = norm.join("");
   svgVif.innerHTML = vif.join("");
   svgClic.innerHTML = clic.join("");
+  liensEls = null;
+}
+// A hover only changes which links are highlighted, never where they run: move
+// the few paths of the old and new hovered tables between the two layers
+// instead of a full redraw (which re-reads every box and rewrites every path,
+// ~100 ms on a 5000-table model). Crow's-foot markers carry state-dependent
+// labels, so with cardinalities shown the full redraw still runs.
+function survoler(cle) {
+  if (cle === survolCle) return;
+  const avant = survolCle;
+  survolCle = cle;
+  if (cardOn) { dessinerLiens(); return; }
+  if (!liensEls) {  // without markers, each layer child is exactly one link path
+    liensEls = [];
+    for (const el of svg.children) liensEls[+el.dataset.fk] = el;
+    for (const el of svgVif.children) liensEls[+el.dataset.fk] = el;
+  }
+  liensVus.forEach((f, i) => {
+    if (f.de !== avant && f.vers !== avant && f.de !== cle && f.vers !== cle) return;
+    const vif = estVifLien(f), el = liensEls[i];
+    if (!el || (el.parentNode === svgVif) === vif) return;
+    el.classList.toggle("vif", vif);
+    (vif ? svgVif : svg).appendChild(el);
+  });
 }
 
 // --- hover: light up the links of the table under the pointer ---
 plan.addEventListener("mouseover", e => {
   const t = e.target.closest(".table");
   const cle = t ? t.dataset.cle : null;
-  if (cle !== survolCle) { survolCle = cle; dessinerLiens(); }
+  survoler(cle);
 });
-plan.addEventListener("mouseleave", () => {
-  if (survolCle) { survolCle = null; dessinerLiens(); }
-});
+plan.addEventListener("mouseleave", () => survoler(null));
 
 // --- pan / zoom ---
 let estCompact = false;
