@@ -334,6 +334,18 @@ file's header.
 
 ## Changelog
 
+### v0.34.1 — Smoother pan, hover and drag on large models (2026-09-23)
+
+- Panning and zooming no longer re-read every table to repaint the minimap: a
+  pan move on a 5000-table model drops from ~23-42 ms to ~0.1 ms.
+- Hovering a table only restyles its own links instead of redrawing them all
+  (55 ms to under 1 ms on 5000 tables).
+- Dragging a table only reroutes that table's links on each frame (53 ms to
+  ~6 ms per frame on 5000 tables).
+- A full link redraw is ~8-12% faster. Across the 186 models of 100+ tables in
+  the test corpus, no interaction got slower, and every generated page renders
+  exactly as before.
+
 ### v0.34.0 — Clickable foreign-key links (2026-09-10)
 
 - Click a foreign-key link to see its detail in the right panel, the way a table
