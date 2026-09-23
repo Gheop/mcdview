@@ -79,12 +79,34 @@ def principal():
     if idx.get('client_ville_idx', {}).get('unique') is not False:
         echecs.append(f'sqlglot index: index non-unique non capté ({list(idx)})')
 
+    # auto on a MySQL file over the sampling threshold: whatever statement the
+    # threshold cuts through, every table must come back, as MySQL, with its
+    # types intact. (The old 25 KB prefix pick, cut mid-statement, could choose
+    # sqlite here and rewrite VARCHAR(191) to text(191).)
+    def ddl_prisma(pad):
+        b = ['-- ' + 'x' * pad]
+        for i in range(110):
+            b.append(f"-- CreateTable\nCREATE TABLE `t{i}` (\n    `id` INTEGER NOT NULL AUTO_INCREMENT,\n"
+                     f"    `name` VARCHAR(191) NOT NULL,\n    `flag` BOOLEAN NOT NULL DEFAULT false,\n"
+                     f"    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),\n"
+                     f"    PRIMARY KEY (`id`)\n) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n")
+        return '\n'.join(b)
+    with tempfile.TemporaryDirectory() as td:
+        for pad in range(0, 400, 20):
+            p = Path(td) / f'gros{pad}.sql'
+            p.write_text(ddl_prisma(pad))
+            tables, _, dial = mcdview.analyser(str(p), 'auto')
+            typ = tables.get('public.t0', {}).get('cols', [{}, {}])[1].get('type')
+            if (dial, len(tables), typ) != ('mysql', 110, 'varchar(191)'):
+                echecs.append(f'auto > seuil (coupe décalée de {pad}) : {dial}, '
+                              f'{len(tables)} tables, name {typ!r} (attendu mysql, 110, varchar(191))')
+
     if echecs:
         print('\nÉCHECS dialectes :')
         for e in echecs:
             print('  !', e)
         sys.exit(1)
-    print('\ndialectes : MySQL/SQLite + index (chemin sqlglot) OK')
+    print('\ndialectes : MySQL/SQLite + index + choix auto > 25 Ko (chemin sqlglot) OK')
 
 
 if __name__ == '__main__':

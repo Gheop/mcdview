@@ -474,9 +474,13 @@ def flairer_dialecte(chemin, src=None):
 # auto tries these sqlglot dialects (after the sniffed guess) and keeps the
 # one that yields the most tables — one file is often only valid in one of them
 DIALECTES_ESSAI = ['mysql', 'sqlite', 'postgres', 'tsql', 'oracle', 'clickhouse', 'duckdb']
-# above this size, --dialect auto picks the dialect on a prefix, then does one
-# full parse with the winner — instead of a full sqlglot parse per candidate
-# dialect. A ~25 KB prefix already distinguishes dialects by table count.
+# How many tables a DDL text declares, for auto's early stop: deliberately
+# generous (any words between CREATE and TABLE — UNLOGGED, TEMPORARY, OR
+# REPLACE…; commented-out statements count too). Overcounting only costs the
+# early stop; undercounting would stop on a dialect that misses tables.
+RE_CREATE_TABLE = re.compile(r'\bCREATE\b[^;(]{0,80}?\bTABLE\b', re.I)
+# up to this size, auto can afford a full sqlglot parse per candidate dialect;
+# above it, a full parse per dialect reached ~27 s on the corpus tail
 SEUIL_ECHANTILLON = 25000
 
 
@@ -526,10 +530,11 @@ def analyser(chemin, dialecte='auto'):
             tables, fks = analyser_sql(chemin, src)
             if tables:
                 return (*normaliser_casse(tables, fks), 'postgresql')
-        # otherwise try several sqlglot dialects, keep the most tables. Each
-        # try is a full sqlglot parse (O(size)); on a big file, pick the
-        # dialect on a bounded prefix, then parse it in full just once.
+        # otherwise try the sqlglot dialects, keeping the first one with the most
+        # tables; a dialect that finds every table the text declares cannot be
+        # beaten, so the trial stops there.
         candidats = list(dict.fromkeys([flairer_dialecte(chemin, apercu)] + DIALECTES_ESSAI))
+        attendu = len(RE_CREATE_TABLE.findall(src))
 
         def essayer(d, texte):
             # defense in depth: an unforeseen sqlglot AST shape must not crash
@@ -539,16 +544,33 @@ def analyser(chemin, dialecte='auto'):
             except Exception:
                 return {}, []
 
-        if len(src) > SEUIL_ECHANTILLON:
-            ech = src[:SEUIL_ECHANTILLON]
-            d = max(candidats, key=lambda d: len(essayer(d, ech)[0]))
-            return (*normaliser_casse(*essayer(d, src)), d)
-        meilleur = ({}, [], candidats[0])
-        for d in candidats:
-            t, f = essayer(d, src)
-            if len(t) > len(meilleur[0]):
-                meilleur = (t, f, d)
-        return (*normaliser_casse(meilleur[0], meilleur[1]), meilleur[2])
+        if len(src) <= SEUIL_ECHANTILLON:
+            # small file: whole-file parse per dialect, exact
+            meilleur = ({}, [], candidats[0])
+            for d in candidats:
+                t, f = essayer(d, src)
+                if len(t) > len(meilleur[0]):
+                    meilleur = (t, f, d)
+                if attendu and len(t) >= attendu:
+                    break
+            return (*normaliser_casse(meilleur[0], meilleur[1]), meilleur[2])
+        # big file: parse the sniffed dialect in full; if it misses declared
+        # tables, rank the dialects on a prefix cut at a statement end, and parse
+        # the winner in full too, keeping the better of the two. (The prefix
+        # alone used to decide: cut mid-statement, it chose the wrong dialect on
+        # 99 of 775 big corpus files, losing tables or rewriting column types.)
+        t, f = essayer(candidats[0], src)
+        if attendu and len(t) >= attendu:
+            return (*normaliser_casse(t, f), candidats[0])
+        ech = src[:SEUIL_ECHANTILLON]
+        fin = ech.rfind(';')
+        ech = ech[:fin + 1] if fin > 0 else ech
+        gagnant = max(candidats, key=lambda d: len(essayer(d, ech)[0]))  # ties: earliest
+        if gagnant != candidats[0]:
+            t2, f2 = essayer(gagnant, src)
+            if len(t2) > len(t):
+                return (*normaliser_casse(t2, f2), gagnant)
+        return (*normaliser_casse(t, f), candidats[0])
     tables, fks = analyser_sqlglot(chemin, dialecte)
     return (*normaliser_casse(tables, fks), dialecte)
 
