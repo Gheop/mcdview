@@ -47,6 +47,18 @@ def principal():
     if '@id' not in _re.search(r'model\s+a\s*\{[^}]*\}', p).group(0):
         echecs.append('pretraiter_prisma: model @id wrongly removed')
     print('ok   pretraiter_prisma: url injected, @db.* stripped, view @id dropped')
+    # the datasource provider picks the dialect (not the generator's provider);
+    # the PostgreSQL family and unvalidated providers are left to auto
+    for src, attendu in (
+            ('generator c {\n  provider = "prisma-client-js"\n}\n'
+             'datasource db {\n  provider = "mysql"\n}', 'mysql'),
+            ('datasource db {\n  provider     = "sqlite"\n  url = env("X")\n}', 'sqlite'),
+            ('datasource db {\n  provider = "postgresql"\n}', None),
+            ('datasource db {\n  provider = "sqlserver"\n}', None),
+            ('model a {\n  id Int @id\n}', None)):
+        if mcdview.dialecte_prisma(src) != attendu:
+            echecs.append(f'dialecte_prisma: {mcdview.dialecte_prisma(src)!r} != {attendu!r} for {src[:40]!r}')
+    print('ok   dialecte_prisma: datasource provider -> sqlglot dialect')
     for rel, outil, fonction, nt, nf in CAS:
         chemin = RACINE / 'tests' / rel
         if fonction is None or not chemin.exists() or (outil and not shutil.which(outil)):

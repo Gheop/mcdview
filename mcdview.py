@@ -824,6 +824,20 @@ def pretraiter_prisma(src):
     return src
 
 
+# The datasource provider names the SQL dialect `prisma migrate diff` emits. When
+# that SQL is not PostgreSQL-looking (MySQL backticks, SQLite AUTOINCREMENT…),
+# auto would try up to 7 sqlglot dialects in turn; parsing straight in the
+# provider's dialect skips that trial. Only providers checked against the whole
+# Prisma test corpus are mapped (sqlserver has no sample there).
+DIALECTE_PRISMA = {'mysql': 'mysql', 'sqlite': 'sqlite'}
+
+
+def dialecte_prisma(src):
+    """The sqlglot dialect of a Prisma schema's datasource, or None."""
+    m = re.search(r'datasource\s+\w+\s*\{[^}]*?\bprovider\s*=\s*"(\w+)"', src)
+    return DIALECTE_PRISMA.get(m.group(1).lower()) if m else None
+
+
 def sql_depuis_prisma(chemin):
     """Convert a Prisma schema to SQL through `prisma migrate diff` (writes to
     stdout). A dummy DATABASE_URL is set so `url = env(...)` schemas resolve;
@@ -1524,7 +1538,20 @@ def charger(source, dialect='auto'):
         tables, fks, _ = analyser(sql_depuis_dbml(source), 'postgres')
         return tables, fks, 'postgres'
     if source.endswith('.prisma'):
-        return analyser(sql_depuis_prisma(source), 'auto')
+        sql = sql_depuis_prisma(source)
+        dial = dialecte_prisma(lire_texte(source))
+        # only stands in for auto's sqlglot trial: SQL that the fast regex parser
+        # takes (PostgreSQL-looking, as Prisma's SQLite output often is) stays
+        # on auto. Same defensive call as that trial (non-strict, a sqlglot crash
+        # counts as no table), and auto again if it finds nothing.
+        if dial and not ressemble_postgres(sql):
+            try:
+                tables, fks = analyser_sqlglot(sql, dial, False)
+            except Exception:
+                tables, fks = {}, []
+            if tables:
+                return (*normaliser_casse(tables, fks), dial)
+        return analyser(sql, 'auto')
     if source.endswith('.mwb'):
         return (*normaliser_casse(*analyser_mwb(source)), 'mysql')
     if source.endswith('.rb'):
