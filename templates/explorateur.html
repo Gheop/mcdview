@@ -479,9 +479,10 @@ function centre(cle) {
 // left/right when the boxes sit side by side, top/bottom when stacked. Keeps the
 // visible line off the box bodies and off the old center-to-center diagonals.
 function boite(cle) {
-  const e = elems[cle];
-  return { l: e.offsetLeft, t: e.offsetTop, w: e.offsetWidth, h: e.offsetHeight,
-           cx: e.offsetLeft + e.offsetWidth / 2, cy: e.offsetTop + e.offsetHeight / 2 };
+  // each offset read goes through the layout engine: read every dimension once
+  // (a full redraw calls this for every visible table)
+  const e = elems[cle], l = e.offsetLeft, t = e.offsetTop, w = e.offsetWidth, h = e.offsetHeight;
+  return { l, t, w, h, cx: l + w / 2, cy: t + h / 2 };
 }
 function ancres(a, b) {
   const dx = b.cx - a.cx, dy = b.cy - a.cy;
