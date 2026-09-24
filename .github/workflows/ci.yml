@@ -15,11 +15,64 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The checks run as independent jobs in parallel: most of the old single job's
+# time was setup (the postgres service, the npm converters, Chrome), spent one
+# after the other. Each job pays only for what its own checks need.
 jobs:
-  test:
+  # lint + the Python tests (parser, security, dialects, invariants, diff, export,
+  # corpus campaign on the committed examples)
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: lint (real errors only, no style)
+        run: |
+          pipx install ruff
+          python -m py_compile mcdview.py tests/*.py
+          ruff check --select F,E9 mcdview.py tests/*.py
+      - name: install sqlglot (optional backend for non-PostgreSQL dialects)
+        # pinned: a sqlglot release can shift dialect table counts (ATTENDUS),
+        # so bump this deliberately rather than let CI drift on every release
+        run: pip install sqlglot==30.18.0
+      - name: pinned regression (examples; .dbm samples skipped without pgmodeler-cli)
+        run: ./tests/tester.py --rapide
+      - name: parser edge cases (inline PK, phantom-PK traps)
+        run: ./tests/test_parser.py
+      - name: security (XSS escaping, ReDoS/DoS budget)
+        run: ./tests/test_securite.py
+      - name: dialects (MySQL, SQLite via sqlglot)
+        run: ./tests/test_dialectes.py
+      - name: content invariants (no empty types, phantom PKs, dangling FKs)
+        run: ./tests/test_invariants.py --strict
+      - name: schema diff (added/removed/changed tagging)
+        run: ./tests/test_diff.py
+      - name: mermaid export (round-trips to the same tables)
+        run: ./tests/test_export.py
+      - name: corpus campaign (examples), strict
+        run: ./tests/grand_banc.py --strict
+
+  # model files that go through an external converter (DBML, Prisma)
+  converters:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: install sqlglot (optional backend for non-PostgreSQL dialects)
+        run: pip install sqlglot==30.18.0
+      - name: install model-file converters (DBML, Prisma)
+        run: npm install -g @dbml/cli@10.1.1 prisma@6
+      - name: model formats (DBML via dbml2sql)
+        run: ./tests/test_modeles.py
+
+  # the --db path, end-to-end against a throwaway PostgreSQL
+  db:
     runs-on: ubuntu-latest
     services:
-      # a throwaway PostgreSQL so the --db path is tested end-to-end
       postgres:
         image: postgres:16
         env:
@@ -38,37 +91,18 @@ jobs:
           python-version: '3.13'
       - name: postgresql client (psql, pg_dump for --db)
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
-      - name: lint (real errors only, no style)
-        run: |
-          pipx install ruff
-          python -m py_compile mcdview.py tests/*.py
-          ruff check --select F,E9 mcdview.py tests/*.py
-      - name: install sqlglot (optional backend for non-PostgreSQL dialects)
-        # pinned: a sqlglot release can shift dialect table counts (ATTENDUS),
-        # so bump this deliberately rather than let CI drift on every release
-        run: pip install sqlglot==30.18.0
-      - name: install model-file converters (DBML, Prisma)
-        run: npm install -g @dbml/cli@10.1.1 prisma@6
-      - name: pinned regression (examples; .dbm samples skipped without pgmodeler-cli)
-        run: ./tests/tester.py --rapide
-      - name: parser edge cases (inline PK, phantom-PK traps)
-        run: ./tests/test_parser.py
       - name: live database via --db (against the postgres service)
         run: ./tests/test_db.py
-      - name: security (XSS escaping, ReDoS/DoS budget)
-        run: ./tests/test_securite.py
-      - name: dialects (MySQL, SQLite via sqlglot)
-        run: ./tests/test_dialectes.py
-      - name: model formats (DBML via dbml2sql)
-        run: ./tests/test_modeles.py
-      - name: content invariants (no empty types, phantom PKs, dangling FKs)
-        run: ./tests/test_invariants.py --strict
-      - name: schema diff (added/removed/changed tagging)
-        run: ./tests/test_diff.py
-      - name: mermaid export (round-trips to the same tables)
-        run: ./tests/test_export.py
-      - name: corpus campaign (examples), strict
-        run: ./tests/grand_banc.py --strict
+
+  # the generated pages: build the Pages site, then check it renders in headless
+  # Chrome, then the in-browser behaviour tests
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
       - name: generate example pages
         run: |
           mkdir -p _site/exemples
@@ -136,7 +170,7 @@ jobs:
         run: ./tests/tester.py --rapide
 
   deploy:
-    needs: test
+    needs: [unit, converters, db, browser]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
