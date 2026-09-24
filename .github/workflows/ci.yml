@@ -89,10 +89,15 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-      - name: postgresql client (psql, pg_dump for --db)
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: live database via --db (against the postgres service)
-        run: ./tests/test_db.py
+        # psql/pg_dump 16 ship with the runner image (the apt install only ever
+        # added the meta package). test_db.py skips with exit 0 when a client is
+        # missing, so this job fails unless the test really read the database.
+        run: |
+          set -o pipefail
+          pg_dump --version && psql --version
+          ./tests/test_db.py | tee test_db.log
+          grep -q 'schéma live lu via pg_dump' test_db.log
 
   # the generated pages: build the Pages site, then check it renders in headless
   # Chrome, then the in-browser behaviour tests
