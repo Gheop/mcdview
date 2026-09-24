@@ -11,14 +11,23 @@ For each model: generates the page in a temp dir, times it, checks the
 parsed counts against pinned expectations, and looks for anomalies
 (no table, tables without columns, unresolved FK targets, leftover
 placeholders in the HTML). Exits non-zero on any failure.
+
+The models are independent and most of the time goes to external converters
+(pgmodeler-cli: ~0.3 s just to start, three runs for a .dbm that needs
+--fix-model), so they are converted --jobs at a time, largest first so the
+longest conversion starts right away; results still print in the usual order.
+Per-model times are then taken under contention: use --jobs 1 for clean
+per-model timings (benchmark use).
 """
 import argparse
 import importlib.util
+import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -79,25 +88,39 @@ def anomalies_analyse(mcdview, chemin):
     return problemes
 
 
+def convertir(cle, chemin, td):
+    """Run the CLI on one model; returns (result, output path, elapsed ms)."""
+    sortie = Path(td) / (cle.replace('/', '_') + '.html')
+    cmd = [sys.executable, str(RACINE / 'mcdview.py'), str(chemin),
+           '-o', str(sortie), '--lang', 'en']
+    t0 = time.perf_counter()
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    # pgmodeler-cli occasionally fails a .dbm export transiently: one retry
+    if r.returncode and chemin.suffix == '.dbm':
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    return r, sortie, (time.perf_counter() - t0) * 1000
+
+
 def principal():
     ap = argparse.ArgumentParser(description='mcdview regression/benchmark runner')
     ap.add_argument('--rapide', action='store_true',
                     help='skip tests/corpus (pre-commit mode)')
+    ap.add_argument('--jobs', type=int, default=min(4, os.cpu_count() or 1),
+                    help='models converted at once (default: up to 4); '
+                         '1 gives clean per-model timings')
     args = ap.parse_args()
 
     mcdview = charger_mcdview()
     echecs, total_ms = [], 0.0
-    with tempfile.TemporaryDirectory(prefix='mcdview-tests-') as td:
-        for cle, chemin in collecter(args.rapide):
-            sortie = Path(td) / (cle.replace('/', '_') + '.html')
-            cmd = [sys.executable, str(RACINE / 'mcdview.py'), str(chemin),
-                   '-o', str(sortie), '--lang', 'en']
-            t0 = time.perf_counter()
-            r = subprocess.run(cmd, capture_output=True, text=True)
-            # pgmodeler-cli occasionally fails a .dbm export transiently: one retry
-            if r.returncode and chemin.suffix == '.dbm':
-                r = subprocess.run(cmd, capture_output=True, text=True)
-            ms = (time.perf_counter() - t0) * 1000
+    debut = time.perf_counter()
+    modeles = collecter(args.rapide)
+    with tempfile.TemporaryDirectory(prefix='mcdview-tests-') as td, \
+            ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        # submit the largest first (the longest conversions), print in order
+        taches = {cle: pool.submit(convertir, cle, chemin, td)
+                  for cle, chemin in sorted(modeles, key=lambda m: -m[1].stat().st_size)}
+        for cle, chemin in modeles:
+            r, sortie, ms = taches[cle].result()
             total_ms += ms
             if r.returncode:
                 echecs.append(cle)
@@ -123,7 +146,8 @@ def principal():
                   + ('  ' + '; '.join(problemes) if problemes else ''))
             if problemes:
                 echecs.append(cle)
-    print(f'\n{len(echecs)} failure(s), total {total_ms / 1000:.1f} s')
+    print(f'\n{len(echecs)} failure(s), total {time.perf_counter() - debut:.1f} s '
+          f'({total_ms / 1000:.1f} s of conversions, {max(1, args.jobs)} at a time)')
     sys.exit(1 if echecs else 0)
 
 
