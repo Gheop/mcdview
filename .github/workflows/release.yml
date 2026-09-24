@@ -56,4 +56,6 @@ jobs:
           python -m pip install --upgrade build
           python -m build
       - name: publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        # pinned by commit: this step holds the OIDC token that publishes to PyPI,
+        # and release/v1 is a moving branch
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
