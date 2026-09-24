@@ -190,7 +190,7 @@ jobs:
         run: ./tests/tester.py --rapide
 
   deploy:
-    needs: [unit, converters, db, browser]
+    needs: [unit, converters, db, browser, test-dbm]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
