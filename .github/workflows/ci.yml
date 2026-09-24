@@ -138,7 +138,8 @@ jobs:
           cp docs/index.html _site/index.html
       - name: validate generated HTML (structure + data island)
         run: ./tests/valider_html.py _site/exemples/*.html
-      - uses: browser-actions/setup-chrome@v2
+      # third-party action with access to the job: pinned by commit
+      - uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4  # v2.2.0
         with:
           chrome-version: stable
       - name: validate rendered DOM in headless Chrome
