@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -180,6 +178,10 @@ jobs:
     needs: [unit, converters, db, browser]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # only the Pages deployment needs to write Pages and mint an OIDC token
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
