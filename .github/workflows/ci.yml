@@ -31,7 +31,7 @@ jobs:
           python-version: '3.13'
       - name: lint (real errors only, no style)
         run: |
-          pipx install ruff
+          pipx install ruff==0.16.8
           python -m py_compile mcdview.py tests/*.py
           ruff check --select F,E9 mcdview.py tests/*.py
       - name: install sqlglot (optional backend for non-PostgreSQL dialects)
@@ -69,7 +69,7 @@ jobs:
       - name: install sqlglot (optional backend for non-PostgreSQL dialects)
         run: pip install sqlglot==30.18.0
       - name: install model-file converters (DBML, Prisma)
-        run: npm install -g @dbml/cli@10.1.1 prisma@6
+        run: npm install -g @dbml/cli@10.1.1 prisma@6.19.3
       - name: model formats (DBML via dbml2sql)
         run: ./tests/test_modeles.py
 

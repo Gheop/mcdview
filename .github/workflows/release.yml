@@ -28,7 +28,7 @@ jobs:
           [ "$tag" = "$proj" ] || { echo "tag v$tag != pyproject $proj"; exit 1; }
       - name: lint + fast tests
         run: |
-          pipx install ruff
+          pipx install ruff==0.16.8
           python -m py_compile mcdview.py tests/*.py
           ruff check --select F,E9 mcdview.py tests/*.py
           pip install sqlglot==30.18.0
@@ -53,7 +53,7 @@ jobs:
           python-version: '3.13'
       - name: build the wheel and sdist
         run: |
-          python -m pip install --upgrade build
+          python -m pip install build==1.6.1
           python -m build
       - name: publish to PyPI
         # pinned by commit: this step holds the OIDC token that publishes to PyPI,
