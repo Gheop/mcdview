@@ -21,6 +21,7 @@ jobs:
   # corpus campaign on the committed examples)
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -55,6 +56,7 @@ jobs:
   # model files that go through an external converter (DBML, Prisma)
   converters:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -70,6 +72,7 @@ jobs:
   # the --db path, end-to-end against a throwaway PostgreSQL
   db:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:16
@@ -103,6 +106,7 @@ jobs:
   # Chrome, then the in-browser behaviour tests
   browser:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -168,6 +172,7 @@ jobs:
   # the pgModeler sample models. Blocking: the version is fixed, counts stable.
   test-dbm:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container: ghcr.io/gheop/pgmodeler-cli:1.2.2-node
     steps:
       - uses: actions/checkout@v7
@@ -178,6 +183,7 @@ jobs:
     needs: [unit, converters, db, browser]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # only the Pages deployment needs to write Pages and mint an OIDC token
     permissions:
       pages: write
