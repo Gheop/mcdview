@@ -181,7 +181,10 @@ jobs:
   test-dbm:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    container: ghcr.io/gheop/pgmodeler-cli:1.2.2-node
+    # pinned by digest (tag 1.2.2-node): image.yml can push that tag again, and a
+    # rebuilt image must not change the pinned .dbm counts unnoticed. Bump the
+    # digest on purpose after an image rebuild.
+    container: ghcr.io/gheop/pgmodeler-cli@sha256:544db481c7d28c77ea3a6cea2d8bb67b0ceb20c5c73bce59b4fbde47c728abd4
     steps:
       - uses: actions/checkout@v7
         with:
