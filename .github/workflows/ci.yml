@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
@@ -59,6 +61,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
@@ -89,6 +93,8 @@ jobs:
       MCDVIEW_TEST_DB: postgresql://postgres:secret@localhost:5432/mcdview_test
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
@@ -109,6 +115,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
@@ -176,6 +184,8 @@ jobs:
     container: ghcr.io/gheop/pgmodeler-cli:1.2.2-node
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: regression including .dbm samples
         run: ./tests/tester.py --rapide
 
