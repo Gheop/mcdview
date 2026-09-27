@@ -334,6 +334,32 @@ file's header.
 
 ## Changelog
 
+### v0.34.3 — `--lint` sees the indexes it used to miss (2026-09-27)
+
+- `--lint` flagged foreign keys as `unindexed_fk` although an index covered
+  them, because some declared indexes were not read. They now are: Rails
+  `t.index` and `add_index`; Drizzle `index()`, `uniqueIndex()` and `unique()`
+  with `.on()` or `.onOnly()`, and column-level `.unique()`; SQL `UNIQUE` inside
+  `CREATE TABLE` (column or table level); MySQL `KEY` / `INDEX` inside
+  `CREATE TABLE`, which `mysqldump` writes for every foreign key. Across the test
+  corpus (13,630 files, 94,146 FKs), `unindexed_fk` drops from 64,806 to 44,172:
+  Rails 6,849 → 232, Drizzle 15,273 → 7,853, MySQL 8,005 → 2,531.
+- phpMyAdmin exports, which add the primary key and indexes afterwards
+  (`ALTER TABLE t ADD PRIMARY KEY (id), ADD KEY k (col)`), lost both: nearly
+  every table was reported as `missing_pk`. They are read now; across the
+  corpus `missing_pk` drops from 20,820 to 8,505.
+- Drizzle composite primary keys (`primaryKey({ columns: [...] })` and the older
+  `primaryKey(t.a, t.b)`) are read.
+- The panel lists these indexes, and a foreign key covered by a single-column
+  unique index is shown as 1:1.
+- A Drizzle column declared without a name string took the first string found
+  further on as its name, for example `cascade` from `{ onDelete: "cascade" }`
+  or `number` from `{ mode: "number" }`. It now takes its field name
+  (2,613 columns fixed in the corpus).
+- A crafted Drizzle file with unclosed `pgTable(` calls could take minutes to
+  parse (3 min for 130 KB). Parsing is now linear in the file size.
+- Table and foreign-key counts are unchanged on every corpus file.
+
 ### v0.34.2 — Right SQL dialect on large MySQL and Prisma models (2026-09-23)
 
 - `--dialect auto` now chooses the dialect on the whole file. On files over
