@@ -79,6 +79,47 @@ def principal():
     if idx.get('client_ville_idx', {}).get('unique') is not False:
         echecs.append(f'sqlglot index: index non-unique non capté ({list(idx)})')
 
+    # indexes declared in the body: MySQL KEY / INDEX (mysqldump writes one per
+    # FK) and column-level UNIQUE, which --lint must count as covering the FK
+    for dial, ddl in (
+            ('mysql', "CREATE TABLE u (`id` int PRIMARY KEY);\n"
+                      "CREATE TABLE b (`id` int PRIMARY KEY, `u_id` int UNIQUE, `v_id` int,"
+                      " KEY `b_v` (`v_id`), UNIQUE KEY `b_uk` (`v_id`, `id`),"
+                      " FOREIGN KEY (`u_id`) REFERENCES u (`id`),"
+                      " FOREIGN KEY (`v_id`) REFERENCES u (`id`));"),
+            ('sqlite', "CREATE TABLE u (id INTEGER PRIMARY KEY);\n"
+                       "CREATE TABLE b (id INTEGER PRIMARY KEY, u_id INTEGER UNIQUE REFERENCES u(id),"
+                       " v_id INTEGER REFERENCES u(id), CONSTRAINT b_v UNIQUE (v_id));")):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / 'x.sql'
+            p.write_text(ddl)
+            tables, fks, _ = mcdview.analyser(str(p), dial)
+        ix = {(tuple(i['cols']), i['unique']) for i in tables['public.b']['index']}
+        attendu = {(('u_id',), True), (('v_id',), dial == 'sqlite')}
+        signales = [v['column'] for v in mcdview.lint_schema(tables, fks) if v['rule'] == 'unindexed_fk']
+        if not attendu <= ix or signales:
+            echecs.append(f'{dial} body indexes: {sorted(ix)}, unindexed_fk={signales}')
+
+    # phpMyAdmin exports add the PK and indexes afterwards, several ADD in one
+    # ALTER (sqlglot cannot parse it and keeps a raw Command)
+    pma = ("CREATE TABLE `u` (`id` int NOT NULL);\n"
+           "CREATE TABLE `b` (`id` int NOT NULL, `u_id` int NOT NULL, `nom` varchar(191) NOT NULL);\n"
+           "ALTER TABLE `u`\n  ADD PRIMARY KEY (`id`);\n"
+           "ALTER TABLE `b`\n  ADD PRIMARY KEY (`id`),\n  ADD UNIQUE KEY `b_nom` (`nom`(100)),\n"
+           "  ADD KEY `b_u_fk` (`u_id`);\n"
+           "ALTER TABLE `b`\n  ADD CONSTRAINT `b_u_fk` FOREIGN KEY (`u_id`) REFERENCES `u` (`id`);\n")
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'pma.sql'
+        p.write_text(pma)
+        tables, fks, _ = mcdview.analyser(str(p), 'mysql')
+    b = tables.get('public.b', {})
+    ix = {(i['nom'], tuple(i['cols']), i['unique']) for i in b.get('index', [])}
+    regles = [v['rule'] for v in mcdview.lint_schema(tables, fks)]
+    if (b.get('pk') != ['id'] or tables['public.u']['pk'] != ['id']
+            or ix != {('b_nom', ('nom',), True), ('b_u_fk', ('u_id',), False)}
+            or 'missing_pk' in regles or 'unindexed_fk' in regles):
+        echecs.append(f"phpMyAdmin ALTER: pk={b.get('pk')}, index={sorted(ix)}, lint={regles}")
+
     # flair: a stray `name[key] word` inside a MySQL COMMENT string must not turn
     # a backquoted dump into SQL Server; a real bracket-quoted DDL stays tsql
     melange = ("CREATE TABLE `t` (\n  `lang` char(10) COMMENT 'see CFG[language] array',\n"

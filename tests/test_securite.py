@@ -114,8 +114,13 @@ def verifier_dos(echecs):
                 echecs.append(f'{nom}: {ms:.0f} ms > budget {BUDGET_MS} ms (DoS)')
 
 
+def alter_seul(chemin):
+    mcdview.ajouter_cles_alter(Path(chemin).read_text(),
+                               {'public.t': mcdview.nouvelle_table('public', 't')})
+
+
 def verifier_dos_natifs(echecs):
-    """The native parsers reachable from an upload (.mmd/.md, .rb) must respect
+    """The native parsers reachable from an upload (.mmd/.md, .rb, .ts) must respect
     the same DoS budget — their block extraction used to backtrack on crafted
     input. Bombs are generated here, too big to commit."""
     cas = [
@@ -125,6 +130,18 @@ def verifier_dos_natifs(echecs):
          'erDiagram\n' + 'A' * 200000 + ' ||--o{ B'),
         ('rails openers', mcdview.analyser_schema_rb, '.rb',
          'create_table "t" do |t|\n' * 3000 + 'A' * 60000),
+        ('drizzle openers', mcdview.analyser_drizzle, '.ts',
+         'const a = pgTable("t", {\n' * 3000 + 'A' * 60000),
+        ('drizzle appels ouverts', mcdview.analyser_drizzle, '.ts',
+         'const a = pgTable("t", {}\n' * 5000 + 'A' * 60000),
+        ('drizzle index ouverts', mcdview.analyser_drizzle, '.ts',
+         'const a = pgTable("t", {}, (t) => [' + 'index("i").on(t.a' * 20000),
+        # phpMyAdmin ALTER ... ADD KEY fallback of the sqlglot path, called on
+        # its own (sqlglot's parse time is not what this checks)
+        ('alter add sans ;', alter_seul, '.sql', 'ALTER TABLE t ADD KEY k (a\n' * 40000),
+        ('alter add sans )', alter_seul, '.sql', 'ALTER TABLE t ' + 'ADD KEY k (a, ' * 60000 + ';'),
+        ('drizzle pk ouvertes', mcdview.analyser_drizzle, '.ts',
+         'const a = pgTable("t", {}, (t) => [' + 'primaryKey({ columns: [t.a' * 12000),
     ]
     with tempfile.TemporaryDirectory() as td:
         for nom, fn, ext, contenu in cas:

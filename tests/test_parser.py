@@ -371,6 +371,23 @@ def principal():
             echecs.append(f"actions: got {fk['on_delete']!r}/{fk['on_update']!r} "
                           "!= RESTRICT/CASCADE")
 
+    # UNIQUE inside the CREATE TABLE body is an index (so --lint does not flag a
+    # 1:1 FK as unindexed): column-level, table-level, named or not, multi-line
+    t = tables_de(
+        'CREATE TABLE users (\n id integer PRIMARY KEY\n);\n'
+        'CREATE TABLE profils (\n id integer PRIMARY KEY,\n'
+        '  user_id integer UNIQUE REFERENCES users(id),\n'
+        "  note text DEFAULT 'UNIQUE' -- UNIQUE in a literal/comment is no index\n);\n"
+        'CREATE TABLE badges (id integer PRIMARY KEY, user_id integer REFERENCES users(id),'
+        ' CONSTRAINT u_badge UNIQUE (user_id));\n'
+        'CREATE TABLE paires (\n a integer,\n b integer,\n UNIQUE NULLS NOT DISTINCT (a, b)\n);')
+    uniques = {(k.split('.')[1], i['nom'], tuple(i['cols'])) for k, x in t.items()
+               for i in x['index'] if i['unique']}
+    attendu = {('profils', '', ('user_id',)), ('badges', 'u_badge', ('user_id',)),
+               ('paires', '', ('a', 'b'))}
+    if uniques != attendu:
+        echecs.append(f'inline UNIQUE: {sorted(uniques)} != {sorted(attendu)}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:

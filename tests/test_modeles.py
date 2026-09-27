@@ -98,6 +98,35 @@ def principal():
         else:
             print('ok   modeles/legacy.schema.rb: hashrocket ":id => false" honored')
 
+    # declared indexes are read (not only the SQL paths): --lint must not flag
+    # a foreign key covered by an index as unindexed_fk
+    for rel, analyse in (('modeles/index.schema.rb', mcdview.analyser_schema_rb),
+                         ('modeles/index.schema.ts', mcdview.analyser_drizzle)):
+        ti, fi = analyse(str(RACINE / 'tests' / rel))
+        faits += 1
+        idx = {(k.split('.', 1)[1], tuple(i['cols']), i['unique'])
+               for k, t in ti.items() for i in t['index']}
+        signales = [(v['table'], v['column']) for v in mcdview.lint_schema(ti, fi)
+                    if v['rule'] in ('unindexed_fk', 'missing_pk')]
+        attendus = {
+            'modeles/index.schema.rb': {
+                ('blobs', ('key',), True), ('attachments', ('blob_id',), False),
+                ('attachments', ('record_type', 'record_id', 'blob_id'), True),
+                ('variants', ('blob_id',), True), ('comments', ('attachment_id',), False)},
+            'modeles/index.schema.ts': {
+                ('teams', ('slug',), True), ('clusters', ('team_id',), False),
+                ('clusters', ('owner_id',), True), ('members', ('team_id',), False),
+                ('members', ('team_id', 'rank'), True)},
+        }[rel]
+        pk_members = ti.get('public.members', {}).get('pk')
+        if idx != attendus or signales or len(fi) != (4 if rel.endswith('.ts') else 3) or (
+                rel.endswith('.ts') and pk_members != ['cluster_id', 'rank']):
+            echecs.append(f'{rel}: index={sorted(idx)} lint={signales} '
+                          f'fks={len(fi)} pk(members)={pk_members}')
+            print(f'FAIL {rel}')
+        else:
+            print(f'ok   {rel}: {len(idx)} indexes read, no unindexed_fk')
+
     if echecs:
         print('\nÉCHECS modèles :')
         for e in echecs:

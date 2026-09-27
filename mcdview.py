@@ -90,6 +90,9 @@ RE_FK_TABLE = re.compile(
     r'REFERENCES\s+(?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?', re.I)
 RE_FK_INLINE = re.compile(
     r'\bREFERENCES\s+(?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?', re.I)
+RE_UNIQUE_TABLE = re.compile(
+    r'^\s*(?:CONSTRAINT\s+"?(\w+)"?\s+)?UNIQUE\b[^(]*\(([^)]+)\)', re.I)
+RE_UNIQUE_MOT = re.compile(r'\bUNIQUE\b', re.I)
 # an entry that opens with a table constraint keyword is not a column definition
 RE_DEBUT_CONTRAINTE = re.compile(
     r'^\s*(?:CONSTRAINT\s+"?\w+"?\s+)?'
@@ -413,15 +416,21 @@ def analyser_sql(chemin, src=None):
         vues.add((de, scol, vers, dcol))
         fks.append(nouvelle_fk(de, scol, vers, dcol, nom, od, ou))
 
+    def ajouter_unique(de, nom, cols):
+        if cols and not any(ix['cols'] == cols and ix['unique'] for ix in tables[de]['index']):
+            tables[de]['index'].append({'nom': nom, 'cols': cols, 'unique': True})
+
     for cle, corps in corps_par_cle.items():
         de = resoudre(cle)
         if de not in tables:
             continue
         # this pass only ever yields FKs from a REFERENCES token (RE_FK_TABLE /
-        # RE_FK_INLINE both require it). A body without one — every table in a
-        # pg_dump, where FKs live in ALTER TABLE — produces nothing, so skip the
-        # per-character body scan entirely (it was ~35 % of the parse time)
-        if 'REFERENCES' not in corps.upper():
+        # RE_FK_INLINE both require it) and indexes from a UNIQUE one. A body
+        # with neither — every table in a pg_dump, where constraints live in
+        # ALTER TABLE — produces nothing, so skip the per-character body scan
+        # entirely (it was ~35 % of the parse time)
+        haut = corps.upper()
+        if 'REFERENCES' not in haut and 'UNIQUE' not in haut:
             continue
         # terminate the body so decouper_corps emits the final entry too (it only
         # flushes the buffer at a depth-0 ')' or comma; a multi-line body has
@@ -430,6 +439,16 @@ def analyser_sql(chemin, src=None):
         entrees, _ = decouper_corps(corps + '\n)')
         for e in entrees:
             e = RE_COMMENTAIRE.sub('', RE_LITTERAL.sub('', e)).strip()
+            # UNIQUE in the body is an index too: table-level `[CONSTRAINT n]
+            # UNIQUE (a, b)` or column-level `col type UNIQUE` (pg_dump writes
+            # them as ALTER TABLE ... ADD CONSTRAINT, read above)
+            mu = RE_UNIQUE_TABLE.match(e)
+            if mu:
+                ajouter_unique(de, mu.group(1) or '', identifiants(mu.group(2)))
+                continue
+            cm = RE_COLONNE.match(e)
+            if cm and not RE_DEBUT_CONTRAINTE.match(e) and RE_UNIQUE_MOT.search(cm.group(2)):
+                ajouter_unique(de, '', [cm.group(1)])
             mt = RE_FK_TABLE.match(e)
             if mt:
                 scols, dsch, dtab, dcols = mt.groups()
@@ -580,6 +599,50 @@ def analyser(chemin, dialecte='auto'):
     return (*normaliser_casse(tables, fks), dialecte)
 
 
+RE_ALTER_TETE = re.compile(
+    r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:[`"\[]?(\w+)[`"\]]?\.)?[`"\[]?(\w+)[`"\]]?\s+ADD\b', re.I)
+RE_ALTER_CLE = re.compile(
+    r'\bADD\s+(?:CONSTRAINT\s+[`"\[]?\w+[`"\]]?\s+)?'
+    r'(PRIMARY\s+KEY|UNIQUE(?:\s+(?:KEY|INDEX))?|KEY|INDEX)\s*'
+    r'(?:[`"\[]?(\w+)[`"\]]?\s*)?(?:USING\s+\w+\s*)?\(((?:[^()]|\([^()]*\))*)\)', re.I)
+
+
+def ajouter_cles_alter(src, tables):
+    """Primary keys and indexes added by ALTER TABLE, as phpMyAdmin exports them:
+    `ALTER TABLE t ADD PRIMARY KEY (id), ADD KEY k (a), ADD UNIQUE KEY u (b);`.
+    sqlglot cannot parse several ADD KEY in one statement (it keeps a raw
+    Command), so these are read here. A PK only fills a table that has none;
+    an index already present is not added twice."""
+    # a statement ends at the next ';' or, when that is missing, at the next
+    # ALTER: bounding it (and caching the ';' position) keeps many unterminated
+    # ALTERs linear instead of each one rescanning the rest of the file
+    tetes = list(RE_ALTER_TETE.finditer(src))
+    fin = -1
+    for n, m in enumerate(tetes):
+        cle = f"{m.group(1) or 'public'}.{m.group(2)}"
+        if cle not in tables:
+            continue
+        if fin < m.end():
+            fin = src.find(';', m.end())
+            if fin < 0:
+                fin = len(src)
+        borne = min(fin, tetes[n + 1].start() if n + 1 < len(tetes) else len(src))
+        t = tables[cle]
+        for c in RE_ALTER_CLE.finditer(src, m.end() - 3, borne):
+            genre = c.group(1).upper()
+            cols = [x for x in identifiants(re.sub(r'\(\d+\)|\s+(?:ASC|DESC)\b', '', c.group(3), flags=re.I))
+                    if x]
+            if not cols:
+                continue
+            if genre.startswith('PRIMARY'):
+                if not t['pk']:
+                    t['pk'] = cols
+                continue
+            unique = genre.startswith('UNIQUE')
+            if not any(ix['cols'] == cols and ix['unique'] == unique for ix in t['index']):
+                t['index'].append({'nom': c.group(2) or '', 'cols': cols, 'unique': unique})
+
+
 def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
     try:
         import logging
@@ -689,12 +752,25 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                 ref = fk.args.get('reference')
                 if ref:
                     ajouter_fk(k, [c.name for c in fk.expressions], ref, nom_fk(fk))
-            # inline UNIQUE constraints become indexes
+            # inline UNIQUE constraints become indexes: table-level `UNIQUE (a, b)`
+            # carries its columns, column-level `col INT UNIQUE` has none (its
+            # column is the enclosing definition)
             for u in stmt.find_all(exp.UniqueColumnConstraint):
-                sch = u.this if u.this is not None else None
-                noms = [e.name for e in getattr(sch, 'expressions', [])] if sch else []
+                if u.this is not None:
+                    noms = [e.name for e in getattr(u.this, 'expressions', [])]
+                else:
+                    cd = u.find_ancestor(exp.ColumnDef)
+                    noms = [cd.name] if cd else []
                 if noms:
                     tables[k]['index'].append({'nom': '', 'cols': noms, 'unique': True})
+            # MySQL declares plain indexes in the body: KEY / INDEX name (cols);
+            # mysqldump writes one for every foreign key
+            for ix in stmt.find_all(exp.IndexColumnConstraint):
+                noms = [e.name for e in ix.expressions if e.name]
+                if noms:
+                    tables[k]['index'].append(
+                        {'nom': ix.this.name if ix.this is not None else '',
+                         'cols': noms, 'unique': False})
         elif isinstance(stmt, exp.Create) and stmt.kind == 'INDEX':
             idx = stmt.this
             tbl = idx.args.get('table') if idx is not None else None
@@ -721,6 +797,8 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                     if noms:
                         tables[k]['index'].append(
                             {'nom': cont.name if cont else '', 'cols': noms, 'unique': True})
+
+    ajouter_cles_alter(src, tables)
 
     # a reference without a column list points at the target's primary key
     for f in fks:
@@ -1026,6 +1104,30 @@ def singulariser(mot):
     return mot
 
 
+def index_rails(args):
+    """One Rails index declaration from what follows `t.index` / `add_index "t",`:
+    the columns (["a", "b"], %w[a b], "a" or :a) then the options (name:,
+    unique:, also the old :name => / :unique => form). None if unreadable."""
+    args = args.strip()
+    if args.startswith('%w'):
+        mw = re.match(r'%w[\[(]([^\])]*)[\])]', args)
+        cols, reste = (mw.group(1).split(), args[mw.end():]) if mw else ([], '')
+    elif args.startswith('['):
+        fin = args.find(']')
+        if fin < 0:
+            return None
+        cols = [a or b for a, b in re.findall(r'["\']([^"\']+)["\']|:(\w+)', args[:fin])]
+        reste = args[fin + 1:]
+    else:
+        mc = re.match(r'["\']([^"\']+)["\']|:(\w+)', args)
+        cols, reste = ([mc.group(1) or mc.group(2)], args[mc.end():]) if mc else ([], '')
+    if not cols:
+        return None
+    mn = re.search(r'name:\s*["\']([^"\']+)["\']|:name\s*=>\s*["\']([^"\']+)["\']', reste)
+    return {'nom': (mn.group(1) or mn.group(2)) if mn else '', 'cols': cols,
+            'unique': bool(re.search(r'unique:\s*true|:unique\s*=>\s*true', reste))}
+
+
 def analyser_schema_rb(chemin):
     """Parse a Rails db/schema.rb natively (the create_table / add_foreign_key
     DSL is regular). The implicit `id` primary key is added unless `id: false`;
@@ -1057,7 +1159,7 @@ def analyser_schema_rb(chemin):
         for cm in re.finditer(r'\b' + re.escape(var) + r'\.(\w+)\s+["\'"]([^"\'"]+)["\'"]([^\n]*)', corps):
             typ, cn, reste = cm.groups()
             if typ == 'index':
-                continue
+                continue            # read below with the array forms
             defc = re.search(r'default:\s*("[^"]*"|\'[^\']*\'|[^,\n]+)', reste)
             defaut = defc.group(1).strip('\'"') if defc else ''
             if typ in ('references', 'belongs_to'):
@@ -1066,7 +1168,14 @@ def analyser_schema_rb(chemin):
                     cols.append(nouvelle_colonne(cn + '_type', 'string'))
             else:
                 cols.append(nouvelle_colonne(cn, typ, 'null: false' in reste, defaut))
-        tables[cle] = nouvelle_table('public', nom, cols, pk)
+        index = [ix for im in re.finditer(r'\b' + re.escape(var) + r'\.index\b\(?\s*([^\n]*)', corps)
+                 if (ix := index_rails(im.group(1)))]
+        tables[cle] = nouvelle_table('public', nom, cols, pk, index=index)
+    # pre-Rails-5 dumps declare indexes after the tables: add_index "t", [...]
+    for m in re.finditer(r'add_index\s*\(?\s*["\':]([\w.]+)["\']?\s*,\s*([^\n]*)', src):
+        ix = index_rails(m.group(2))
+        if ix and f'public.{m.group(1)}' in tables:
+            tables[f'public.{m.group(1)}']['index'].append(ix)
     for m in re.finditer(r'add_foreign_key\s+["\']([^"\']+)["\'],\s*["\']([^"\']+)["\']([^\n]*)', src):
         det, verst, reste = m.groups()
         mp = re.search(r'primary_key:\s*["\']([^"\']+)["\']', reste)
@@ -1192,6 +1301,12 @@ def analyser_mermaid(chemin):
     return tables, fks
 
 
+RE_ACCOLADE = re.compile(r'[{}]')
+RE_DELIM = re.compile(r'[()\[\]{}]')
+RE_DZ_INDEX = re.compile(r'\b(uniqueIndex|index|unique)\s*\(\s*(?:["\'`]([^"\'`]*)["\'`])?\s*\)'
+                         r'\s*\.on(?:Only)?\(')
+
+
 def analyser_drizzle(chemin):
     """Parse a Drizzle ORM schema.ts natively (regular enough): each
     `pgTable("name", { field: type("col").notNull().primaryKey()
@@ -1229,35 +1344,73 @@ def analyser_drizzle(chemin):
     fabriques += re.findall(
         r'(?:const|let|var)\s+(\w+)\s*=\s*(?:pg|mysql|sqlite)TableCreator\s*\(', src)
     motif_table = '|'.join(re.escape(f) for f in dict.fromkeys(fabriques))
-    for m in re.finditer(
-            r'(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:' + motif_table + r')\s*\(\s*'
-            r'["\'`]([^"\'`]+)["\'`]\s*,\s*\{', src):
+    appels = list(re.finditer(
+        r'(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:' + motif_table + r')\s*\(\s*'
+        r'["\'`]([^"\'`]+)["\'`]\s*,\s*\{', src))
+    for n, m in enumerate(appels):
         var, nom = m.group(1), m.group(2)
-        i, prof = m.end() - 1, 0    # scan balanced braces for the body
-        while i < len(src):
-            prof += (src[i] == '{') - (src[i] == '}')
+        # a table's scans stop where the next table starts: on unclosed braces
+        # (crafted upload) each one ran to the end of file, O(n²) (3 min / 130 KiB)
+        borne = appels[n + 1].start() if n + 1 < len(appels) else len(src)
+        i, prof = borne, 0          # scan balanced braces for the body
+        for d in RE_ACCOLADE.finditer(src, m.end() - 1, borne):
+            prof += 1 if d.group() == '{' else -1
             if prof == 0:
+                i = d.start()
                 break
-            i += 1
         cle = f'public.{nom}'
         var_table[var] = cle
         var_cols[var] = {}
-        cols, pk = [], []
+        cols, pk, index = [], [], []
         for entree in champs(src[m.end():i]):
             cm = re.match(r'\s*(\w+)\s*:\s*(\w+)\s*\(', entree)
             if not cm:
                 continue
             champ, typ = cm.groups()
-            sm = re.search(r'''["'`]([^"'`]+)["'`]''', entree)
+            # the column name is the type call's first argument when it is a
+            # string (`text("user_id")`); otherwise the field name. Not the first
+            # string anywhere: `uuid().references(..., { onDelete: "cascade" })`
+            sm = re.match(r'''\s*["'`]([^"'`]+)["'`]''', entree[cm.end():])
             col = sm.group(1) if sm else champ
             var_cols[var][champ] = col
             cols.append(nouvelle_colonne(col, typ, '.notNull(' in entree))
             if '.primaryKey(' in entree:
                 pk.append(col)
+            if re.search(r'\.unique\(\s*(["\'`][^"\'`]*["\'`])?\s*\)', entree):
+                index.append({'nom': '', 'cols': [col], 'unique': True})
             rm = re.search(r'\.references\(\s*\(\s*\)\s*=>\s*(\w+)\.(\w+)', entree)
             if rm:
                 refs.append((cle, col, rm.group(1), rm.group(2)))
-        tables[cle] = nouvelle_table('public', nom, cols, pk)
+        # the optional third argument, `(table) => [...]` or `=> ({...})`, holds
+        # the indexes, unique constraints and composite primary key: read up to
+        # the pgTable call's closing parenthesis
+        j, prof = borne, 0
+        for d in RE_DELIM.finditer(src, i + 1, borne):
+            if prof == 0 and d.group() == ')':
+                j = d.start()
+                break
+            prof += 1 if d.group() in '([{' else -1
+        extra, champ_col = src[i + 1:j], var_cols[var]
+        # the arguments of .on(...) end at the next ')'; that position is cached
+        # so that many unclosed .on( do not each rescan to the end (linear)
+        ferme = -1
+        for im in RE_DZ_INDEX.finditer(extra):
+            if ferme < im.end():
+                ferme = extra.find(')', im.end())
+                if ferme < 0:
+                    break
+            ixcols = [champ_col.get(f, f) for f in re.findall(r'\w+\.(\w+)', extra[im.end():ferme])]
+            if ixcols:
+                index.append({'nom': im.group(2) or '', 'cols': ixcols,
+                              'unique': im.group(1) != 'index'})
+        mp = None if pk else re.search(r'\bprimaryKey\s*\(', extra)
+        if mp:
+            # primaryKey({ columns: [t.a, t.b] }), or the older primaryKey(t.a, t.b):
+            # the columns are the t.x up to the closing ']' or ')' (first match only)
+            fin = min((k for k in (extra.find(']', mp.end()), extra.find(')', mp.end())) if k >= 0),
+                      default=len(extra))
+            pk = [champ_col.get(f, f) for f in re.findall(r'\w+\.(\w+)', extra[mp.end():fin])]
+        tables[cle] = nouvelle_table('public', nom, cols, pk, index=index)
 
     for de, col, tvar, tfield in refs:
         vers = var_table.get(tvar)
