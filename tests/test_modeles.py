@@ -131,8 +131,9 @@ def principal():
         else:
             print(f'ok   {rel}: {len(idx)} indexes read, no unindexed_fk')
 
-    # Drizzle column options become the SQL type, .references() carries its
-    # actions, and an enum column takes the enum's SQL name
+    # Drizzle column options become the SQL type, .references() and
+    # table-level foreignKey() carry their actions, and an enum column takes
+    # the enum's SQL name
     rel = 'modeles/options.schema.ts'
     to, fo = mcdview.analyser_drizzle(str(RACINE / 'tests' / rel))
     faits += 1
@@ -146,7 +147,10 @@ def principal():
     liens = sorted((f['de'].split('.')[1], f['col'], f['vers'].split('.')[1], f['colcible'],
                     f['nom'], f['on_delete'], f['on_update']) for f in fo)
     attendu_liens = sorted([
-        ('groups', 'workspace_id', 'workspaces', 'id', '', 'CASCADE', 'SET NULL')])
+        ('groups', 'workspace_id', 'workspaces', 'id', '', 'CASCADE', 'SET NULL'),
+        ('members', 'workspace_id', 'groups', 'workspace_id', 'members_group_fk', 'RESTRICT', ''),
+        ('members', 'group_id', 'groups', 'id', 'members_group_fk', 'RESTRICT', ''),
+        ('members', 'mentor_id', 'members', 'id', '', '', '')])
     if types != attendu_types or liens != attendu_liens:
         echecs.append(f'{rel}: types={types} fks={liens}')
         print(f'FAIL {rel}')

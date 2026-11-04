@@ -1493,6 +1493,8 @@ RE_DZ_INDEX = re.compile(r'\b(uniqueIndex|index|unique)\s*\(\s*(?:["\'`]([^"\'`]
 RE_DZ_NOMBRE = {k: re.compile(r'\b' + k + r'\s*:\s*(\d+)')
                 for k in ('length', 'dimensions', 'precision', 'fsp', 'scale')}
 RE_DZ_TZ = re.compile(r'\bwithTimezone\s*:\s*true\b')
+RE_DZ_FK = re.compile(r'\bforeignKey\s*\(')
+RE_DZ_CHAINE = re.compile(r'\s*\.\s*(onDelete|onUpdate)\s*\(\s*["\'`]([a-zA-Z ]+)["\'`]\s*\)')
 RE_DZ_ACTION = {k: re.compile(r'\b' + k + r'\s*:\s*["\'`]([a-zA-Z ]+)["\'`]')
                 for k in ('onDelete', 'onUpdate')}
 # Drizzle column builders whose name is not the SQL type
@@ -1500,11 +1502,14 @@ TYPES_DRIZZLE = {'doublePrecision': 'double precision', 'mysqlEnum': 'enum',
                  'sqliteEnum': 'text'}
 
 
-def args_appel(texte, debut):
+def args_appel(texte, debut, limite=None):
     """The text inside the call whose '(' ends just before `debut`, up to its
-    matching ')' (or the end of `texte`). A linear depth scan."""
+    matching ')' (or the end of `texte`, or `limite` characters). A linear
+    depth scan; the limit keeps many unclosed calls from each rescanning the
+    rest of the text."""
     prof = 0
-    for i in range(debut, len(texte)):
+    fin = len(texte) if limite is None else min(len(texte), debut + limite)
+    for i in range(debut, fin):
         c = texte[i]
         if c in '([{':
             prof += 1
@@ -1512,7 +1517,7 @@ def args_appel(texte, debut):
             if prof == 0:
                 return texte[debut:i]
             prof -= 1
-    return texte[debut:]
+    return texte[debut:fin]
 
 
 def type_drizzle(typ, args, enums):
@@ -1640,6 +1645,27 @@ def analyser_drizzle(chemin):
             if ixcols:
                 index.append({'nom': im.group(2) or '', 'cols': ixcols,
                               'unique': im.group(1) != 'index'})
+        # table-level foreignKey({ name?, columns: [t.a, t.b], foreignColumns:
+        # [other.x, other.y] }), optionally chained .onDelete("cascade"); a
+        # self-reference names the table by the callback parameter, `(t) =>`
+        mparam = re.match(r'\s*,\s*(?:function\s*)?\(?\s*(\w+)', extra)
+        param = mparam.group(1) if mparam else None
+        for fm in RE_DZ_FK.finditer(extra):
+            objet = args_appel(extra, fm.end(), 2000)
+            mc = re.search(r'\bcolumns\s*:\s*\[([^\]]*)\]', objet)
+            mf = re.search(r'\bforeignColumns\s*:\s*\[([^\]]*)\]', objet)
+            if not mc or not mf:
+                continue
+            mn = re.search(r'\bname\s*:\s*["\'`]([^"\'`]+)["\'`]', objet)
+            actions, pos = {}, fm.end() + len(objet) + 1
+            while (ma := RE_DZ_CHAINE.match(extra, pos)):
+                actions[ma.group(1)] = ma.group(2).upper()
+                pos = ma.end()
+            for f, (tvar, tfield) in zip(re.findall(r'\w+\.(\w+)', mc.group(1)),
+                                         re.findall(r'(\w+)\.(\w+)', mf.group(1))):
+                refs.append((cle, champ_col.get(f, f), var if tvar == param else tvar, tfield,
+                             actions.get('onDelete', ''),
+                             actions.get('onUpdate', ''), mn.group(1) if mn else ''))
         mp = None if pk else re.search(r'\bprimaryKey\s*\(', extra)
         if mp:
             # primaryKey({ columns: [t.a, t.b] }), or the older primaryKey(t.a, t.b):

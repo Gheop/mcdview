@@ -1,7 +1,7 @@
-// Drizzle column options and reference actions (native parser).
+// Drizzle column options and table-level foreign keys (native parser).
 import {
   pgTable, pgEnum, serial, varchar, timestamp, integer, numeric, text,
-  doublePrecision, vector, primaryKey, index,
+  doublePrecision, vector, foreignKey, primaryKey, index,
 } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("user_role", ["admin", "member"]);
@@ -31,5 +31,11 @@ export const members = pgTable("members", {
   mentorId: integer("mentor_id"),
   role: roleEnum("role").default("member"),
 }, (table) => [
+  foreignKey({
+    name: "members_group_fk",
+    columns: [table.workspaceId, table.groupId],
+    foreignColumns: [groups.workspaceId, groups.id],
+  }).onDelete("restrict"),
+  foreignKey({ columns: [table.mentorId], foreignColumns: [table.id] }),
   index("members_group_idx").on(table.workspaceId, table.groupId),
 ]);

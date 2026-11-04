@@ -148,6 +148,8 @@ def verifier_dos_natifs(echecs):
          'const a = pgTable("t", {}, (t) => [' + 'primaryKey({ columns: [t.a' * 12000),
         ('drizzle options ouvertes', mcdview.analyser_drizzle, '.ts',
          'const a = pgTable("t", {\n' + 'a: varchar("a", { length: 1, ' * 15000),
+        ('drizzle fk ouvertes', mcdview.analyser_drizzle, '.ts',
+         'const a = pgTable("t", {}, (t) => [' + 'foreignKey({ columns: [t.a' * 12000),
         # MySQL spatial-type rewrite run before sqlglot, on its own: a long
         # name with blanks but no type behind, then many near-misses
         ('spatial mot géant', spatial_seul, '.sql',
