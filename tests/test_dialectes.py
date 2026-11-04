@@ -148,7 +148,7 @@ def principal():
     # MySQL spatial types: sqlglot's MySQL dialect rejects all but GEOMETRY,
     # and SRID, which used to drop the whole table (Dolibarr's llx_socpeople).
     # The type must come back as written; a POINT(…) default and a column
-    # named `point` are left alone
+    # named `point` are left alone. mariadb is read as MySQL
     spatial = ("create table lieux (\n  rowid integer AUTO_INCREMENT PRIMARY KEY,\n"
                "  `point` int DEFAULT NULL,\n  geopoint point DEFAULT NULL,\n"
                "  pos POINT NOT NULL SRID 4326, zone polygon,\n"
@@ -158,7 +158,7 @@ def principal():
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / 'spatial.sql'
         p.write_text(spatial)
-        res = {d: mcdview.analyser(str(p), d) for d in ('auto', 'mysql')}
+        res = {d: mcdview.analyser(str(p), d) for d in ('auto', 'mysql', 'mariadb')}
     attendu = [('rowid', 'int'), ('point', 'int'), ('geopoint', 'point'), ('pos', 'point'),
                ('zone', 'polygon'), ('centre', 'point'), ('trace', 'linestring')]
     for d, (tables, _, dial) in res.items():

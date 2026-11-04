@@ -737,6 +737,9 @@ def types_spatiaux_mysql(src):
 
 
 def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
+    # sqlglot has no MariaDB dialect: its DDL is MySQL's
+    if dialecte == 'mariadb':
+        dialecte = 'mysql'
     try:
         import logging
         import sqlglot
