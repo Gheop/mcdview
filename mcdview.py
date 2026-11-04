@@ -721,6 +721,24 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
         except Exception:
             return ''
 
+    def colonne_sqlglot(d):
+        """A ColumnDef as a column record, plus its constraint kinds."""
+        # a constraint is usually a ColumnConstraint wrapping a .kind;
+        # some sqlglot nodes (InOutColumnConstraint…) sit in the list
+        # directly and have no .kind — keep the node itself then
+        kinds = [getattr(c, 'kind', c) for c in d.constraints]
+        typ = d.args.get('kind')
+        defc = next((c.this for c in kinds
+                     if isinstance(c, exp.DefaultColumnConstraint)), None)
+        brut = rendre_sql(typ) if typ else ''
+        # lowercase to match the PostgreSQL parser's output, but keep
+        # string literals intact (ENUM('Active') must not become 'active')
+        type_txt = brut if "'" in brut else brut.lower()
+        return nouvelle_colonne(
+            d.name, type_txt,
+            any(isinstance(c, exp.NotNullColumnConstraint) for c in kinds),
+            rendre_sql(defc) if defc is not None else ''), kinds
+
     def ajouter_fk(de, cols, ref, nom):
         cible = ref.find(exp.Table)
         if not cible:
@@ -747,30 +765,17 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
             k = cle(tbl)
             cols, pk, colcomments = [], [], {}
             for d in stmt.find_all(exp.ColumnDef):
-                # a constraint is usually a ColumnConstraint wrapping a .kind;
-                # some sqlglot nodes (InOutColumnConstraint…) sit in the list
-                # directly and have no .kind — keep the node itself then
-                kinds = [getattr(c, 'kind', c) for c in d.constraints]
-                typ = d.args.get('kind')
-                defc = next((c.this for c in kinds
-                             if isinstance(c, exp.DefaultColumnConstraint)), None)
-                comc = next((c.this for c in kinds
-                             if isinstance(c, exp.CommentColumnConstraint)), None)
+                col, kinds = colonne_sqlglot(d)
                 if any(isinstance(c, exp.PrimaryKeyColumnConstraint) for c in kinds):
                     pk.append(d.name)
                 for c in kinds:
                     if isinstance(c, exp.Reference):
                         ajouter_fk(k, [d.name], c, '')
+                comc = next((c.this for c in kinds
+                             if isinstance(c, exp.CommentColumnConstraint)), None)
                 if comc is not None:
                     colcomments[d.name] = comc.name
-                brut = rendre_sql(typ) if typ else ''
-                # lowercase to match the PostgreSQL parser's output, but keep
-                # string literals intact (ENUM('Active') must not become 'active')
-                type_txt = brut if "'" in brut else brut.lower()
-                cols.append(nouvelle_colonne(
-                    d.name, type_txt,
-                    any(isinstance(c, exp.NotNullColumnConstraint) for c in kinds),
-                    rendre_sql(defc) if defc is not None else ''))
+                cols.append(col)
             for p in stmt.find_all(exp.PrimaryKey):
                 noms = [c.name for c in p.expressions]
                 if noms:
@@ -818,6 +823,13 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
             src_tbl = stmt.find(exp.Table)
             if src_tbl:
                 k = cle(src_tbl)
+                # columns added afterwards: ALTER TABLE t ADD [COLUMN] c type
+                if k in tables:
+                    noms = {c['nom'] for c in tables[k]['cols']}
+                    for d in stmt.args.get('actions') or []:
+                        if isinstance(d, exp.ColumnDef) and d.name and d.name not in noms:
+                            tables[k]['cols'].append(colonne_sqlglot(d)[0])
+                            noms.add(d.name)
                 for fk in stmt.find_all(exp.ForeignKey):
                     ref = fk.args.get('reference')
                     if ref:
