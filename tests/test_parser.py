@@ -398,6 +398,14 @@ def principal():
     if fk != {('a', 'yy', 'b', 'id')}:
         echecs.append(f'commented-out FK: {sorted(fk)}')
 
+    # blanks between the opening paren and the newline (Dolibarr's "( "), with
+    # table options after the close paren: the body must still be read
+    t = tables_de('CREATE TABLE llx_inventory \n( \n  rowid integer NOT NULL, \n'
+                  '  ref varchar(48),\n  import_key varchar(14)\t\t-- import key\n) \n'
+                  'ENGINE=innodb;\n')
+    cols = [c['nom'] for c in t.get('public.llx_inventory', {}).get('cols', [])]
+    if cols != ['rowid', 'ref', 'import_key']:
+        echecs.append(f'"( " opener: columns {cols}')
     # same opener closed by ");": the body is split at commas, so two columns
     # on one line stay two, and a trailing comment does not eat the next one
     t = tables_de('CREATE TABLE users (  \n\nid INT PRIMARY KEY,\n'

@@ -325,6 +325,13 @@ def analyser_sql(chemin, src=None):
             if j != -1:
                 corps_txt = src[m.end():j + 1]
                 entrees, ok = decouper_corps(corps_txt)
+        if not ok and fin_ligne != -1 and not src[m.end():fin_ligne].strip():
+            # "( " then a newline (Dolibarr), closed by ") ENGINE=…;" with no
+            # ");" in reach: one entry per line, as in the multi-line pass
+            j = src.find('\n)', m.end(), borne)
+            if j != -1 and ';' in src[j:j + 200] and 'CREATE TABLE' not in src[m.end():j]:
+                corps_txt = src[m.end():j]
+                entrees, ok = corps_txt.split('\n'), True
         if ok and entrees:
             tables[cle] = entrees_en_table(m.group(1) or 'public', m.group(2), entrees)
             corps_par_cle[cle] = corps_txt
