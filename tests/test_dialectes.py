@@ -127,6 +127,24 @@ def principal():
     if nn != {'rowid': False, 'fk_axis': False, 'note': False}:
         echecs.append(f'MySQL ADD COLUMN / NULL: {nn}')
 
+    # mixed case with no MySQL marker at all: the lower-case head alone sends
+    # auto to sqlglot, which reads both tables. A PostgreSQL file whose only
+    # odd head sits in a comment ties and keeps the regex parser's reading
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'casse.sql'
+        p.write_text('create table a (id integer primary key);\n'
+                     'CREATE TABLE b (id integer primary key);\n')
+        tables, _, dial = mcdview.analyser(str(p), 'auto')
+        p.write_text('-- create table notes: see below\n'
+                     'CREATE TABLE a (\n    id integer NOT NULL,\n    b_id integer\n);\n'
+                     'CREATE TABLE b (\n    id integer NOT NULL\n);\n'
+                     'ALTER TABLE ONLY b ADD CONSTRAINT b_pkey PRIMARY KEY (id);\n'
+                     'ALTER TABLE ONLY a ADD CONSTRAINT a_b FOREIGN KEY (b_id) REFERENCES b(id);\n')
+        _, _, dial_pg = mcdview.analyser(str(p), 'auto')
+    if sorted(tables) != ['public.a', 'public.b'] or dial_pg != 'postgresql':
+        echecs.append(f'mixed case, no marker: {sorted(tables)} via {dial}; '
+                      f'PostgreSQL with a commented lower-case head -> {dial_pg}')
+
     # phpMyAdmin exports add the PK and indexes afterwards, several ADD in one
     # ALTER (sqlglot cannot parse it and keeps a raw Command)
     pma = ("CREATE TABLE `u` (`id` int NOT NULL);\n"

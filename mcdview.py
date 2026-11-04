@@ -574,6 +574,7 @@ def analyser(chemin, dialecte='auto'):
         # PostgreSQL regex parser first, but only trust it when the file isn't
         # obviously another dialect it would mis-parse (MySQL backtick PKs...)
         pg = None
+        marque_mysql = False
         if ressemble_postgres(chemin, apercu):
             tables, fks = analyser_sql(chemin, src)
             if tables:
@@ -586,8 +587,11 @@ def analyser(chemin, dialecte='auto'):
                 # MySQL's KEY lines for columns and keeps AUTO_INCREMENT / NULL
                 # in the types. Not on a tie for other dialects:
                 # ClickHouse's ENGINE = also matches, and sqlite would rewrite
-                # its types (String -> text)
-                if not RE_MARQUE_MYSQL.search(apercu):
+                # its types (String -> text). A head the regex parser cannot see
+                # (`create table`, `CREATE\nTABLE`) needs no marker: sqlglot
+                # wins when it reads more tables, never on a tie
+                marque_mysql = bool(RE_MARQUE_MYSQL.search(apercu))
+                if not marque_mysql and not tete_hors_natif(apercu):
                     return pg
         autre = analyser_autres(chemin, src, apercu)
         if pg is None:
@@ -595,12 +599,21 @@ def analyser(chemin, dialecte='auto'):
         # only tables with columns count: sqlglot also reports a CREATE
         # TEMPORARY TABLE ... AS SELECT, empty
         na, np_ = tables_pleines(autre[0]), tables_pleines(pg[0])
-        if na > np_ or (na == np_ and autre[2] in ('mysql', 'mariadb')
+        if na > np_ or (marque_mysql and na == np_ and autre[2] in ('mysql', 'mariadb')
                         and len(autre[1]) >= len(pg[1])):
             return autre
         return pg
     tables, fks = analyser_sqlglot(chemin, dialecte)
     return (*normaliser_casse(tables, fks), dialecte)
+
+
+RE_TETE_TABLE = re.compile(r'\bCREATE\s+TABLE\b', re.I)
+
+
+def tete_hors_natif(src):
+    """True if a CREATE TABLE head is written in a form the regex parser does
+    not match (any case but upper, more than one blank between the words)."""
+    return any(m.group() != 'CREATE TABLE' for m in RE_TETE_TABLE.finditer(src))
 
 
 def tables_pleines(tables):
