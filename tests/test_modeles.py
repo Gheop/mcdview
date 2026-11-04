@@ -131,6 +131,28 @@ def principal():
         else:
             print(f'ok   {rel}: {len(idx)} indexes read, no unindexed_fk')
 
+    # Drizzle column options become the SQL type, .references() carries its
+    # actions, and an enum column takes the enum's SQL name
+    rel = 'modeles/options.schema.ts'
+    to, fo = mcdview.analyser_drizzle(str(RACINE / 'tests' / rel))
+    faits += 1
+    types = {c['nom']: c['type'] for c in to.get('public.workspaces', {}).get('cols', [])}
+    types['role'] = next((c['type'] for c in to.get('public.members', {}).get('cols', [])
+                          if c['nom'] == 'role'), None)
+    attendu_types = {'id': 'serial', 'name': 'varchar(120)', 'slug': 'varchar(32)',
+                     'created_at': 'timestamp with time zone',
+                     'updated_at': 'timestamp(3) with time zone', 'budget': 'numeric(10,2)',
+                     'score': 'double precision', 'embedding': 'vector(1536)', 'role': 'user_role'}
+    liens = sorted((f['de'].split('.')[1], f['col'], f['vers'].split('.')[1], f['colcible'],
+                    f['nom'], f['on_delete'], f['on_update']) for f in fo)
+    attendu_liens = sorted([
+        ('groups', 'workspace_id', 'workspaces', 'id', '', 'CASCADE', 'SET NULL')])
+    if types != attendu_types or liens != attendu_liens:
+        echecs.append(f'{rel}: types={types} fks={liens}')
+        print(f'FAIL {rel}')
+    else:
+        print(f'ok   {rel}: types with options, {len(liens)} FKs with their actions')
+
     if echecs:
         print('\nÉCHECS modèles :')
         for e in echecs:

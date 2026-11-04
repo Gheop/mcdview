@@ -1490,6 +1490,51 @@ RE_DZ_INDEX = re.compile(r'\b(uniqueIndex|index|unique)\s*\(\s*(?:["\'`]([^"\'`]
                          r'\s*\.on(?:Only)?\(')
 
 
+RE_DZ_NOMBRE = {k: re.compile(r'\b' + k + r'\s*:\s*(\d+)')
+                for k in ('length', 'dimensions', 'precision', 'fsp', 'scale')}
+RE_DZ_TZ = re.compile(r'\bwithTimezone\s*:\s*true\b')
+RE_DZ_ACTION = {k: re.compile(r'\b' + k + r'\s*:\s*["\'`]([a-zA-Z ]+)["\'`]')
+                for k in ('onDelete', 'onUpdate')}
+# Drizzle column builders whose name is not the SQL type
+TYPES_DRIZZLE = {'doublePrecision': 'double precision', 'mysqlEnum': 'enum',
+                 'sqliteEnum': 'text'}
+
+
+def args_appel(texte, debut):
+    """The text inside the call whose '(' ends just before `debut`, up to its
+    matching ')' (or the end of `texte`). A linear depth scan."""
+    prof = 0
+    for i in range(debut, len(texte)):
+        c = texte[i]
+        if c in '([{':
+            prof += 1
+        elif c in ')]}':
+            if prof == 0:
+                return texte[debut:i]
+            prof -= 1
+    return texte[debut:]
+
+
+def type_drizzle(typ, args, enums):
+    """The SQL type of a Drizzle column builder call: `varchar("x", { length:
+    120 })` -> varchar(120), `numeric(…, { precision: 10, scale: 2 })` ->
+    numeric(10,2), `timestamp(…, { withTimezone: true })` -> timestamp with
+    time zone; an enum builder variable gives the enum's SQL name."""
+    if typ in enums:
+        return enums[typ]
+    nom = TYPES_DRIZZLE.get(typ, typ)
+    val = {k: (m.group(1) if (m := r.search(args)) else '') for k, r in RE_DZ_NOMBRE.items()}
+    taille = val['length'] or val['dimensions']
+    prec = val['precision'] or val['fsp']
+    if taille:
+        nom += f'({taille})'
+    elif prec:
+        nom += f"({prec},{val['scale']})" if val['scale'] else f'({prec})'
+    if RE_DZ_TZ.search(args):
+        nom += ' with time zone'
+    return nom
+
+
 def analyser_drizzle(chemin):
     """Parse a Drizzle ORM schema.ts natively (regular enough): each
     `pgTable("name", { field: type("col").notNull().primaryKey()
@@ -1502,7 +1547,11 @@ def analyser_drizzle(chemin):
     src = re.sub(r'(?m)^\s*//.*$', '', src)
     tables, fks = {}, []
     var_table, var_cols = {}, {}   # const var -> table key / {field: column}
-    refs = []                      # (de_key, src_col, target_var, target_field)
+    refs = []                      # (de_key, src_col, target_var, target_field, on_delete, on_update, name)
+    # `export const roleEnum = pgEnum("role", [...])`: a column built with
+    # roleEnum("x") has the SQL type role
+    enums = dict(re.findall(r'(?:const|let|var)\s+(\w+)\s*=\s*(?:pg|mysql)Enum\s*\(\s*'
+                            r'["\'`]([^"\'`]+)["\'`]', src))
 
     def champs(body):              # split on top-level commas (depth 0)
         prof, cur, out = 0, '', []
@@ -1556,14 +1605,19 @@ def analyser_drizzle(chemin):
             sm = re.match(r'''\s*["'`]([^"'`]+)["'`]''', entree[cm.end():])
             col = sm.group(1) if sm else champ
             var_cols[var][champ] = col
-            cols.append(nouvelle_colonne(col, typ, '.notNull(' in entree))
+            cols.append(nouvelle_colonne(col, type_drizzle(typ, args_appel(entree, cm.end()), enums),
+                                         '.notNull(' in entree))
             if '.primaryKey(' in entree:
                 pk.append(col)
             if re.search(r'\.unique\(\s*(["\'`][^"\'`]*["\'`])?\s*\)', entree):
                 index.append({'nom': '', 'cols': [col], 'unique': True})
             rm = re.search(r'\.references\(\s*\(\s*\)\s*=>\s*(\w+)\.(\w+)', entree)
             if rm:
-                refs.append((cle, col, rm.group(1), rm.group(2)))
+                # .references(() => t.id, { onDelete: "cascade" })
+                opts = args_appel(entree, entree.index('(', rm.start()) + 1)
+                od, ou = ((m.group(1).upper() if (m := RE_DZ_ACTION[k].search(opts)) else '')
+                          for k in ('onDelete', 'onUpdate'))
+                refs.append((cle, col, rm.group(1), rm.group(2), od, ou, ''))
         # the optional third argument, `(table) => [...]` or `=> ({...})`, holds
         # the indexes, unique constraints and composite primary key: read up to
         # the pgTable call's closing parenthesis
@@ -1595,10 +1649,10 @@ def analyser_drizzle(chemin):
             pk = [champ_col.get(f, f) for f in re.findall(r'\w+\.(\w+)', extra[mp.end():fin])]
         tables[cle] = nouvelle_table('public', nom, cols, pk, index=index)
 
-    for de, col, tvar, tfield in refs:
+    for de, col, tvar, tfield, od, ou, nom in refs:
         vers = var_table.get(tvar)
         if de in tables and vers in tables:
-            fks.append(nouvelle_fk(de, col, vers, var_cols.get(tvar, {}).get(tfield, '')))
+            fks.append(nouvelle_fk(de, col, vers, var_cols.get(tvar, {}).get(tfield, ''), nom, od, ou))
     return tables, fks
 
 
