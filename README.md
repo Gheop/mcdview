@@ -330,11 +330,33 @@ file's header.
 
 | Version | Date       | Changes |
 |---------|------------|---------|
+| 1.0.3   | 2026-11-04 | Add the v0.34.6 changelog entry |
 | 1.0.2   | 2026-11-04 | Add the v0.34.5 changelog entry |
 | 1.0.1   | 2026-11-04 | Add the v0.34.3 and v0.34.4 changelog entries |
 | 1.0.0   | 2026-09-01 | Initialize; add a CI section (local flags + hosted GitHub/GitLab integrations), document `--to-dico`/`--to-preview`/`--lint`/`--fail-on`, add the blog link, reconcile the tested-at-scale figure |
 
 ## Changelog
+
+### v0.34.6 — Column types as declared in SQLite, Drizzle and Rails (2026-11-04)
+
+- SQLite columns keep their declared type: sqlglot rendered them by type
+  affinity (`VARCHAR(255)` → `text(255)`, `DECIMAL(10,2)` → `real(10, 2)`,
+  `BOOLEAN` → `integer`). A column declared without a type is no longer
+  dropped. Across the test corpus, 14,528 columns in 512 SQLite files change
+  type and 48 columns come back.
+- Drizzle schemas read the column options: `varchar(120)`, `numeric(10,2)`,
+  `timestamp(3) with time zone`, `vector(1536)`; `doublePrecision` becomes
+  `double precision`, and an enum column takes the enum's SQL name. The
+  `onDelete` / `onUpdate` actions of `.references()` are read, and so are
+  table-level `foreignKey({ columns, foreignColumns })` declarations, which
+  were ignored: 1,634 more foreign keys across 1,790 test schemas.
+- Rails schemas dumped before Rails 5.1 type the implicit `id` and
+  `t.references` as `integer`, not `bigint` (260 columns in 80 test schemas).
+- The PostgreSQL parser accepts several blanks between keywords
+  (`ALTER TABLE  t`, `REFERENCES  t`, as Dolibarr writes them), and reads
+  `ON DELETE` / `ON UPDATE` written on the line after the target, as
+  pgModeler writes them after `MATCH FULL`. Across the `.sql` test corpus,
+  5 files gain 41 tables and foreign keys go from 59,723 to 59,788.
 
 ### v0.34.5 — Spatial columns and commented-out statements no longer cost tables (2026-11-04)
 
