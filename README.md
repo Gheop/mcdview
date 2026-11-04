@@ -330,10 +330,36 @@ file's header.
 
 | Version | Date       | Changes |
 |---------|------------|---------|
+| 1.0.2   | 2026-11-04 | Add the v0.34.5 changelog entry |
 | 1.0.1   | 2026-11-04 | Add the v0.34.3 and v0.34.4 changelog entries |
 | 1.0.0   | 2026-09-01 | Initialize; add a CI section (local flags + hosted GitHub/GitLab integrations), document `--to-dico`/`--to-preview`/`--lint`/`--fail-on`, add the blog link, reconcile the tested-at-scale figure |
 
 ## Changelog
+
+### v0.34.5 — Spatial columns and commented-out statements no longer cost tables (2026-11-04)
+
+- A MySQL table with a spatial column (`POINT`, `LINESTRING`, `POLYGON`, their
+  `MULTI` forms, `GEOMETRYCOLLECTION`) or an `SRID` attribute disappeared
+  without a warning: sqlglot rejects those types and dropped the whole
+  statement (Dolibarr lost `llx_societe`, `llx_socpeople` and `llx_ecm_files`,
+  and every foreign key pointing at them). The table is now read and the
+  column keeps its type as written.
+- The PostgreSQL parser read commented-out statements: a
+  `-- ALTER TABLE ... FOREIGN KEY ...` line added a relation, and a
+  commented-out `CREATE TABLE` an empty table. Whole comment lines are now
+  ignored.
+- A comma or a quote inside a `--` comment in a `CREATE TABLE` body
+  (`-- creator, if any`) no longer swallows the next column or constraint.
+- A table opened with `( ` and a trailing blank, and closed by
+  `) ENGINE=...;`, is now read by the PostgreSQL parser too.
+- `--dialect auto` no longer keeps the PostgreSQL reading alone when a
+  `CREATE TABLE` head is not in upper case (`create table a` next to
+  `CREATE TABLE b`): the sqlglot reading is tried and wins with more tables.
+  `--dialect postgres` still only reads upper-case DDL.
+- `--dialect mariadb` failed with "Unknown dialect"; it is now read as MySQL.
+- Across 9,908 test `.sql` files: 71 files gain 1,122 tables, foreign keys go
+  from 59,331 to 59,723, and no file gets a new error. The 25 tables no
+  longer reported were all declared in commented-out lines.
 
 ### v0.34.4 — MySQL files without backticks keep all their tables (2026-11-04)
 
