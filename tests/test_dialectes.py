@@ -166,6 +166,24 @@ def principal():
         if cols != attendu:
             echecs.append(f'MySQL spatial types ({d} -> {dial}): {cols}')
 
+    # SQLite keeps the declared type: sqlglot's sqlite rendering gave the
+    # affinity (VARCHAR(255) -> text(255), DECIMAL -> real) and its neutral one
+    # still normalizes (INT8 -> tinyint). A column may also have no type at all
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'types.sqlite.sql'
+        p.write_text('CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT,\n'
+                     '  nom VARCHAR(255) NOT NULL, prix DECIMAL(10,2), ok BOOLEAN,\n'
+                     '  "q nom" NVARCHAR (20) COLLATE NOCASE, i8 INT8,\n'
+                     '  dp DOUBLE PRECISION DEFAULT 0, sanstype, fin);\n'
+                     "ALTER TABLE t ADD COLUMN code CHAR(3) DEFAULT 'x';\n")
+        tables, _, dial = mcdview.analyser(str(p), 'auto')
+    types = [(c['nom'], c['type']) for c in tables.get('public.t', {}).get('cols', [])]
+    attendu = [('id', 'integer'), ('nom', 'varchar(255)'), ('prix', 'decimal(10,2)'),
+               ('ok', 'boolean'), ('q nom', 'nvarchar(20)'), ('i8', 'int8'),
+               ('dp', 'double precision'), ('sanstype', ''), ('fin', ''), ('code', 'char(3)')]
+    if dial != 'sqlite' or types != attendu:
+        echecs.append(f'SQLite declared types ({dial}): {types}')
+
     # phpMyAdmin exports add the PK and indexes afterwards, several ADD in one
     # ALTER (sqlglot cannot parse it and keeps a raw Command)
     pma = ("CREATE TABLE `u` (`id` int NOT NULL);\n"

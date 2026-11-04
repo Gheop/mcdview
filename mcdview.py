@@ -736,6 +736,39 @@ def types_spatiaux_mysql(src):
     return src
 
 
+# SQLite's generator in sqlglot renders a type by its affinity (VARCHAR(255)
+# -> TEXT(255), DECIMAL(10,2) -> REAL(10, 2), BOOLEAN -> INTEGER), and its
+# neutral rendering normalizes too (INT8 -> TINYINT). SQLite keeps the
+# declared type, so it is read back from the source, right after the column
+# name, following SQLite's type-name grammar: words, then at most two numbers
+# in parentheses. Words are separated by blanks so a word splits one way only
+MOTS_CONTRAINTE_SQLITE = (r'(?:CONSTRAINT|PRIMARY|NOT|NULL|UNIQUE|CHECK|DEFAULT|COLLATE'
+                          r'|REFERENCES|GENERATED|AS|AUTOINCREMENT|ON)\b')
+RE_MOT_TYPE = r'(?!' + MOTS_CONTRAINTE_SQLITE + r')[A-Za-z_]\w*'
+RE_TYPE_ECRIT = re.compile(
+    r'["`\]]?\s+(' + RE_MOT_TYPE + r'(?:[ \t]+' + RE_MOT_TYPE + r')*'
+    r'(?:[ \t]*\([ \t]*[-+]?\d+(?:\.\d+)?[ \t]*(?:,[ \t]*[-+]?\d+(?:\.\d+)?[ \t]*)?\))?)', re.I)
+# what may follow a complete type: the end of the column, a comment or a
+# constraint. Anything else (ClickHouse's Nullable(String), SQL Server's
+# nvarchar(max), a schema-qualified public.name, PostgreSQL's
+# TIMESTAMP(6) WITH TIME ZONE in a file read as SQLite) means the grammar
+# above did not take the whole type: sqlglot's rendering is kept then
+RE_APRES_TYPE = re.compile(r'\s*(?:$|[,);]|--|/\*|' + MOTS_CONTRAINTE_SQLITE + ')', re.I)
+
+
+def type_ecrit(src, ident):
+    """The type as declared after the column identifier `ident` (a sqlglot
+    Identifier carrying its source offsets), lowercased; '' when the offsets
+    do not point at that name in `src` or no type follows it."""
+    debut, fin = ident.meta.get('start'), ident.meta.get('end')
+    if debut is None or fin is None or src[debut:fin + 1].strip('"`[]').lower() != ident.name.lower():
+        return ''
+    m = RE_TYPE_ECRIT.match(src, fin + 1)
+    if not m or not RE_APRES_TYPE.match(src, m.end()):
+        return ''
+    return re.sub(r'\s*\(', '(', re.sub(r'\s+', ' ', m.group(1))).lower()
+
+
 def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
     # sqlglot has no MariaDB dialect: its DDL is MySQL's
     if dialecte == 'mariadb':
@@ -799,6 +832,8 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
         # string literals intact (ENUM('Active') must not become 'active')
         type_txt = brut if "'" in brut else brut.lower()
         type_txt = RE_MARQUE_SPATIALE.sub(lambda m: m.group(1).lower(), type_txt)
+        if dialecte == 'sqlite':
+            type_txt = type_ecrit(src, d.this) or type_txt
         # an explicit `NULL` is a NotNullColumnConstraint too, with allow_null
         return nouvelle_colonne(
             d.name, type_txt,
@@ -831,7 +866,20 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                 continue
             k = cle(tbl)
             cols, pk, colcomments = [], [], {}
-            for d in stmt.find_all(exp.ColumnDef):
+            defs = list(stmt.find_all(exp.ColumnDef))
+            if dialecte == 'sqlite' and isinstance(noeud, exp.Schema):
+                # SQLite allows a column with no type (`CREATE TABLE t (a, b)`);
+                # sqlglot keeps it as a bare Identifier among the ColumnDefs
+                nus = [e for e in noeud.expressions if isinstance(e, exp.Identifier)]
+                if nus:
+                    vus = {id(d) for d in defs}
+                    defs = [e for e in noeud.expressions
+                            if isinstance(e, exp.Identifier) or id(e) in vus] + [
+                        d for d in defs if d.parent is not noeud]
+            for d in defs:
+                if isinstance(d, exp.Identifier):
+                    cols.append(nouvelle_colonne(d.name, ''))
+                    continue
                 col, kinds = colonne_sqlglot(d)
                 if any(isinstance(c, exp.PrimaryKeyColumnConstraint) for c in kinds):
                     pk.append(d.name)
