@@ -93,6 +93,8 @@ def verifier_dos(echecs):
         'quotes sans fin': "COMMENT ON TABLE a.b IS '" + "x''" * 300000,
         'points-virgules': ');\n' * 500000,
         'colonnes sans fin': 'CREATE TABLE t (\n' + 'a integer,\n' * 20000,
+        'commentaires bloc': '/* x */' * 200000 + '/*' * 200000 + "'" * 100001,
+        'quotes doublées': "CREATE TABLE t (a text DEFAULT '" + "''" * 400000 + "/*",
     }
     with tempfile.TemporaryDirectory() as td:
         cibles = [(f.name, f) for f in (RACINE / 'tests' / 'malveillant').glob('*.sql')]

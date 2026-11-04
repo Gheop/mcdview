@@ -411,6 +411,33 @@ def principal():
     if actions != [('c_id', 'CASCADE', 'SET NULL'), ('d_id', '', ''), ('id', 'RESTRICT', '')]:
         echecs.append(f'actions on the next line: {actions}')
 
+    # a /* */ block can hold a whole commented-out table; a /* inside a
+    # literal or after -- opens nothing; an entry spanning lines (comment
+    # between the type and REFERENCES) keeps its column and its FK
+    tables, fk = mcdview.analyser_sql(None, (
+        '/* CREATE TABLE fantome (\n  id integer\n); */\n'
+        '/* a block whose closing line\n-- starts like a line comment */\n'
+        'CREATE TABLE c (\n  id integer\n);\n'
+        "CREATE TABLE a (\n  id integer PRIMARY KEY, -- don't /* open\n"
+        "  note text DEFAULT '/* not a comment */'\n);\n"
+        'CREATE TABLE b (\n  id integer PRIMARY KEY,\n  a_id integer /* link\n   to a */\n'
+        '    REFERENCES a (id) ON DELETE CASCADE,\n  x int\n);\n'))
+    cols_b = [c['nom'] for c in tables.get('public.b', {}).get('cols', [])]
+    defaut = next((c['defaut'] for c in tables.get('public.a', {}).get('cols', []) if c['nom'] == 'note'), None)
+    if (sorted(tables) != ['public.a', 'public.b', 'public.c'] or cols_b != ['id', 'a_id', 'x']
+            or defaut != "'/* not a comment */'"
+            or [(f['col'], f['on_delete']) for f in fk] != [('a_id', 'CASCADE')]):
+        echecs.append(f'block comments: {sorted(tables)}, b={cols_b}, default={defaut!r}, '
+                      f"fks={[(f['col'], f['on_delete']) for f in fk]}")
+
+    # a schema shipped entirely inside /* */ (Drizzle introspection) is
+    # still read: nothing outside the block would leave an empty diagram
+    tables = mcdview.analyser_sql(None, (
+        '-- uncomment this code before executing migrations\n'
+        '/*\nCREATE TABLE "products" (\n  "id" serial PRIMARY KEY NOT NULL\n);\n*/\n'))[0]
+    if sorted(tables) != ['public.products']:
+        echecs.append(f'schema entirely in a block comment: {sorted(tables)}')
+
     # an entry split at commas can span lines: the column and its inline
     # REFERENCES on the next line are both kept
     tables, fk = mcdview.analyser_sql(None, (

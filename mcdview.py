@@ -180,6 +180,48 @@ RE_CHECK = re.compile(r'\bCHECK\s*\([^)]*\)', re.I)
 RE_PK_MOT = re.compile(r'\bPRIMARY\s+KEY\b', re.I)
 RE_LIGNE_COMMENTEE = re.compile(r'^[ \t]*--[^\n]*', re.M)
 RE_BLANCS = re.compile(r'\s+')
+RE_JETON_COMMENTAIRE = re.compile(r"'|--|/\*")
+
+
+def sans_commentaires_bloc(src):
+    """Blank every /* … */ block comment, keeping its newlines (the
+    multi-line pass splits bodies by line). '…' literals and -- comments are
+    skipped so a /* inside them opens nothing. Each search starts past the
+    previous one: linear; an unclosed literal or comment ends the scan and
+    leaves the rest as is."""
+    morceaux, pos, n = [], 0, len(src)
+    while pos < n:
+        m = RE_JETON_COMMENTAIRE.search(src, pos)
+        if not m:
+            break
+        i = m.start()
+        if m.group() == "'":
+            j = src.find("'", i + 1)
+            while j != -1 and src.startswith("''", j):
+                j = src.find("'", j + 2)
+            if j == -1:
+                break
+            pos = j + 1
+        elif m.group() == '--':
+            j = src.find('\n', i)
+            if j == -1:
+                break
+            pos = j
+        else:
+            j = src.find('*/', i + 2)
+            if j == -1:
+                break
+            morceaux.append((i, j + 2))
+            pos = j + 2
+    if not morceaux:
+        return src
+    sortie, debut = [], 0
+    for a, b in morceaux:
+        sortie.append(src[debut:a])
+        sortie.append('\n' * src.count('\n', a, b))
+        debut = b
+    sortie.append(src[debut:])
+    return ''.join(sortie)
 
 
 def colonne_declare_pk(ligne):
@@ -301,7 +343,20 @@ def analyser_sql(chemin, src=None):
     # (`-- ALTER TABLE a ADD CONSTRAINT … FOREIGN KEY …`, 45 lines in
     # Dolibarr's .key.sql files) counted as a real one. Whole comment lines
     # are blanked; a trailing `--` is left alone, it may sit inside a literal
-    src = RE_LIGNE_COMMENTEE.sub('', src)
+    # A /* … */ block can hold a whole commented-out CREATE TABLE; blocks go
+    # first, since a `--` line inside one may carry its closing */. When every
+    # table sits in a block (Drizzle's introspection migrations ship the
+    # schema commented out, "uncomment this code before executing"), the file
+    # is read with its blocks: showing that schema beats showing nothing
+    if '/*' in src:
+        tables, fks = analyser_sql_texte(RE_LIGNE_COMMENTEE.sub('', sans_commentaires_bloc(src)))
+        if tables:
+            return tables, fks
+    return analyser_sql_texte(RE_LIGNE_COMMENTEE.sub('', src))
+
+
+def analyser_sql_texte(src):
+    """analyser_sql's passes over comment-stripped DDL text."""
     tables, fks = {}, []
     corps_par_cle = {}   # cle -> raw CREATE TABLE body, for inline/table-level FKs
 
