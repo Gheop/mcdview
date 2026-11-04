@@ -330,12 +330,26 @@ file's header.
 
 | Version | Date       | Changes |
 |---------|------------|---------|
+| 1.0.4   | 2026-11-04 | Add the v0.34.7 changelog entry |
 | 1.0.3   | 2026-11-04 | Add the v0.34.6 changelog entry |
 | 1.0.2   | 2026-11-04 | Add the v0.34.5 changelog entry |
 | 1.0.1   | 2026-11-04 | Add the v0.34.3 and v0.34.4 changelog entries |
 | 1.0.0   | 2026-09-01 | Initialize; add a CI section (local flags + hosted GitHub/GitLab integrations), document `--to-dico`/`--to-preview`/`--lint`/`--fail-on`, add the blog link, reconcile the tested-at-scale figure |
 
 ## Changelog
+
+### v0.34.7 — Tables in /* */ comments are no longer read (2026-11-04)
+
+- The PostgreSQL parser no longer reads a `CREATE TABLE` or an `ALTER TABLE`
+  inside a `/* … */` block comment; a `/*` inside a string literal or after
+  `--` opens nothing. A file whose every table sits in a block comment, as
+  Drizzle's introspection migrations ship it ("uncomment this code before
+  executing"), is still read, so its schema shows instead of nothing.
+- A column definition that spans several lines (a comment or a line break
+  between the type and `REFERENCES`) keeps its foreign key.
+- Across 9,908 test `.sql` files: 24 files gain 413 tables, foreign keys go
+  from 59,788 to 59,941, and no file loses a foreign key or gets a new error.
+  The 7 tables and 6 columns no longer reported came from commented-out text.
 
 ### v0.34.6 — Column types as declared in SQLite, Drizzle and Rails (2026-11-04)
 
