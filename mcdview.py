@@ -709,6 +709,33 @@ def ajouter_cles_alter(src, tables):
                 t['index'].append({'nom': c.group(2) or '', 'cols': cols, 'unique': unique})
 
 
+# sqlglot's MySQL dialect reads POINT, POLYGON… as function names and the
+# SRID column attribute not at all: the whole CREATE TABLE then falls back to
+# a raw Command and the table is silently lost (Dolibarr's llx_socpeople).
+# Before parsing, a spatial column type becomes GEOMETRY(MCDVIEW_<type>),
+# which sqlglot keeps intact, and is restored on the column; SRID is dropped.
+# The type must follow a column name (line start, `(`, `,`, ADD, COLUMN or
+# MODIFY before it) and not open a call, so a POINT(1, 2) default stays.
+RE_TYPE_SPATIAL = re.compile(
+    r'((?:^|[(,]|\bADD|\bCOLUMN|\bMODIFY)[ \t]*(?:`[^`\n]*`|"[^"\n]*"|\w+)\s+)'
+    r'(POINT|LINESTRING|POLYGON|MULTIPOINT|MULTILINESTRING|MULTIPOLYGON'
+    r'|GEOMETRYCOLLECTION|GEOMCOLLECTION)\b(?!\s*\()', re.I | re.M)
+RE_SRID = re.compile(r'\bSRID\s+\d+\b', re.I)
+RE_MARQUE_SPATIALE = re.compile(r'geometry\(mcdview_(\w+)\)', re.I)
+
+
+def types_spatiaux_mysql(src):
+    # substring tests first: the regex tries every line start and paren,
+    # and nearly no file has a spatial column
+    bas = src.lower()
+    if any(mot in bas for mot in ('point', 'linestring', 'polygon', 'collection')):
+        src = RE_TYPE_SPATIAL.sub(
+            lambda m: f'{m.group(1)}GEOMETRY(MCDVIEW_{m.group(2).upper()})', src)
+    if 'srid' in bas:
+        src = RE_SRID.sub('', src)
+    return src
+
+
 def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
     try:
         import logging
@@ -723,6 +750,8 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
         sys.exit(f'reading {dialecte} DDL needs sqlglot (pip install sqlglot)')
     if src is None:
         src = lire_texte(chemin)
+    if dialecte == 'mysql':
+        src = types_spatiaux_mysql(src)
     try:
         # IGNORE: a single unparseable statement must not abort the whole model
         arbre = sqlglot.parse(src, read=dialecte, error_level=ErrorLevel.IGNORE)
@@ -766,6 +795,7 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
         # lowercase to match the PostgreSQL parser's output, but keep
         # string literals intact (ENUM('Active') must not become 'active')
         type_txt = brut if "'" in brut else brut.lower()
+        type_txt = RE_MARQUE_SPATIALE.sub(lambda m: m.group(1).lower(), type_txt)
         # an explicit `NULL` is a NotNullColumnConstraint too, with allow_null
         return nouvelle_colonne(
             d.name, type_txt,

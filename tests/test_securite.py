@@ -119,6 +119,10 @@ def alter_seul(chemin):
                                {'public.t': mcdview.nouvelle_table('public', 't')})
 
 
+def spatial_seul(chemin):
+    mcdview.types_spatiaux_mysql(Path(chemin).read_text())
+
+
 def verifier_dos_natifs(echecs):
     """The native parsers reachable from an upload (.mmd/.md, .rb, .ts) must respect
     the same DoS budget — their block extraction used to backtrack on crafted
@@ -142,6 +146,11 @@ def verifier_dos_natifs(echecs):
         ('alter add sans )', alter_seul, '.sql', 'ALTER TABLE t ' + 'ADD KEY k (a, ' * 60000 + ';'),
         ('drizzle pk ouvertes', mcdview.analyser_drizzle, '.ts',
          'const a = pgTable("t", {}, (t) => [' + 'primaryKey({ columns: [t.a' * 12000),
+        # MySQL spatial-type rewrite run before sqlglot, on its own: a long
+        # name with blanks but no type behind, then many near-misses
+        ('spatial mot géant', spatial_seul, '.sql',
+         'point\n(' + 'a' * 1000000 + ' \t\n' * 300000 + 'x'),
+        ('spatial presque', spatial_seul, '.sql', ',a point(' * 100000 + '(a SRID x' * 100000),
     ]
     with tempfile.TemporaryDirectory() as td:
         for nom, fn, ext, contenu in cas:

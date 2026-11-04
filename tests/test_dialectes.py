@@ -145,6 +145,27 @@ def principal():
         echecs.append(f'mixed case, no marker: {sorted(tables)} via {dial}; '
                       f'PostgreSQL with a commented lower-case head -> {dial_pg}')
 
+    # MySQL spatial types: sqlglot's MySQL dialect rejects all but GEOMETRY,
+    # and SRID, which used to drop the whole table (Dolibarr's llx_socpeople).
+    # The type must come back as written; a POINT(…) default and a column
+    # named `point` are left alone
+    spatial = ("create table lieux (\n  rowid integer AUTO_INCREMENT PRIMARY KEY,\n"
+               "  `point` int DEFAULT NULL,\n  geopoint point DEFAULT NULL,\n"
+               "  pos POINT NOT NULL SRID 4326, zone polygon,\n"
+               "  centre point NOT NULL DEFAULT (POINT(0, 0)),\n"
+               "  SPATIAL KEY sp (pos)\n) ENGINE=innodb;\n"
+               "ALTER TABLE lieux ADD COLUMN trace LineString NULL;\n")
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'spatial.sql'
+        p.write_text(spatial)
+        res = {d: mcdview.analyser(str(p), d) for d in ('auto', 'mysql')}
+    attendu = [('rowid', 'int'), ('point', 'int'), ('geopoint', 'point'), ('pos', 'point'),
+               ('zone', 'polygon'), ('centre', 'point'), ('trace', 'linestring')]
+    for d, (tables, _, dial) in res.items():
+        cols = [(c['nom'], c['type']) for c in tables.get('public.lieux', {}).get('cols', [])]
+        if cols != attendu:
+            echecs.append(f'MySQL spatial types ({d} -> {dial}): {cols}')
+
     # phpMyAdmin exports add the PK and indexes afterwards, several ADD in one
     # ALTER (sqlglot cannot parse it and keeps a raw Command)
     pma = ("CREATE TABLE `u` (`id` int NOT NULL);\n"
