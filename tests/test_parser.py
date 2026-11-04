@@ -398,6 +398,16 @@ def principal():
     if fk != {('a', 'yy', 'b', 'id')}:
         echecs.append(f'commented-out FK: {sorted(fk)}')
 
+    # same opener closed by ");": the body is split at commas, so two columns
+    # on one line stay two, and a trailing comment does not eat the next one
+    t = tables_de('CREATE TABLE users (  \n\nid INT PRIMARY KEY,\n'
+                  'phone VARCHAR(15), password VARCHAR(255) NOT NULL,\n'
+                  'fk_user integer, -- creator, if any\n  fk_valid integer\n);\n'
+                  'INSERT INTO users VALUES (1);\n')
+    cols = [c['nom'] for c in t.get('public.users', {}).get('cols', [])]
+    if cols != ['id', 'phone', 'password', 'fk_user', 'fk_valid']:
+        echecs.append(f'"( " opener closed by ");": columns {cols}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:

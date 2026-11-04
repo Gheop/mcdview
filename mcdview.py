@@ -246,6 +246,12 @@ def decouper_corps(s, cap=100000):
         if c == "'":
             en_chaine = True
             cur.append(c)
+        elif c == '-' and s.startswith('--', i):
+            # a comment runs to the end of the line; its commas and parens
+            # ("-- creator, if any") must not split or close anything
+            fin = s.find('\n', i, n)
+            i = n if fin == -1 else fin
+            continue
         elif c == '(':
             prof += 1
             cur.append(c)
