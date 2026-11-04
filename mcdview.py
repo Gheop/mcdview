@@ -178,6 +178,7 @@ RE_LITTERAL = re.compile(r"'(?:[^']|'')*'")
 RE_COMMENTAIRE = re.compile(r'--.*$')
 RE_CHECK = re.compile(r'\bCHECK\s*\([^)]*\)', re.I)
 RE_PK_MOT = re.compile(r'\bPRIMARY\s+KEY\b', re.I)
+RE_LIGNE_COMMENTEE = re.compile(r'^[ \t]*--[^\n]*', re.M)
 
 
 def colonne_declare_pk(ligne):
@@ -266,6 +267,11 @@ def decouper_corps(s, cap=100000):
 def analyser_sql(chemin, src=None):
     if src is None:
         src = lire_texte(chemin)
+    # the passes below search the raw text, so a commented-out statement
+    # (`-- ALTER TABLE a ADD CONSTRAINT … FOREIGN KEY …`, 45 lines in
+    # Dolibarr's .key.sql files) counted as a real one. Whole comment lines
+    # are blanked; a trailing `--` is left alone, it may sit inside a literal
+    src = RE_LIGNE_COMMENTEE.sub('', src)
     tables, fks = {}, []
     corps_par_cle = {}   # cle -> raw CREATE TABLE body, for inline/table-level FKs
 

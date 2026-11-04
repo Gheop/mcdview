@@ -388,6 +388,16 @@ def principal():
     if uniques != attendu:
         echecs.append(f'inline UNIQUE: {sorted(uniques)} != {sorted(attendu)}')
 
+    # a commented-out ALTER is no FK (Dolibarr's .key.sql files carry dozens);
+    # the live one next to it still counts
+    fk = fks_de('CREATE TABLE a (id integer PRIMARY KEY, zz integer, yy integer);\n'
+                'CREATE TABLE b (id integer PRIMARY KEY);\n'
+                '-- ALTER TABLE a ADD CONSTRAINT x FOREIGN KEY (zz) REFERENCES b(id);\n'
+                '  --ALTER TABLE a ADD FOREIGN KEY (zz) REFERENCES b(id);\n'
+                'ALTER TABLE a ADD CONSTRAINT y FOREIGN KEY (yy) REFERENCES b(id); -- live\n')
+    if fk != {('a', 'yy', 'b', 'id')}:
+        echecs.append(f'commented-out FK: {sorted(fk)}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:
