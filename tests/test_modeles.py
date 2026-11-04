@@ -119,6 +119,10 @@ def principal():
                 ('members', ('team_id', 'rank'), True)},
         }[rel]
         pk_members = ti.get('public.members', {}).get('pk')
+        if rel.endswith('.rb'):
+            cols_blobs = [c['nom'] for c in ti['public.blobs']['cols']]
+            if cols_blobs != ['id', 'key']:
+                echecs.append(f'{rel}: blobs columns {cols_blobs} (check_constraint read as a column?)')
         if idx != attendus or signales or len(fi) != (4 if rel.endswith('.ts') else 3) or (
                 rel.endswith('.ts') and pk_members != ['cluster_id', 'rank']):
             echecs.append(f'{rel}: index={sorted(idx)} lint={signales} '

@@ -1208,6 +1208,8 @@ def analyser_schema_rb(chemin):
             typ, cn, reste = cm.groups()
             if typ == 'index':
                 continue            # read below with the array forms
+            if typ.endswith('_constraint'):
+                continue            # check_constraint / exclusion_constraint: no column
             defc = re.search(r'default:\s*("[^"]*"|\'[^\']*\'|[^,\n]+)', reste)
             defaut = defc.group(1).strip('\'"') if defc else ''
             if typ in ('references', 'belongs_to'):

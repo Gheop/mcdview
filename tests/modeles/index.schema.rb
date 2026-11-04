@@ -1,10 +1,12 @@
 # Rails db/schema.rb with the index forms a dump can hold: t.index inside the
 # block (array, %w[] and single-string columns) and add_index after the tables
 # (pre-Rails-5, hashrocket options). Every foreign key is covered by an index.
+# A t.check_constraint is no column.
 ActiveRecord::Schema[7.1].define(version: 2024_01_01_000000) do
   create_table "blobs", force: :cascade do |t|
     t.string "key", null: false
     t.index ["key"], name: "index_blobs_on_key", unique: true
+    t.check_constraint "char_length(key) > 0", name: "key_not_empty"
   end
 
   create_table "attachments", force: :cascade do |t|
