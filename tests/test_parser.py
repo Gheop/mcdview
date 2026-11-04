@@ -398,6 +398,19 @@ def principal():
     if fk != {('a', 'yy', 'b', 'id')}:
         echecs.append(f'commented-out FK: {sorted(fk)}')
 
+    # referential actions on the line after the target, as pgModeler writes
+    # them after MATCH FULL; an FK with no action does not borrow the next one's
+    fk = mcdview.analyser_sql(None, (
+        'CREATE TABLE a (\n  id integer PRIMARY KEY\n);\n'
+        'CREATE TABLE b (\n  id integer, c_id integer, d_id integer\n);\n'
+        'ALTER TABLE b ADD CONSTRAINT b_c FOREIGN KEY (c_id)\nREFERENCES a (id) MATCH FULL\n'
+        'ON DELETE CASCADE ON UPDATE SET NULL;\n'
+        'ALTER TABLE b ADD CONSTRAINT b_d FOREIGN KEY (d_id) REFERENCES a (id);\n'
+        'ALTER TABLE b ADD CONSTRAINT b_x FOREIGN KEY (id) REFERENCES a (id) ON DELETE RESTRICT;\n'))[1]
+    actions = sorted((f['col'], f['on_delete'], f['on_update']) for f in fk)
+    if actions != [('c_id', 'CASCADE', 'SET NULL'), ('d_id', '', ''), ('id', 'RESTRICT', '')]:
+        echecs.append(f'actions on the next line: {actions}')
+
     # several blanks between the keywords: Dolibarr writes `ALTER TABLE  t`
     # and `REFERENCES  t`
     tables, fk = mcdview.analyser_sql(None, (

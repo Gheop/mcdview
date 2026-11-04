@@ -270,6 +270,25 @@ def decouper_corps(s, cap=100000):
     return entrees, False
 
 
+RE_LIGNE_CLAUSE_FK = re.compile(r'\s*(?:ON|MATCH|DEFERRABLE|INITIALLY|NOT)\b', re.I)
+
+
+def suite_fk(src, pos):
+    """The clauses after an ALTER ... REFERENCES target (ON DELETE, MATCH…),
+    which pgModeler puts on the next line. They end at ';' or ',' within 200
+    characters; a following line belongs to them only if it opens with one of
+    those clauses, since a SQL Server script has no ';' between ALTERs. Read
+    apart from the FK regex so it never consumes the next statement."""
+    suite = re.split(r'[;,]', src[pos:pos + 200], maxsplit=1)[0]
+    lignes = suite.split('\n')
+    garde = [lignes[0]]
+    for ligne in lignes[1:]:
+        if not RE_LIGNE_CLAUSE_FK.match(ligne):
+            break
+        garde.append(ligne)
+    return ' '.join(garde)
+
+
 def analyser_sql(chemin, src=None):
     if src is None:
         src = lire_texte(chemin)
@@ -406,9 +425,10 @@ def analyser_sql(chemin, src=None):
     vues = set()
     for m in re.finditer(
             r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+(?:CONSTRAINT\s+"?(\w+)"?\s+)?'
-            r'FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?([^;,\n]*)',
+            r'FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?',
             src):
-        ssch, stab, cname, scols, dsch, dtab, dcols, suite = m.groups()
+        ssch, stab, cname, scols, dsch, dtab, dcols = m.groups()
+        suite = suite_fk(src, m.end())
         de = resoudre(f"{ssch or 'public'}.{stab}")
         vers = resoudre(f"{dsch or 'public'}.{dtab}")
         if de not in tables or vers not in tables:
