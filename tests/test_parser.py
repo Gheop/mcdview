@@ -411,6 +411,16 @@ def principal():
     if actions != [('c_id', 'CASCADE', 'SET NULL'), ('d_id', '', ''), ('id', 'RESTRICT', '')]:
         echecs.append(f'actions on the next line: {actions}')
 
+    # an entry split at commas can span lines: the column and its inline
+    # REFERENCES on the next line are both kept
+    tables, fk = mcdview.analyser_sql(None, (
+        'CREATE TABLE a (\n  id integer PRIMARY KEY\n);\n'
+        'CREATE TABLE b (\n  id integer PRIMARY KEY,\n  a_id integer\n'
+        '    REFERENCES a (id) ON DELETE CASCADE,\n  x int\n);\n'))
+    cols_b = [c['nom'] for c in tables.get('public.b', {}).get('cols', [])]
+    if cols_b != ['id', 'a_id', 'x'] or [(f['col'], f['on_delete']) for f in fk] != [('a_id', 'CASCADE')]:
+        echecs.append(f"multi-line entry: b={cols_b}, fks={[(f['col'], f['on_delete']) for f in fk]}")
+
     # several blanks between the keywords: Dolibarr writes `ALTER TABLE  t`
     # and `REFERENCES  t`
     tables, fk = mcdview.analyser_sql(None, (

@@ -179,6 +179,7 @@ RE_COMMENTAIRE = re.compile(r'--.*$')
 RE_CHECK = re.compile(r'\bCHECK\s*\([^)]*\)', re.I)
 RE_PK_MOT = re.compile(r'\bPRIMARY\s+KEY\b', re.I)
 RE_LIGNE_COMMENTEE = re.compile(r'^[ \t]*--[^\n]*', re.M)
+RE_BLANCS = re.compile(r'\s+')
 
 
 def colonne_declare_pk(ligne):
@@ -205,6 +206,10 @@ def entrees_en_table(sch, nom, entrees):
         # (",\n  col TYPE") is common in hand-written schemas, and left the
         # comma glued to the column/constraint so it parsed as neither
         e = e.strip().strip(',').strip()
+        if '\n' in e:
+            # an entry split at commas can span lines ("b int\n  REFERENCES t");
+            # the column regexes read one line
+            e = RE_BLANCS.sub(' ', e)
         cm = RE_PK_TABLE.match(e) if 'PRIMARY' in e else None
         if cm:
             pk = identifiants(cm.group(1))
@@ -477,7 +482,7 @@ def analyser_sql(chemin, src=None):
         # close paren before this added one)
         entrees, _ = decouper_corps(corps + '\n)')
         for e in entrees:
-            e = RE_COMMENTAIRE.sub('', RE_LITTERAL.sub('', e)).strip()
+            e = RE_BLANCS.sub(' ', RE_COMMENTAIRE.sub('', RE_LITTERAL.sub('', e))).strip()
             # UNIQUE in the body is an index too: table-level `[CONSTRAINT n]
             # UNIQUE (a, b)` or column-level `col type UNIQUE` (pg_dump writes
             # them as ALTER TABLE ... ADD CONSTRAINT, read above)
