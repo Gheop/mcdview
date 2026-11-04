@@ -330,9 +330,30 @@ file's header.
 
 | Version | Date       | Changes |
 |---------|------------|---------|
+| 1.0.1   | 2026-11-04 | Add the v0.34.3 and v0.34.4 changelog entries |
 | 1.0.0   | 2026-09-01 | Initialize; add a CI section (local flags + hosted GitHub/GitLab integrations), document `--to-dico`/`--to-preview`/`--lint`/`--fail-on`, add the blog link, reconcile the tested-at-scale figure |
 
 ## Changelog
+
+### v0.34.4 — MySQL files without backticks keep all their tables (2026-11-04)
+
+- A MySQL file without backticks could be read as PostgreSQL and lose its
+  lower-case tables: the PostgreSQL parser only matches upper-case
+  `CREATE TABLE`, so a file mixing `CREATE TABLE` and `create table` kept only
+  the upper-case ones (Dolibarr: 141 of 418 tables). When a file carries
+  `AUTO_INCREMENT` or `ENGINE=`, `--dialect auto` now also tries the MySQL
+  reading and keeps it when it finds more tables, or as many tables and no
+  fewer foreign keys. Across the test corpus, 612 files are now read as MySQL,
+  25 regain 111 tables, and none loses a table or a foreign key.
+- Those files also lose the phantom columns the PostgreSQL parser made from
+  MySQL lines (`KEY ...`, `CHECK` clauses, `ON DELETE ...`), and their types
+  drop the `AUTO_INCREMENT` / `NULL` noise (`INT AUTO_INCREMENT` → `int`).
+- MySQL, SQLite and other non-PostgreSQL files now read columns added by
+  `ALTER TABLE ... ADD [COLUMN]`.
+- A column declared with an explicit `NULL` in a MySQL, SQLite or SQL Server
+  file was shown as `NOT NULL`. 29,551 columns of the corpus were affected.
+- Rails `t.check_constraint` and `t.exclusion_constraint` lines are no longer
+  shown as columns (348 phantom columns in the corpus).
 
 ### v0.34.3 — `--lint` sees the indexes it used to miss (2026-09-27)
 
