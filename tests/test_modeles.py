@@ -92,11 +92,34 @@ def principal():
         tl, _ = mcdview.analyser_schema_rb(str(leg))
         tg = tl.get('public.taggings', {})
         faits += 1
-        if tg.get('pk') != []:
-            echecs.append(f'rails legacy: taggings pk={tg.get("pk")} (:id => false ignored)')
+        id_users = next((c['type'] for c in tl.get('public.users', {}).get('cols', [])
+                         if c['nom'] == 'id'), None)
+        if tg.get('pk') != [] or id_users != 'integer':
+            echecs.append(f'rails legacy: taggings pk={tg.get("pk")} (:id => false ignored), '
+                          f'users.id {id_users} (integer before Rails 5.1)')
             print('FAIL modeles/legacy.schema.rb')
         else:
-            print('ok   modeles/legacy.schema.rb: hashrocket ":id => false" honored')
+            print('ok   modeles/legacy.schema.rb: hashrocket ":id => false" honored, integer id')
+
+    # implicit id type: bigint since Rails 5.1 (2017-04-27). The migration
+    # timestamp alone is not enough: a bracketed Schema[x.y], or an explicit
+    # id: :serial that a 5.1+ dumper writes for older tables, means bigint
+    faits += 1
+    cas_rails = {
+        'ActiveRecord::Schema.define(version: 2016_03_15_120000) do': 'integer',
+        'ActiveRecord::Schema.define(version: 20160315120000) do': 'integer',
+        'ActiveRecord::Schema.define(version: 20180315120000) do': 'bigint',
+        'ActiveRecord::Schema[7.0].define(version: 2012_03_15_120000) do': 'bigint',
+        'ActiveRecord::Schema.define(version: 1) do': 'bigint',
+        'ActiveRecord::Schema.define(version: 20160315120000) do\n'
+        '  create_table "old", id: :serial, force: :cascade do |t|': 'bigint',
+    }
+    faux = {k: v for k, v in cas_rails.items() if mcdview.type_id_rails(k) != v}
+    if faux:
+        echecs.append(f'rails implicit id type: {faux}')
+        print('FAIL rails implicit id type')
+    else:
+        print(f'ok   rails implicit id type: {len(cas_rails)} schema headers')
 
     # declared indexes are read (not only the SQL paths): --lint must not flag
     # a foreign key covered by an index as unindexed_fk

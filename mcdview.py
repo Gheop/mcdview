@@ -1309,12 +1309,37 @@ def index_rails(args):
             'unique': bool(re.search(r'unique:\s*true|:unique\s*=>\s*true', reste))}
 
 
+RE_VERSION_RAILS = re.compile(
+    r'ActiveRecord::Schema(\[[\d.]+\])?\.define\s*\(?\s*(:version\s*=>|version:)\s*([\d_]+)')
+RE_ID_ENTIER_RAILS = re.compile(r'\bid:\s*:(?:serial|integer)\b|:id\s*=>\s*:(?:serial|integer)\b')
+
+
+def type_id_rails(src):
+    """The type of an implicit id and of t.references: bigint since Rails 5.1
+    (2017-04-27), integer before. The dump says which Rails wrote it: a
+    hashrocket `:version =>` is Rails 3; otherwise an old dump has no
+    bracketed Schema[x.y], a migration timestamp before that date, and no
+    explicit integer id, which a 5.1+ dumper writes for every table created
+    before the switch (`id: :serial`). The timestamp only dates the last
+    migration, hence that last check."""
+    m = RE_VERSION_RAILS.search(src)
+    if not m or m.group(1):
+        return 'bigint'
+    if m.group(2).startswith(':'):
+        return 'integer'
+    v = m.group(3).replace('_', '')
+    if len(v) == 14 and v < '20170427' and not RE_ID_ENTIER_RAILS.search(src):
+        return 'integer'
+    return 'bigint'
+
+
 def analyser_schema_rb(chemin):
     """Parse a Rails db/schema.rb natively (the create_table / add_foreign_key
     DSL is regular). The implicit `id` primary key is added unless `id: false`;
     `add_foreign_key "from", "to"` defaults its column to <singular(to)>_id."""
     src = lire_texte(chemin)
     tables, fks = {}, []
+    type_id = type_id_rails(src)
     # opener + string-search for the block's `end` (not a lazy `.*?` spanning to
     # `end`, which backtracks on many unterminated create_table openers)
     RE_CT = re.compile(r'create_table\s+["\']([^"\']+)["\']\s*(,[^\n]*)?\s+do\s*\|(\w+)\|')
@@ -1334,7 +1359,7 @@ def analyser_schema_rb(chemin):
                             r'|:primary_key\s*=>\s*["\']([^"\']+)["\']', opts)
             pkn = (mpk.group(1) or mpk.group(2)) if mpk else 'id'
             mid = re.search(r'\bid:\s*:(\w+)|:id\s*=>\s*:(\w+)', opts)
-            typ = (mid.group(1) or mid.group(2)) if mid else 'bigint'
+            typ = (mid.group(1) or mid.group(2)) if mid else type_id
             cols.append(nouvelle_colonne(pkn, typ, True))
             pk = [pkn]
         for cm in re.finditer(r'\b' + re.escape(var) + r'\.(\w+)\s+["\'"]([^"\'"]+)["\'"]([^\n]*)', corps):
@@ -1346,7 +1371,7 @@ def analyser_schema_rb(chemin):
             defc = re.search(r'default:\s*("[^"]*"|\'[^\']*\'|[^,\n]+)', reste)
             defaut = defc.group(1).strip('\'"') if defc else ''
             if typ in ('references', 'belongs_to'):
-                cols.append(nouvelle_colonne(cn + '_id', 'bigint', 'null: false' in reste))
+                cols.append(nouvelle_colonne(cn + '_id', type_id, 'null: false' in reste))
                 if 'polymorphic: true' in reste:
                     cols.append(nouvelle_colonne(cn + '_type', 'string'))
             else:
