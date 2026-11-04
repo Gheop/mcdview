@@ -286,7 +286,7 @@ def analyser_sql(chemin, src=None):
     # is delimited by string search, not by a lazy `.*?` regex: on malformed
     # input (many openers, no closer) the latter backtracks catastrophically.
     for m in re.finditer(
-            r'CREATE TABLE (?:IF NOT EXISTS )?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(\n', src):
+            r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(\n', src):
         if ' PARTITION OF ' in src[m.start():m.end()]:
             continue
         fin = src.find('\n)', m.end())
@@ -306,7 +306,7 @@ def analyser_sql(chemin, src=None):
     # opener's own line so a "CREATE TABLE a (\n" bomb (newline right after the
     # paren) yields an empty body and costs nothing.
     for m in re.finditer(
-            r'CREATE TABLE (?:IF NOT EXISTS )?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(', src):
+            r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(', src):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:  # already built by the multi-line pass
             continue
@@ -340,11 +340,11 @@ def analyser_sql(chemin, src=None):
     # the parent, and the partitions themselves do not appear in the model
     parent = {}
     for m in re.finditer(
-            r'CREATE TABLE (?:(\w+)\.)?(\w+) PARTITION OF (?:(\w+)\.)?(\w+)', src):
+            r'CREATE\s+TABLE\s+(?:(\w+)\.)?(\w+)\s+PARTITION\s+OF\s+(?:(\w+)\.)?(\w+)', src):
         enfant = f"{m.group(1) or 'public'}.{m.group(2)}"
         parent[enfant] = f"{m.group(3) or 'public'}.{m.group(4)}"
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:(\w+)\.)?(\w+)\s+ATTACH PARTITION '
+            r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(\w+)\.)?(\w+)\s+ATTACH\s+PARTITION\s+'
             r'(?:(\w+)\.)?(\w+)', src):
         enfant = f"{m.group(3) or 'public'}.{m.group(4)}"
         parent[enfant] = f"{m.group(1) or 'public'}.{m.group(2)}"
@@ -358,15 +358,15 @@ def analyser_sql(chemin, src=None):
 
     # primary keys declared afterwards (pg_dump -s style)
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD CONSTRAINT "?\w+"?\s+'
-            r'PRIMARY KEY\s*\(([^)]+)\)', src):
+            r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+CONSTRAINT\s+"?\w+"?\s+'
+            r'PRIMARY\s+KEY\s*\(([^)]+)\)', src):
         cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
         if cle in tables and not tables[cle]['pk']:
             tables[cle]['pk'] = identifiants(m.group(3))
 
     # columns added afterwards: ALTER TABLE t ADD [COLUMN] name type;
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD (?:COLUMN )?'
+            r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+(?:COLUMN\s+)?'
             r'(?!CONSTRAINT\b|PRIMARY\b|FOREIGN\b|UNIQUE\b|CHECK\b|INDEX\b|KEY\b|\()'
             r'["\[`]?(\w+)["\]`]?\s+([^;,\n]+)', src):
         cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
@@ -385,18 +385,18 @@ def analyser_sql(chemin, src=None):
                 {'nom': m.group(2), 'cols': identifiants(m.group(5)),
                  'unique': bool(m.group(1))})
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD CONSTRAINT '
+            r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+CONSTRAINT\s+'
             r'"?(\w+)"?\s+UNIQUE\s*\(([^)]+)\)', src):
         cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
         if cle in tables:
             tables[cle]['index'].append(
                 {'nom': m.group(3), 'cols': identifiants(m.group(4)), 'unique': True})
 
-    for m in re.finditer(r"COMMENT ON TABLE (?:\"?(\w+)\"?\.)?\"?(\w+)\"? IS E?'((?:[^']|'')*)'", src):
+    for m in re.finditer(r"COMMENT\s+ON\s+TABLE\s+(?:\"?(\w+)\"?\.)?\"?(\w+)\"?\s+IS\s+E?'((?:[^']|'')*)'", src):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:
             tables[cle]['comment'] = m.group(3).replace("''", "'")
-    for m in re.finditer(r"COMMENT ON COLUMN (?:\"?(\w+)\"?\.)?\"?(\w+)\"?\.\"?(\w+)\"? IS E?'((?:[^']|'')*)'", src):
+    for m in re.finditer(r"COMMENT\s+ON\s+COLUMN\s+(?:\"?(\w+)\"?\.)?\"?(\w+)\"?\.\"?(\w+)\"?\s+IS\s+E?'((?:[^']|'')*)'", src):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:
             tables[cle]['colcomments'][m.group(3)] = m.group(4).replace("''", "'")
@@ -405,8 +405,8 @@ def analyser_sql(chemin, src=None):
     # and declarations carried by partitions (folded back, then deduplicated)
     vues = set()
     for m in re.finditer(
-            r'ALTER TABLE (?:ONLY )?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD (?:CONSTRAINT "?(\w+)"?\s+)?'
-            r'FOREIGN KEY\s*\(([^)]+)\)\s*REFERENCES (?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?([^;,\n]*)',
+            r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+(?:CONSTRAINT\s+"?(\w+)"?\s+)?'
+            r'FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(?:"?(\w+)"?\.)?"?(\w+)"?(?:\s*\(([^)]+)\))?([^;,\n]*)',
             src):
         ssch, stab, cname, scols, dsch, dtab, dcols, suite = m.groups()
         de = resoudre(f"{ssch or 'public'}.{stab}")
@@ -588,7 +588,7 @@ def analyser(chemin, dialecte='auto'):
                 # in the types. Not on a tie for other dialects:
                 # ClickHouse's ENGINE = also matches, and sqlite would rewrite
                 # its types (String -> text). A head the regex parser cannot see
-                # (`create table`, `CREATE\nTABLE`) needs no marker: sqlglot
+                # (`create table`, `Create Table`) needs no marker: sqlglot
                 # wins when it reads more tables, never on a tie
                 marque_mysql = bool(RE_MARQUE_MYSQL.search(apercu))
                 if not marque_mysql and not tete_hors_natif(apercu):
@@ -611,9 +611,9 @@ RE_TETE_TABLE = re.compile(r'\bCREATE\s+TABLE\b', re.I)
 
 
 def tete_hors_natif(src):
-    """True if a CREATE TABLE head is written in a form the regex parser does
-    not match (any case but upper, more than one blank between the words)."""
-    return any(m.group() != 'CREATE TABLE' for m in RE_TETE_TABLE.finditer(src))
+    """True if a CREATE TABLE head is written in a case the regex parser does
+    not match (it reads upper case only, with any blanks between the words)."""
+    return any(m.group().split() != ['CREATE', 'TABLE'] for m in RE_TETE_TABLE.finditer(src))
 
 
 def tables_pleines(tables):

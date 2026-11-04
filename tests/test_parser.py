@@ -398,6 +398,18 @@ def principal():
     if fk != {('a', 'yy', 'b', 'id')}:
         echecs.append(f'commented-out FK: {sorted(fk)}')
 
+    # several blanks between the keywords: Dolibarr writes `ALTER TABLE  t`
+    # and `REFERENCES  t`
+    tables, fk = mcdview.analyser_sql(None, (
+        'CREATE  TABLE a (\n  id integer NOT NULL\n);\n'
+        'CREATE TABLE b (\n  id integer, a_id integer\n);\n'
+        'ALTER TABLE  a ADD  CONSTRAINT a_pk PRIMARY KEY (id);\n'
+        'ALTER TABLE  b ADD CONSTRAINT b_a FOREIGN KEY (a_id) REFERENCES  a (id);\n'))
+    if (sorted(tables) != ['public.a', 'public.b'] or tables['public.a']['pk'] != ['id']
+            or [(f['col'], f['vers']) for f in fk] != [('a_id', 'public.a')]):
+        echecs.append(f'several blanks: {sorted(tables)}, '
+                      f"pk={tables.get('public.a', {}).get('pk')}, {[(f['col'], f['vers']) for f in fk]}")
+
     # blanks between the opening paren and the newline (Dolibarr's "( "), with
     # table options after the close paren: the body must still be read
     t = tables_de('CREATE TABLE llx_inventory \n( \n  rowid integer NOT NULL, \n'
