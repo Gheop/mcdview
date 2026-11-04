@@ -734,9 +734,11 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
         # lowercase to match the PostgreSQL parser's output, but keep
         # string literals intact (ENUM('Active') must not become 'active')
         type_txt = brut if "'" in brut else brut.lower()
+        # an explicit `NULL` is a NotNullColumnConstraint too, with allow_null
         return nouvelle_colonne(
             d.name, type_txt,
-            any(isinstance(c, exp.NotNullColumnConstraint) for c in kinds),
+            any(isinstance(c, exp.NotNullColumnConstraint) and not c.args.get('allow_null')
+                for c in kinds),
             rendre_sql(defc) if defc is not None else ''), kinds
 
     def ajouter_fk(de, cols, ref, nom):

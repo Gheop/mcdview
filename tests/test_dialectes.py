@@ -117,9 +117,15 @@ def principal():
         tables, fks, dial = mcdview.analyser(str(p), 'auto')
         p.write_text(mixte.split('create table')[0])
         _, _, dial_seul = mcdview.analyser(str(p), 'auto')
+    compte = tables.get('public.llx_account', {}).get('cols', [])
+    nn = {c['nom']: c['nn'] for c in compte}
     if (dial, len(tables), len(fks)) != ('mysql', 2, 1) or dial_seul != 'mysql':
         echecs.append(f'MySQL mixed case: {dial} {len(tables)} tables {len(fks)} FKs, '
                       f'single upper-case table -> {dial_seul}')
+    # ALTER TABLE ADD COLUMN is read on the sqlglot path, and an explicit NULL
+    # is not NOT NULL (sqlglot models it as a NotNull constraint with allow_null)
+    if nn != {'rowid': False, 'fk_axis': False, 'note': False}:
+        echecs.append(f'MySQL ADD COLUMN / NULL: {nn}')
 
     # phpMyAdmin exports add the PK and indexes afterwards, several ADD in one
     # ALTER (sqlglot cannot parse it and keeps a raw Command)
