@@ -100,6 +100,27 @@ def principal():
         if not attendu <= ix or signales:
             echecs.append(f'{dial} body indexes: {sorted(ix)}, unindexed_fk={signales}')
 
+    # MySQL without backticks, CREATE TABLE in upper case on some tables only:
+    # the PostgreSQL regex parser (upper case only) used to win and drop every
+    # lower-case table. AUTO_INCREMENT / ENGINE= mark it as MySQL
+    mixte = ("CREATE TABLE llx_axis (\n  rowid integer AUTO_INCREMENT PRIMARY KEY,\n"
+             "  label varchar(255) NOT NULL,\n"
+             "  tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP\n) ENGINE=innodb;\n"
+             "create table llx_account\n(\n  rowid integer AUTO_INCREMENT PRIMARY KEY,\n"
+             "  fk_axis integer NULL\n) ENGINE=innodb;\n"
+             "ALTER TABLE llx_account ADD COLUMN note varchar(32) NULL;\n"
+             "ALTER TABLE llx_account ADD CONSTRAINT fk_account_axis FOREIGN KEY (fk_axis)"
+             " REFERENCES llx_axis (rowid);\n")
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'mixte.sql'
+        p.write_text(mixte)
+        tables, fks, dial = mcdview.analyser(str(p), 'auto')
+        p.write_text(mixte.split('create table')[0])
+        _, _, dial_seul = mcdview.analyser(str(p), 'auto')
+    if (dial, len(tables), len(fks)) != ('mysql', 2, 1) or dial_seul != 'mysql':
+        echecs.append(f'MySQL mixed case: {dial} {len(tables)} tables {len(fks)} FKs, '
+                      f'single upper-case table -> {dial_seul}')
+
     # phpMyAdmin exports add the PK and indexes afterwards, several ADD in one
     # ALTER (sqlglot cannot parse it and keeps a raw Command)
     pma = ("CREATE TABLE `u` (`id` int NOT NULL);\n"
