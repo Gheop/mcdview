@@ -174,6 +174,8 @@ def verifier_dos_natifs(echecs):
         # SQLite conflict clauses: long blank runs between the words, near-misses
         ('sqlite conflit', conflit_seul, '.sql',
          'ON' + ' \t\n' * 300000 + 'CONFLICT' + ' ' * 300000 + 'x ' + 'ON CONFLICT DO ' * 100000),
+        ('drizzle défauts ouverts', mcdview.analyser_drizzle, '.ts',
+         'const a = pgTable("t", {\n' + 'a: text().default(sql`"(' * 15000),
         # same for SQLite's type names of several words
         ('sqlite mot géant', sqlite_seul, '.sql',
          'native\n(' + 'a' * 1000000 + ' \t\n' * 300000 + 'x'),

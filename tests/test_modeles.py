@@ -180,6 +180,20 @@ def principal():
     else:
         print(f'ok   {rel}: types with options, {len(liens)} FKs with their actions')
 
+    # Drizzle defaults: the builders give a SQL function, a string becomes a
+    # SQL literal, sql`…` its SQL; $defaultFn() runs in the app, no default
+    faits += 1
+    defauts = {c['nom']: c['defaut'] for t in to.values() for c in t['cols'] if c['defaut']}
+    cas_defaut = {'a: text().default("it\'s")': "'it''s'", 'a: integer().default(0).notNull()': '0',
+                  'a: timestamp().default(sql`CURRENT_TIMESTAMP`)': 'CURRENT_TIMESTAMP',
+                  'a: uuid().defaultRandom()': 'gen_random_uuid()', 'a: text().$defaultFn(() => x)': ''}
+    faux = {e: mcdview.defaut_drizzle(e) for e, v in cas_defaut.items() if mcdview.defaut_drizzle(e) != v}
+    if defauts != {'created_at': 'now()', 'role': "'member'"} or faux:
+        echecs.append(f'drizzle defaults: {defauts}, {faux}')
+        print('FAIL drizzle defaults')
+    else:
+        print(f'ok   drizzle defaults: {len(defauts) + len(cas_defaut)} cases')
+
     if echecs:
         print('\nÉCHECS modèles :')
         for e in echecs:

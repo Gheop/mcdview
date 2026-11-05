@@ -1737,6 +1737,33 @@ def args_appel(texte, debut, limite=None):
     return texte[debut:fin]
 
 
+# .default(x), and the builders whose default is a SQL function. A
+# $defaultFn() runs in the application and gives the column no SQL default
+RE_DZ_DEFAUT = re.compile(r'\.(default|defaultNow|defaultRandom)\s*\(')
+RE_DZ_SQL = re.compile(r'sql\s*`([^`]*)`')
+RE_DZ_TEXTE = re.compile(r'''(["'`])(.*)\1''', re.S)
+
+
+def defaut_drizzle(entree):
+    """The SQL default of a Drizzle column: `.default("member")` -> 'member',
+    `.default(sql`now()`)` -> now(), `.defaultNow()` -> now(), a number or
+    a boolean as written; '' when the column declares none."""
+    m = RE_DZ_DEFAUT.search(entree)
+    if not m:
+        return ''
+    if m.group(1) == 'defaultNow':
+        return 'now()'
+    if m.group(1) == 'defaultRandom':
+        return 'gen_random_uuid()'
+    # an object default may span lines: one line, like the other parsers'
+    valeur = RE_BLANCS.sub(' ', args_appel(entree, m.end())).strip()
+    if (sm := RE_DZ_SQL.fullmatch(valeur)):
+        return sm.group(1).strip()
+    if (sm := RE_DZ_TEXTE.fullmatch(valeur)) and sm.group(1) not in sm.group(2):
+        return "'" + sm.group(2).replace("'", "''") + "'"
+    return valeur
+
+
 def type_drizzle(typ, args, enums):
     """The SQL type of a Drizzle column builder call: `varchar("x", { length:
     120 })` -> varchar(120), `numeric(…, { precision: 10, scale: 2 })` ->
@@ -1828,7 +1855,7 @@ def analyser_drizzle(chemin):
             col = sm.group(1) if sm else champ
             var_cols[var][champ] = col
             cols.append(nouvelle_colonne(col, type_drizzle(typ, args_appel(entree, cm.end()), enums),
-                                         '.notNull(' in entree))
+                                         '.notNull(' in entree, defaut_drizzle(entree)))
             if '.primaryKey(' in entree:
                 pk.append(col)
             if re.search(r'\.unique\(\s*(["\'`][^"\'`]*["\'`])?\s*\)', entree):
