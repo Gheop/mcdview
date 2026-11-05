@@ -110,6 +110,19 @@ RE_LIGNE_SUITE = re.compile(
     r'\s*(?:ON\s+(?:DELETE|UPDATE)|MATCH\s+(?:FULL|PARTIAL|SIMPLE)|(?:NOT\s+)?DEFERRABLE'
     r'|INITIALLY\s+(?:DEFERRED|IMMEDIATE)|AND|OR|NOT\s+NULL|NULL|DEFAULT|REFERENCES|COLLATE'
     r'|CHECK)\b', re.I)
+# MySQL's plain index in a CREATE TABLE body: `KEY name (a, b(10))`. The
+# parentheses hold names, which tells it from a column named key:
+# `key varchar(255)` has a number there (or SQL Server's max)
+RE_INDEX_CORPS = re.compile(
+    r'(?:(?:FULLTEXT|SPATIAL)\s+)?(?:KEY|INDEX)\s+(?:[`"]?(\w+)[`"]?\s*)?(?:USING\s+\w+\s*)?'
+    r'\((?!\s*max\s*\))\s*([`"]?[A-Za-z_](?:[^()]|\([^()]*\))*)\)', re.I)
+
+
+def cols_index(liste):
+    """The column names of an index list, without prefix lengths or order."""
+    return [c for c in identifiants(re.sub(r'\(\d+\)|\s+(?:ASC|DESC)\b', '', liste, flags=re.I)) if c]
+
+
 def regrouper_lignes(lignes):
     """Group the lines of a multi-line CREATE TABLE body into entries: a line
     joins the entry above it while a parenthesis stays open (a CHECK or a
@@ -286,7 +299,7 @@ def entrees_en_table(sch, nom, entrees):
     """Build a table record from the CREATE TABLE body split into entries (one
     per column or table constraint). Same logic whether an entry came from a
     line (multi-line DDL) or a top-level comma (single-line DDL)."""
-    cols, pk = [], []
+    cols, pk, index = [], [], []
     for e in entrees:
         # strip a separating comma at EITHER end: leading-comma DDL style
         # (",\n  col TYPE") is common in hand-written schemas, and left the
@@ -300,6 +313,11 @@ def entrees_en_table(sch, nom, entrees):
         if cm:
             pk = identifiants(cm.group(1))
             continue
+        mi = RE_INDEX_CORPS.match(e)
+        if mi:
+            if cols_index(mi.group(2)):
+                index.append({'nom': mi.group(1) or '', 'cols': cols_index(mi.group(2)), 'unique': False})
+            continue
         if not e or e.startswith('--') or RE_MOT_CONTRAINTE.match(e):
             continue
         col = analyser_colonne(e)
@@ -310,7 +328,7 @@ def entrees_en_table(sch, nom, entrees):
             if colonne_declare_pk(e):
                 pk.append(col['nom'])
             cols.append(col)
-    return nouvelle_table(sch, nom, cols, pk)
+    return nouvelle_table(sch, nom, cols, pk, index=index)
 
 
 def decouper_corps(s, cap=100000):

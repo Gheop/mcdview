@@ -506,19 +506,23 @@ def principal():
                       f"pk={livre.get('pk')}, fks={fks_de(sql)}")
 
     # a line that continues the entry above is no column: referential actions
-    # under a REFERENCES, NOT NULL on its own line, a CHECK spread over lines
+    # under a REFERENCES, NOT NULL on its own line, a CHECK spread over lines;
+    # MySQL's KEY lines are indexes, a column named key stays a column
     sql = ('CREATE TABLE a (\n  id integer PRIMARY KEY\n);\n'
            'CREATE TABLE b (\n  id integer,\n  a_id integer REFERENCES a (id)\n'
            '    ON DELETE CASCADE\n    ON UPDATE SET NULL,\n  nom text\n    NOT NULL,\n'
            '  fin date,\n  CONSTRAINT b_dates CHECK (\n    fin IS NULL\n'
-           "    OR (fin > '2000-01-01' AND nom <> '(')\n  )\n);\n")
+           "    OR (fin > '2000-01-01' AND nom <> '(')\n  ),\n"
+           '  key varchar(255),\n  KEY idx_a (a_id),\n  INDEX idx_nf (nom(10), fin DESC)\n);\n')
     t = tables_de(sql)
     b = t.get('public.b', {})
     cols = [(c['nom'], c['nn']) for c in b.get('cols', [])]
+    ix = sorted((i['nom'], tuple(i['cols'])) for i in b.get('index', []))
     actions = [(f['col'], f['on_delete'], f['on_update']) for f in mcdview.analyser_sql_texte(sql)[1]]
-    if (cols != [('id', False), ('a_id', False), ('nom', True), ('fin', False)]
+    if (cols != [('id', False), ('a_id', False), ('nom', True), ('fin', False), ('key', False)]
+            or ix != [('idx_a', ('a_id',)), ('idx_nf', ('nom', 'fin'))]
             or actions != [('a_id', 'CASCADE', 'SET NULL')]):
-        echecs.append(f'continuation lines: cols={cols}, fks={actions}')
+        echecs.append(f'continuation lines: cols={cols}, index={ix}, fks={actions}')
 
     if echecs:
         print('ÉCHECS parser :')
