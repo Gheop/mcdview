@@ -99,6 +99,8 @@ def verifier_dos(echecs):
         'ouvertures minuscules': 'create table a (\n' * 3000 + 'x' * 800000,
         # many closed bodies with no ';': the end-of-file check stays bounded
         'tables sans ;': 'CREATE TABLE a (\n x int\n)\n' * 60000,
+        # a paren left open joins every following line to one entry
+        'parenthèse ouverte': 'CREATE TABLE a (\n c int CHECK (\n' + ' OR b > 0\n' * 150000 + ')\n);\n',
     }
     with tempfile.TemporaryDirectory() as td:
         cibles = [(f.name, f) for f in (RACINE / 'tests' / 'malveillant').glob('*.sql')]

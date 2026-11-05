@@ -505,6 +505,21 @@ def principal():
         echecs.append(f'lower-case DDL: {sorted(t)}, cols={cols}, '
                       f"pk={livre.get('pk')}, fks={fks_de(sql)}")
 
+    # a line that continues the entry above is no column: referential actions
+    # under a REFERENCES, NOT NULL on its own line, a CHECK spread over lines
+    sql = ('CREATE TABLE a (\n  id integer PRIMARY KEY\n);\n'
+           'CREATE TABLE b (\n  id integer,\n  a_id integer REFERENCES a (id)\n'
+           '    ON DELETE CASCADE\n    ON UPDATE SET NULL,\n  nom text\n    NOT NULL,\n'
+           '  fin date,\n  CONSTRAINT b_dates CHECK (\n    fin IS NULL\n'
+           "    OR (fin > '2000-01-01' AND nom <> '(')\n  )\n);\n")
+    t = tables_de(sql)
+    b = t.get('public.b', {})
+    cols = [(c['nom'], c['nn']) for c in b.get('cols', [])]
+    actions = [(f['col'], f['on_delete'], f['on_update']) for f in mcdview.analyser_sql_texte(sql)[1]]
+    if (cols != [('id', False), ('a_id', False), ('nom', True), ('fin', False)]
+            or actions != [('a_id', 'CASCADE', 'SET NULL')]):
+        echecs.append(f'continuation lines: cols={cols}, fks={actions}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:

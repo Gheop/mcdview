@@ -103,6 +103,46 @@ RE_DEBUT_CONTRAINTE = re.compile(
     r'(?:PRIMARY|FOREIGN|UNIQUE|CHECK|EXCLUDE|LIKE)\b', re.I)
 
 
+# a line that continues the entry above it instead of opening one: the
+# referential actions and deferral of a REFERENCES (`ON DELETE CASCADE`),
+# and the clauses of a column spread over lines (`NOT NULL`, `DEFAULT 0`)
+RE_LIGNE_SUITE = re.compile(
+    r'\s*(?:ON\s+(?:DELETE|UPDATE)|MATCH\s+(?:FULL|PARTIAL|SIMPLE)|(?:NOT\s+)?DEFERRABLE'
+    r'|INITIALLY\s+(?:DEFERRED|IMMEDIATE)|AND|OR|NOT\s+NULL|NULL|DEFAULT|REFERENCES|COLLATE'
+    r'|CHECK)\b', re.I)
+def regrouper_lignes(lignes):
+    """Group the lines of a multi-line CREATE TABLE body into entries: a line
+    joins the entry above it while a parenthesis stays open (a CHECK or a
+    PRIMARY KEY spread over lines), or when it opens with a continuation
+    keyword and that entry has no closing comma. Parentheses are counted
+    outside literals and comments, and only trusted when they balance."""
+    deltas = [0] * len(lignes)
+    for i, ligne in enumerate(lignes):
+        if '(' in ligne or ')' in ligne:
+            nette = RE_COMMENTAIRE.sub('', RE_LITTERAL.sub('', ligne))
+            deltas[i] = nette.count('(') - nette.count(')')
+    if sum(deltas):
+        deltas = [0] * len(lignes)
+    # each entry is a list of lines, joined at the end: appending to a string
+    # would copy it per line, quadratic on a body that never closes a paren
+    entrees, derniere, prof = [], -1, 0
+    for ligne, delta in zip(lignes, deltas):
+        nette = ligne.strip()
+        vide = not nette or nette.startswith('--')
+        if derniere >= 0 and prof > 0:
+            if not vide:
+                entrees[derniere].append(ligne)
+        elif (derniere >= 0 and not vide and RE_LIGNE_SUITE.match(ligne)
+              and not RE_COMMENTAIRE.sub('', entrees[derniere][-1]).rstrip().endswith(',')):
+            entrees[derniere].append(ligne)
+        else:
+            entrees.append([ligne])
+            if not vide:
+                derniere = len(entrees) - 1
+        prof = max(prof + delta, 0)
+    return ['\n'.join(e) for e in entrees]
+
+
 def identifiants(liste):
     """Split a comma list of column names and strip quoting, so PK/FK column
     names match the columns (which are stored unquoted)."""
@@ -388,7 +428,7 @@ def analyser_sql_texte(src):
             continue
         sch = m.group(1) or 'public'
         nom = m.group(2)
-        tables[f'{sch}.{nom}'] = entrees_en_table(sch, nom, corps.split('\n'))
+        tables[f'{sch}.{nom}'] = entrees_en_table(sch, nom, regrouper_lignes(corps.split('\n')))
         corps_par_cle[f'{sch}.{nom}'] = corps
 
     # single-line / compact CREATE TABLE (open paren NOT followed by a newline):
@@ -422,7 +462,7 @@ def analyser_sql_texte(src):
             j = src.find('\n)', m.end(), borne)
             if j != -1 and ';' in src[j:j + 200] and not RE_TETE_TABLE.search(src, m.end(), j):
                 corps_txt = src[m.end():j]
-                entrees, ok = corps_txt.split('\n'), True
+                entrees, ok = regrouper_lignes(corps_txt.split('\n')), True
         if ok and entrees:
             tables[cle] = entrees_en_table(m.group(1) or 'public', m.group(2), entrees)
             corps_par_cle[cle] = corps_txt
