@@ -488,7 +488,8 @@ def principal():
            '  constraint livre_pk primary key (id)\n);\n'
            'alter table only livre add constraint livre_fk foreign key (id) references auteur (id);\n'
            'create unique index livre_ix on livre (auteur_id);\n'
-           "comment on table livre is 'books';\n")
+           "comment on table livre is 'books';\n"
+           'create table note (\n  n int\n)\n')
     t = tables_de(sql)
     cols = {c['nom']: (c['type'], c['nn'], c['defaut'])
             for v in t.values() for c in v['cols']}
@@ -496,7 +497,7 @@ def principal():
                'checksum': ('varchar(64)', False, ''), 'unique_id': ('int', False, '0'),
                'auteur_id': ('int', False, '')}
     livre = t.get('public.livre', {})
-    if (sorted(t) != ['public.auteur', 'public.livre']
+    if (sorted(t) != ['public.auteur', 'public.livre', 'public.note']
             or {k: cols.get(k) for k in attendu} != attendu
             or t['public.auteur']['pk'] != ['id'] or livre.get('pk') != ['id']
             or livre.get('comment') != 'books' or not livre.get('index')

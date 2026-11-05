@@ -97,6 +97,8 @@ def verifier_dos(echecs):
         'quotes doublées': "CREATE TABLE t (a text DEFAULT '" + "''" * 400000 + "/*",
         # keywords are read in any case: lower-case openers cost the same
         'ouvertures minuscules': 'create table a (\n' * 3000 + 'x' * 800000,
+        # many closed bodies with no ';': the end-of-file check stays bounded
+        'tables sans ;': 'CREATE TABLE a (\n x int\n)\n' * 60000,
     }
     with tempfile.TemporaryDirectory() as td:
         cibles = [(f.name, f) for f in (RACINE / 'tests' / 'malveillant').glob('*.sql')]

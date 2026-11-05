@@ -377,7 +377,11 @@ def analyser_sql_texte(src):
         if RE_PARTITION_OF.search(src, m.start(), m.end()):
             continue
         fin = src.find('\n)', m.end())
-        if fin == -1 or ';' not in src[fin:fin + 200]:
+        # the statement ends with ';' or, for the file's last one, at the end
+        # (a bounded slice: copying the rest of the file per opener would be
+        # quadratic on many tables with no ';')
+        apres = src[fin:fin + 200]
+        if fin == -1 or (';' not in apres and (fin + 200 < len(src) or apres[2:].strip())):
             continue
         corps = src[m.end():fin]
         if RE_TETE_TABLE.search(corps):  # opener with no closer: not a real body
