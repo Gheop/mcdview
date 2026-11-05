@@ -1017,6 +1017,21 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                 for c in kinds),
             rendre_sql(defc) if defc is not None else ''), kinds
 
+    def index_mysql(d):
+        """SQLite's grammar reads MySQL's `KEY name (cols)` as a column named
+        KEY of a user-defined type `name(cols)`; read it back as an index."""
+        if (dialecte != 'sqlite' or d.name.upper() not in ('KEY', 'INDEX')
+                or d.this.args.get('quoted')):
+            return None
+        typ = d.args.get('kind')
+        debut = d.this.meta.get('start')
+        if typ is None or typ.this != exp.DataType.Type.USERDEFINED or debut is None:
+            return None
+        mi = RE_INDEX_CORPS.match(src, debut)
+        if not mi or not cols_index(mi.group(2)):
+            return None
+        return {'nom': mi.group(1) or '', 'cols': cols_index(mi.group(2)), 'unique': False}
+
     def ajouter_fk(de, cols, ref, nom):
         cible = ref.find(exp.Table)
         if not cible:
@@ -1052,9 +1067,14 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                     defs = [e for e in noeud.expressions
                             if isinstance(e, exp.Identifier) or id(e) in vus] + [
                         d for d in defs if d.parent is not noeud]
+            index_corps = []
             for d in defs:
                 if isinstance(d, exp.Identifier):
                     cols.append(nouvelle_colonne(d.name, ''))
+                    continue
+                mi = index_mysql(d)
+                if mi:
+                    index_corps.append(mi)
                     continue
                 col, kinds = colonne_sqlglot(d)
                 if any(isinstance(c, exp.PrimaryKeyColumnConstraint) for c in kinds):
@@ -1077,7 +1097,7 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                 if isinstance(p, exp.SchemaCommentProperty) and p.this is not None:
                     comment = p.this.name
             tables[k] = nouvelle_table(tbl.db or 'public', tbl.name, cols, pk,
-                                       comment, colcomments)
+                                       comment, colcomments, index_corps)
             for fk in stmt.find_all(exp.ForeignKey):
                 ref = fk.args.get('reference')
                 if ref:

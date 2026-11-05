@@ -198,6 +198,21 @@ def principal():
             or tables['public.s']['pk'] != ['id']):
         echecs.append(f'SQLite ON CONFLICT: {cols}, {len(fks)} FK, pk {tables.get("public.s", {}).get("pk")}')
 
+    # a MySQL `KEY name (cols)` in a file read as SQLite: sqlglot's SQLite
+    # grammar takes it for a column named KEY; it is an index. A real column
+    # named key stays a column
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'index.sqlite.sql'
+        p.write_text('CREATE TABLE produit (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n'
+                     '  key TEXT,\n  sku varchar(20),\n  INDEX idx_sku(sku),\n'
+                     '  KEY idx_k (key(10), id DESC)\n);\n')
+        tables, _, dial = mcdview.analyser(str(p), 'auto')
+    produit = tables.get('public.produit', {})
+    cols = [c['nom'] for c in produit.get('cols', [])]
+    ix = sorted((i['nom'], tuple(i['cols'])) for i in produit.get('index', []))
+    if dial != 'sqlite' or cols != ['id', 'key', 'sku'] or ix != [('idx_k', ('key', 'id')), ('idx_sku', ('sku',))]:
+        echecs.append(f'SQLite KEY lines ({dial}): cols={cols}, index={ix}')
+
     # phpMyAdmin exports add the PK and indexes afterwards, several ADD in one
     # ALTER (sqlglot cannot parse it and keeps a raw Command)
     pma = ("CREATE TABLE `u` (`id` int NOT NULL);\n"
