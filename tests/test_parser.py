@@ -482,9 +482,9 @@ def principal():
     # tables, PK, NOT NULL, DEFAULT, ALTER and inline FKs are all read; a
     # column whose name starts with a keyword (checksum, unique_id) stays
     sql = ('create table auteur (\n  id serial primary key,\n  nom text not null,\n'
-           '  checksum varchar(64),\n  unique_id int default 0\n);\n'
-           'create table livre (\n  id integer,\n'
-           '  auteur_id int references auteur(id) on delete cascade,\n'
+           '  checksum varchar(64) null,\n  unique_id int default 0\n);\n'
+           'create table livre (\n  id integer identity(1,1),\n'
+           '  auteur_id int auto_increment references auteur(id) on delete cascade,\n'
            '  constraint livre_pk primary key (id)\n);\n'
            'alter table only livre add constraint livre_fk foreign key (id) references auteur (id);\n'
            'create unique index livre_ix on livre (auteur_id);\n'

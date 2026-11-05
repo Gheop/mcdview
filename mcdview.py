@@ -80,7 +80,10 @@ RE_COLONNE = re.compile(r'"?(\w+)"?\s+(.+)$')
 # `primary key` are as common as their upper-case forms in hand-written DDL
 RE_NOT_NULL = re.compile(r'\s*\bNOT\s+NULL\b', re.I)
 RE_DEFAUT = re.compile(r'\s*\bDEFAULT\s+(.*)$', re.I)
-RE_COUPE = re.compile(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT|PRIMARY|UNIQUE|CHECK)\b', re.I)
+# a bare NULL (nullable), MySQL's AUTO_INCREMENT and SQL Server's
+# IDENTITY(1,1) follow the type; none of them is part of it
+RE_COUPE = re.compile(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT|PRIMARY|UNIQUE|CHECK'
+                      r'|NULL|AUTO_INCREMENT|AUTOINCREMENT|IDENTITY)\b', re.I)
 RE_PK_TABLE = re.compile(r'(?:CONSTRAINT\s+"?\w+"?\s+)?PRIMARY\s+KEY\s*\(([^)]+)\)', re.I)
 # FKs declared inside a CREATE TABLE body (pg_dump uses ALTER TABLE instead, but
 # hand-written schemas embed them): a table-level FOREIGN KEY (...) REFERENCES,
