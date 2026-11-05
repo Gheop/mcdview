@@ -135,6 +135,10 @@ def conflit_seul(chemin):
     mcdview.sans_conflit_sqlite(Path(chemin).read_text())
 
 
+def sqlite_seul(chemin):
+    mcdview.types_mots_sqlite(Path(chemin).read_text())
+
+
 def verifier_dos_natifs(echecs):
     """The native parsers reachable from an upload (.mmd/.md, .rb, .ts) must respect
     the same DoS budget — their block extraction used to backtrack on crafted
@@ -170,6 +174,10 @@ def verifier_dos_natifs(echecs):
         # SQLite conflict clauses: long blank runs between the words, near-misses
         ('sqlite conflit', conflit_seul, '.sql',
          'ON' + ' \t\n' * 300000 + 'CONFLICT' + ' ' * 300000 + 'x ' + 'ON CONFLICT DO ' * 100000),
+        # same for SQLite's type names of several words
+        ('sqlite mot géant', sqlite_seul, '.sql',
+         'native\n(' + 'a' * 1000000 + ' \t\n' * 300000 + 'x'),
+        ('sqlite presque', sqlite_seul, '.sql', ',a native\n' * 100000 + '(a unsigned big x' * 100000),
     ]
     with tempfile.TemporaryDirectory() as td:
         for nom, fn, ext, contenu in cas:

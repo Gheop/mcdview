@@ -927,6 +927,23 @@ def sans_conflit_sqlite(src):
     return RE_CONFLIT_SQLITE.sub(lambda m: ' ' * len(m.group()), src)
 
 
+# SQLite's documentation lists type names of several words that sqlglot
+# cannot parse (the whole CREATE TABLE falls back to a raw Command). Joined
+# by underscores they parse as a user-defined type; the length is kept, so
+# source offsets still hold and type_ecrit reads the type back as written
+RE_TYPE_MOTS_SQLITE = re.compile(
+    r'((?:^|[(,])[ \t]*(?:`[^`\n]*`|"[^"\n]*"|\[[^\]\n]*\]|\w+)\s+)'
+    r'(UNSIGNED\s+BIG\s+INT|VARYING\s+CHARACTER|NATIVE\s+CHARACTER)\b', re.I | re.M)
+
+
+def types_mots_sqlite(src):
+    # substring test first: the regex tries every line start and paren
+    bas = src.lower()
+    if not any(mot in bas for mot in ('unsigned', 'varying', 'native')):
+        return src
+    return RE_TYPE_MOTS_SQLITE.sub(lambda m: m.group(1) + re.sub(r'\s', '_', m.group(2)), src)
+
+
 def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
     # sqlglot has no MariaDB dialect: its DDL is MySQL's
     if dialecte == 'mariadb':
@@ -950,7 +967,7 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
     if dialecte == 'mysql':
         src = texte = types_spatiaux_mysql(src)
     elif dialecte == 'sqlite':
-        texte = sans_conflit_sqlite(src)
+        texte = sans_conflit_sqlite(types_mots_sqlite(src))
     try:
         # IGNORE: a single unparseable statement must not abort the whole model
         arbre = sqlglot.parse(texte, read=dialecte, error_level=ErrorLevel.IGNORE)

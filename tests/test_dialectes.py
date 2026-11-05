@@ -198,6 +198,20 @@ def principal():
             or tables['public.s']['pk'] != ['id']):
         echecs.append(f'SQLite ON CONFLICT: {cols}, {len(fks)} FK, pk {tables.get("public.s", {}).get("pk")}')
 
+    # type names of several words from SQLite's documentation: sqlglot cannot
+    # parse them and dropped the table; a literal saying the same is left alone
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'doc.sqlite.sql'
+        p.write_text('CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT,\n'
+                     '  a UNSIGNED BIG INT NOT NULL,\n  b VARYING CHARACTER(255),\n'
+                     "  c NATIVE  CHARACTER(70),\n  d varchar(9) DEFAULT 'x NATIVE CHARACTER y');\n")
+        tables, _, dial = mcdview.analyser(str(p), 'auto')
+    cols = [(c['nom'], c['type'], c['defaut']) for c in tables.get('public.t', {}).get('cols', [])]
+    if dial != 'sqlite' or cols != [('id', 'integer', ''), ('a', 'unsigned big int', ''),
+                                    ('b', 'varying character(255)', ''), ('c', 'native character(70)', ''),
+                                    ('d', 'varchar(9)', "'x NATIVE CHARACTER y'")]:
+        echecs.append(f'SQLite type names of several words ({dial}): {cols}')
+
     # a MySQL `KEY name (cols)` in a file read as SQLite: sqlglot's SQLite
     # grammar takes it for a column named KEY; it is an index. A real column
     # named key stays a column
