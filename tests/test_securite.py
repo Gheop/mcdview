@@ -95,6 +95,8 @@ def verifier_dos(echecs):
         'colonnes sans fin': 'CREATE TABLE t (\n' + 'a integer,\n' * 20000,
         'commentaires bloc': '/* x */' * 200000 + '/*' * 200000 + "'" * 100001,
         'quotes doublées': "CREATE TABLE t (a text DEFAULT '" + "''" * 400000 + "/*",
+        # keywords are read in any case: lower-case openers cost the same
+        'ouvertures minuscules': 'create table a (\n' * 3000 + 'x' * 800000,
     }
     with tempfile.TemporaryDirectory() as td:
         cibles = [(f.name, f) for f in (RACINE / 'tests' / 'malveillant').glob('*.sql')]

@@ -478,6 +478,32 @@ def principal():
     if cols != ['id', 'phone', 'password', 'fk_user', 'fk_valid']:
         echecs.append(f'"( " opener closed by ");": columns {cols}')
 
+    # SQL keywords in lower case (hand-written DDL, `--dialect postgres`):
+    # tables, PK, NOT NULL, DEFAULT, ALTER and inline FKs are all read; a
+    # column whose name starts with a keyword (checksum, unique_id) stays
+    sql = ('create table auteur (\n  id serial primary key,\n  nom text not null,\n'
+           '  checksum varchar(64),\n  unique_id int default 0\n);\n'
+           'create table livre (\n  id integer,\n'
+           '  auteur_id int references auteur(id) on delete cascade,\n'
+           '  constraint livre_pk primary key (id)\n);\n'
+           'alter table only livre add constraint livre_fk foreign key (id) references auteur (id);\n'
+           'create unique index livre_ix on livre (auteur_id);\n'
+           "comment on table livre is 'books';\n")
+    t = tables_de(sql)
+    cols = {c['nom']: (c['type'], c['nn'], c['defaut'])
+            for v in t.values() for c in v['cols']}
+    attendu = {'id': ('integer', False, ''), 'nom': ('text', True, ''),
+               'checksum': ('varchar(64)', False, ''), 'unique_id': ('int', False, '0'),
+               'auteur_id': ('int', False, '')}
+    livre = t.get('public.livre', {})
+    if (sorted(t) != ['public.auteur', 'public.livre']
+            or {k: cols.get(k) for k in attendu} != attendu
+            or t['public.auteur']['pk'] != ['id'] or livre.get('pk') != ['id']
+            or livre.get('comment') != 'books' or not livre.get('index')
+            or fks_de(sql) != {('livre', 'auteur_id', 'auteur', 'id'), ('livre', 'id', 'auteur', 'id')}):
+        echecs.append(f'lower-case DDL: {sorted(t)}, cols={cols}, '
+                      f"pk={livre.get('pk')}, fks={fks_de(sql)}")
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:
