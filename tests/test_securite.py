@@ -125,6 +125,10 @@ def spatial_seul(chemin):
     mcdview.types_spatiaux_mysql(Path(chemin).read_text())
 
 
+def conflit_seul(chemin):
+    mcdview.sans_conflit_sqlite(Path(chemin).read_text())
+
+
 def verifier_dos_natifs(echecs):
     """The native parsers reachable from an upload (.mmd/.md, .rb, .ts) must respect
     the same DoS budget — their block extraction used to backtrack on crafted
@@ -157,6 +161,9 @@ def verifier_dos_natifs(echecs):
         ('spatial mot géant', spatial_seul, '.sql',
          'point\n(' + 'a' * 1000000 + ' \t\n' * 300000 + 'x'),
         ('spatial presque', spatial_seul, '.sql', ',a point(' * 100000 + '(a SRID x' * 100000),
+        # SQLite conflict clauses: long blank runs between the words, near-misses
+        ('sqlite conflit', conflit_seul, '.sql',
+         'ON' + ' \t\n' * 300000 + 'CONFLICT' + ' ' * 300000 + 'x ' + 'ON CONFLICT DO ' * 100000),
     ]
     with tempfile.TemporaryDirectory() as td:
         for nom, fn, ext, contenu in cas:

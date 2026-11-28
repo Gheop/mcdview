@@ -184,6 +184,20 @@ def principal():
     if dial != 'sqlite' or types != attendu:
         echecs.append(f'SQLite declared types ({dial}): {types}')
 
+    # SQLite's conflict clause made sqlglot drop the whole table to a Command
+    conflit = ('CREATE TABLE s (\n  "id" INTEGER NOT NULL PRIMARY KEY ON CONFLICT FAIL,\n'
+               '  "v" TEXT NOT NULL UNIQUE ON CONFLICT ABORT\n);\n'
+               'CREATE TABLE r (\n  "id" INTEGER PRIMARY KEY AUTOINCREMENT,\n'
+               '  "s_id" INTEGER NOT NULL ON CONFLICT REPLACE REFERENCES s (id)\n);\n')
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'conflit.sql'
+        p.write_text(conflit)
+        tables, fks, dial = mcdview.analyser(str(p), 'sqlite')
+    cols = {k: [c['nom'] for c in t['cols']] for k, t in tables.items()}
+    if (cols != {'public.s': ['id', 'v'], 'public.r': ['id', 's_id']} or len(fks) != 1
+            or tables['public.s']['pk'] != ['id']):
+        echecs.append(f'SQLite ON CONFLICT: {cols}, {len(fks)} FK, pk {tables.get("public.s", {}).get("pk")}')
+
     # phpMyAdmin exports add the PK and indexes afterwards, several ADD in one
     # ALTER (sqlglot cannot parse it and keeps a raw Command)
     pma = ("CREATE TABLE `u` (`id` int NOT NULL);\n"

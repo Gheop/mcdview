@@ -849,6 +849,17 @@ def type_ecrit(src, ident):
     return re.sub(r'\s*\(', '(', re.sub(r'\s+', ' ', m.group(1))).lower()
 
 
+# SQLite's conflict clause (`UNIQUE ON CONFLICT ABORT`, also after NOT NULL
+# and PRIMARY KEY) makes sqlglot drop the whole CREATE TABLE to a raw Command.
+# It says nothing the diagram shows: blanked, same length, before parsing. An
+# upsert's `ON CONFLICT (col) DO …` or `ON CONFLICT DO …` names no action here
+RE_CONFLIT_SQLITE = re.compile(r'\bON\s+CONFLICT\s+(?:ROLLBACK|ABORT|FAIL|IGNORE|REPLACE)\b', re.I)
+
+
+def sans_conflit_sqlite(src):
+    return RE_CONFLIT_SQLITE.sub(lambda m: ' ' * len(m.group()), src)
+
+
 def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
     # sqlglot has no MariaDB dialect: its DDL is MySQL's
     if dialecte == 'mariadb':
@@ -866,11 +877,16 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
         sys.exit(f'reading {dialecte} DDL needs sqlglot (pip install sqlglot)')
     if src is None:
         src = lire_texte(chemin)
+    # `texte` is what sqlglot parses; `src` is what declared types are read
+    # from, so a rewrite of `texte` keeps every offset
+    texte = src
     if dialecte == 'mysql':
-        src = types_spatiaux_mysql(src)
+        src = texte = types_spatiaux_mysql(src)
+    elif dialecte == 'sqlite':
+        texte = sans_conflit_sqlite(src)
     try:
         # IGNORE: a single unparseable statement must not abort the whole model
-        arbre = sqlglot.parse(src, read=dialecte, error_level=ErrorLevel.IGNORE)
+        arbre = sqlglot.parse(texte, read=dialecte, error_level=ErrorLevel.IGNORE)
     except Exception as e:
         if not strict:
             return {}, []
