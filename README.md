@@ -80,7 +80,8 @@ erDiagram
 ## What you get
 
 - **Explore any model.** Overview grouped by schema, click a table to isolate
-  it with its neighbours, field detail (types, NOT NULL, DEFAULT, PK 🔑,
+  it with its neighbours (or several tables, up to three relations away),
+  key columns lit when hovering a link, field detail (types, NOT NULL, DEFAULT, PK 🔑,
   clickable FK 🔗, indexes, comments), search by table *or column*, drag to
   rearrange (links follow live, positions remembered), force-directed relayout,
   a minimap and level-of-detail for big models, light/dark toggle, SVG export,
@@ -162,12 +163,24 @@ and reuses the table positions drawn in the model.
 In the page:
 
 - **wheel**: zoom, **drag**: pan;
-- **hover a table**: lights up its foreign-key links;
+- **hover a table**: lights up its foreign-key links; **hover a link**:
+  lights the two columns it joins; **hover a key column**: lights the
+  columns it pairs with in the other tables (an FK column its target, a
+  referenced column every FK column pointing at it);
 - **click a table**: isolates it with its related tables (the others fade
   out, the view re-frames) and shows its detail on the right — fields,
   types, NOT NULL, DEFAULT, PK 🔑, clickable FK 🔗, table and column
   comments, list of referencing tables; the URL gets a `#schema.table`
   permalink that reopens straight on that table;
+- **degree 1 · 2 · 3** (toolbar, while a table is isolated): also shows the
+  tables two or three relations away, laid out in rings; **Ctrl+click** (or
+  ⌘+click, Shift+click) adds or removes a table, so unrelated tables can be
+  isolated together, each with its own ring. In the overview, Ctrl+click
+  marks tables and a click on one of them isolates them all. The permalink
+  carries the selection: `#schema.a+schema.b;2`. Above 120 tables the
+  selection stays at its overview places;
+- **"⌗ schema" button**: shows the schema before each table name
+  (`public.members`), remembered per viewer; `?schema=show` opens with it;
 - **drag a table** to rearrange the diagram, the links follow live;
 - **"rearrange" button**: a force-directed relayout that spreads the tables
   to unclutter the links (disabled above 400 tables, where it would be slow);
@@ -330,6 +343,7 @@ file's header.
 
 | Version | Date       | Changes |
 |---------|------------|---------|
+| 1.0.5   | 2026-11-28 | Add the v0.35.0 changelog entry; document link and key-column hover, focus degree, several-table focus and the schema toggle |
 | 1.0.4   | 2026-11-04 | Add the v0.34.7 changelog entry |
 | 1.0.3   | 2026-11-04 | Add the v0.34.6 changelog entry |
 | 1.0.2   | 2026-11-04 | Add the v0.34.5 changelog entry |
@@ -337,6 +351,31 @@ file's header.
 | 1.0.0   | 2026-09-01 | Initialize; add a CI section (local flags + hosted GitHub/GitLab integrations), document `--to-dico`/`--to-preview`/`--lint`/`--fail-on`, add the blog link, reconcile the tested-at-scale figure |
 
 ## Changelog
+
+### v0.35.0 — Focus on several tables, key-column hover, schema names (2026-11-28)
+
+- **Wider focus.** While a table is isolated, the toolbar's "degree 1 · 2 · 3"
+  also shows the tables two or three relations away, laid out in rings so a
+  table sits next to the one that brings it in. Ctrl+click (⌘+click,
+  Shift+click) adds or removes a table from the focus, so tables that no
+  foreign key links can be shown together, each in its own cluster; in the
+  overview, Ctrl+click marks tables and a click on one of them isolates them
+  all. The permalink carries the selection and the degree
+  (`#schema.a+schema.b;2`); an old `#schema.table` link opens as before.
+  Above 120 tables (a hub at degree 2 can reach most of a big model) the
+  selection stays at its overview places, the rest faded.
+- **Key-column hover.** Hovering a foreign-key link lights the column it
+  joins in both tables; hovering a key column lights the columns it pairs
+  with: an FK column its target, a referenced column every FK column that
+  points at it. Columns are not drawn on models above 800 tables or when
+  zoomed far out, so there is nothing to light there.
+- **Schema names.** A "⌗ schema" toolbar button shows the schema before each
+  table name (`public.members`), also in the SVG export. Off by default,
+  remembered per viewer; `?schema=show` opens a page with it.
+- Framing (overview, isolation, Escape) keeps the tables below the toolbar,
+  which wraps to two lines on narrower screens and could cover the top row.
+- An HTML export made while a table is isolated opens on the overview,
+  without the focus controls.
 
 ### v0.34.7 — Tables in /* */ comments are no longer read (2026-11-04)
 
