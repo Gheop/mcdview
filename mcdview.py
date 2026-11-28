@@ -636,11 +636,12 @@ def analyser_sql_texte(src):
         if cle in tables and col and col['nom'] not in {c['nom'] for c in tables[cle]['cols']}:
             tables[cle]['cols'].append(col)
 
-    # indexes and unique constraints (pg_dump emits CREATE [UNIQUE] INDEX;
+    # indexes and unique constraints (pg_dump emits CREATE [UNIQUE] INDEX; an
+    # Oracle index name may hold $ and #: DOMAINS$NAME;
     # ALTER TABLE ADD CONSTRAINT ... UNIQUE covers unique keys)
     for m in re.finditer(
             r'CREATE\s+(UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?'
-            r'"?(\w+)"?\s+ON\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?[^(;]*\(([^)]+)\)', src, re.I):
+            r'"?([\w$#]+)"?\s+ON\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?[^(;]*\(([^)]+)\)', src, re.I):
         cle = resoudre(f"{m.group(3) or 'public'}.{m.group(4)}")
         if cle in tables:
             tables[cle]['index'].append(

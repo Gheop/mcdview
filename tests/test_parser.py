@@ -578,6 +578,13 @@ def principal():
     if pk != ['g_id']:
         echecs.append(f'unnamed ADD PRIMARY KEY: {pk}')
 
+    # an Oracle index name may hold $ and #
+    sql = ('create table domains (\n  id NUMBER,\n  name VARCHAR2(255)\n);\n'
+           'create index DOMAINS$NAME on domains (name);\ncreate unique index D#ID on domains (id);\n')
+    ix = sorted((i['nom'], tuple(i['cols'])) for i in tables_de(sql).get('public.domains', {}).get('index', []))
+    if ix != [('D#ID', ('id',)), ('DOMAINS$NAME', ('name',))]:
+        echecs.append(f'Oracle index names with $ and #: {ix}')
+
     # SQL Server's inline index: a name, then UNIQUE and [NON]CLUSTERED; an
     # index, not a column, and not a UNIQUE on a column named INDEX
     sql = ('CREATE TABLE dbo.agent (\n  id int NOT NULL,\n  hote nvarchar(100) NOT NULL,\n'
