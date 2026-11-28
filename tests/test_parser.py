@@ -637,6 +637,18 @@ def principal():
             or not mcdview.tete_hors_natif('create unlogged table a (\n x int\n);')):
         echecs.append(f'CREATE UNLOGGED TABLE: {noms}')
 
+    # CREATE INDEX lists as pg_dump writes them: an expression stays whole,
+    # a column loses its operator class, collation and ordering
+    sql = ('CREATE TABLE public.users (\n    id integer NOT NULL,\n    email text,\n    name text\n);\n'
+           'CREATE INDEX a ON public.users USING btree (lower((email)::text), id DESC NULLS LAST);\n'
+           'CREATE INDEX b ON public.users USING gin (name extensions.gin_trgm_ops);\n'
+           'CREATE INDEX c ON public.users USING btree ("name" COLLATE "C", COALESCE(id, 0));\n'
+           'CREATE UNIQUE INDEX d ON public.users ((1)) WHERE (id > 0);\n')
+    ix = {i['nom']: i['cols'] for i in tables_de(sql).get('public.users', {}).get('index', [])}
+    if ix != {'a': ['lower((email)::text)', 'id'], 'b': ['name'],
+              'c': ['name', 'COALESCE(id, 0)'], 'd': ['(1)']}:
+        echecs.append(f'CREATE INDEX expressions and options: {ix}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:

@@ -120,6 +120,10 @@ def verifier_dos(echecs):
         'chevron ouvert': 'CREATE TABLE a (\n id int,\n m MAP<' + ', c int' * 200000 + '\n);\n',
         # bodies that keep a parenthesis open past each line-start `)`: the
         # search for the table's own `)` moves on a few steps, never further
+        # CREATE INDEX lists never closed, or one holding a long expression
+        'index ouverts': 'CREATE TABLE t (\n a int\n);\n' + 'CREATE INDEX i ON t ((' * 30000,
+        'index expression': 'CREATE TABLE t (\n a int\n);\nCREATE INDEX i ON t (lower(a)'
+                            + ' ' * 300000 + 'x, ' + 'b ' * 100000 + ');\n',
         'clé en colonne': 'CREATE TABLE a (\n((\n)\n);\n' * 20000
                           + 'CREATE TABLE b (\n' + '((\n)\n' * 20000 + ');\n',
     }

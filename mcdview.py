@@ -498,6 +498,49 @@ def decouper_corps(s, cap=100000):
 RE_LIGNE_CLAUSE_FK = re.compile(r'\s*(?:ON|MATCH|DEFERRABLE|INITIALLY|NOT)\b', re.I)
 
 
+# a column of a CREATE INDEX list: a name, then words with no parenthesis
+# (an operator class, COLLATE "C", DESC, NULLS LAST). Blanks are collapsed
+# first and each word has one way to match, so a failure backtracks nothing
+RE_COL_INDEX_SIMPLE = re.compile(
+    r'("[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$#]+)(?: (?:"[^"]*"|[^\s()\'"]+))*')
+RE_CREATE = re.compile(r'\bCREATE\b', re.I)
+RE_LONGUEUR_PREFIXE = re.compile(r'(?<=[\w"`\]])\(\d+\)')
+FINS_COL_INDEX = (' ASC', ' DESC', ' NULLS FIRST', ' NULLS LAST')
+
+
+def cols_create_index(src, pos):
+    """The columns of a CREATE INDEX list opened just before `pos`, split at
+    its top-level commas: an expression keeps its parentheses whole and is
+    shown as written (`lower(email)`, which indexes no column for a foreign
+    key), a plain column loses its options. None when the list does not
+    close within reach: the list stops at the next `;` or CREATE, so the
+    lists of many unclosed CREATE INDEX are read once each, not overlapping."""
+    borne = min(len(src), pos + 5000)
+    fin = src.find(';', pos, borne)
+    prochain = RE_CREATE.search(src, pos, borne if fin == -1 else fin)
+    if prochain:
+        fin = prochain.start()
+    entrees, ok = decouper_corps(src[pos:borne if fin == -1 else fin])
+    if not ok:
+        return None
+    cols = []
+    for e in entrees:
+        # a MySQL prefix length `title(10)` follows a name; `((1))` is an expression
+        e = RE_BLANCS.sub(' ', RE_LONGUEUR_PREFIXE.sub('', e)).strip()
+        m = RE_COL_INDEX_SIMPLE.fullmatch(e)
+        if m:
+            e = m.group(1).strip('"`[]')
+        else:
+            fin = True
+            while fin:
+                fin = next((f for f in FINS_COL_INDEX if e.upper().endswith(f)), None)
+                if fin:
+                    e = e[:-len(fin)]
+        if e:
+            cols.append(e)
+    return cols
+
+
 def suite_fk(src, pos):
     """The clauses after an ALTER ... REFERENCES target (ON DELETE, MATCH…),
     which pgModeler puts on the next line. They end at ';' or ',' within 200
@@ -663,12 +706,15 @@ def analyser_sql_texte(src):
     # ALTER TABLE ADD CONSTRAINT ... UNIQUE covers unique keys)
     for m in re.finditer(
             r'CREATE\s+(UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?'
-            r'"?([\w$#]+)"?\s+ON\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?[^(;]*\(([^)]+)\)', src, re.I):
+            r'"?([\w$#]+)"?\s+ON\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?[^(;]*\(', src, re.I):
         cle = resoudre(f"{m.group(3) or 'public'}.{m.group(4)}")
-        if cle in tables:
-            tables[cle]['index'].append(
-                {'nom': m.group(2), 'cols': cols_index(m.group(5)),
-                 'unique': bool(m.group(1))})
+        cols = cols_create_index(src, m.end()) if cle in tables else None
+        if cols is None and cle in tables:
+            # an unbalanced list: its text up to the first `)`, as before
+            j = src.find(')', m.end(), m.end() + 5000)
+            cols = cols_index(src[m.end():j]) if j != -1 else None
+        if cols:
+            tables[cle]['index'].append({'nom': m.group(2), 'cols': cols, 'unique': bool(m.group(1))})
     for m in re.finditer(
             r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+CONSTRAINT\s+'
             r'"?(\w+)"?\s+UNIQUE\s*\(([^)]+)\)', src, re.I):
