@@ -1872,6 +1872,8 @@ TRADUCTIONS = {
         '⇄ réorganiser': '⇄ rearrange',
         '⋈ cardinalités': '⋈ cardinalities',
         '"afficher les cardinalités (patte d\'oie)"': '"show cardinalities (crow\'s foot)"',
+        '"afficher le schéma devant le nom des tables">⌗ schéma':
+            '"show the schema before table names">⌗ schema',
         '↶ annuler': '↶ undo',
         '"annuler la dernière disposition (Ctrl+Z)"':
             '"undo the last layout change (Ctrl+Z)"',
