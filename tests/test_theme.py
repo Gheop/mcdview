@@ -9,7 +9,9 @@ light system, a dark system (--blink-settings=preferredColorScheme), and the
   (before light-dark(), the toggle left them on the system's scheme);
 - the --credit stamp ink follows the toggle (it used to follow the system only);
 - the minimap frame is stroked with the resolved accent colour, not with the
-  light-dark(…) text a canvas refuses.
+  light-dark(…) text a canvas refuses;
+- the same holds with the @supports fallback palettes forced, as a browser
+  without light-dark() would apply them.
 
 Skips cleanly when no Chrome binary is available."""
 import json
@@ -82,14 +84,23 @@ def principal():
         sql.write_text(ddl)
         subprocess.run([str(RACINE / 'mcdview.py'), str(sql), '-o', str(page)],
                        check=True, capture_output=True)
-        page.write_text(page.read_text().replace('</body>', SONDE + '</body>'))
+        html = page.read_text().replace('</body>', SONDE + '</body>')
+        page.write_text(html)
+        # a browser without light-dark() takes the @supports fallback: force
+        # its condition true, so its palettes override the light-dark() ones
+        # as they would there
+        garde = '@supports not (color: light-dark(#000, #fff))'
+        echecs = [] if garde in html else [f'fallback guard {garde!r} not found in the page']
+        repli = Path(td) / 'repli.html'
+        repli.write_text(html.replace(garde, '@supports (color: red)'))
         # (case, measurement, expected before the click, expected after it):
         # the toggle cycles system -> light -> dark, skipping a state that
         # looks like the current one
         cas = [('light system', mesurer(binaire, page), CLAIR, SOMBRE, 'dark'),
                ('dark system', mesurer(binaire, page, sombre=True), SOMBRE, CLAIR, 'light'),
-               ('?theme=dark', mesurer(binaire, page, '?theme=dark'), SOMBRE, None, None)]
-        echecs = []
+               ('?theme=dark', mesurer(binaire, page, '?theme=dark'), SOMBRE, None, None),
+               ('fallback, light system', mesurer(binaire, repli), CLAIR, SOMBRE, 'dark'),
+               ('fallback, dark system', mesurer(binaire, repli, sombre=True), SOMBRE, CLAIR, 'light')]
         for nom, r, avant, apres, schema_apres in cas:
             if r is None:
                 echecs.append(f'{nom}: no measurement')
@@ -111,7 +122,8 @@ def principal():
             for e in echecs:
                 print('  ' + e)
             return 1
-        print('thème : palette light-dark(), bascule, color-scheme des champs, tampon, minimap')
+        print('thème : palette light-dark() et repli @supports, bascule, color-scheme des champs, '
+              'tampon, minimap')
     return 0
 
 
