@@ -734,9 +734,13 @@ function cadrer(cles) {
     y1 = Math.max(y1, e.offsetTop + e.offsetHeight);
   });
   const marge = 60;
-  k = Math.min(vp.clientWidth / (x1 - x0 + 2 * marge), vp.clientHeight / (y1 - y0 + 2 * marge), 1.4);
+  // the toolbar floats over the top of the viewport and wraps to two lines on
+  // narrower screens: frame below it, or the top tables sit under its buttons
+  const hud = document.getElementById("hud").getBoundingClientRect();
+  const haut = Math.max(0, Math.min(hud.bottom - vp.getBoundingClientRect().top, vp.clientHeight / 3));
+  k = Math.min(vp.clientWidth / (x1 - x0 + 2 * marge), (vp.clientHeight - haut) / (y1 - y0 + 2 * marge), 1.4);
   x = (vp.clientWidth - (x1 - x0) * k) / 2 - x0 * k;
-  y = (vp.clientHeight - (y1 - y0) * k) / 2 - y0 * k;
+  y = haut + (vp.clientHeight - haut - (y1 - y0) * k) / 2 - y0 * k;
   rendre();
 }
 vp.addEventListener("wheel", e => {
