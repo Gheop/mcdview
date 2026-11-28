@@ -156,6 +156,10 @@ def spatial_seul(chemin):
     mcdview.types_spatiaux_mysql(Path(chemin).read_text())
 
 
+def fts_seul(chemin):
+    mcdview.colonnes_fts(Path(chemin).read_text(), {'public.f': mcdview.nouvelle_table('public', 'f')})
+
+
 def conflit_seul(chemin):
     mcdview.sans_conflit_sqlite(Path(chemin).read_text())
 
@@ -199,6 +203,9 @@ def verifier_dos_natifs(echecs):
         # SQLite conflict clauses: long blank runs between the words, near-misses
         ('alter blancs en index', alter_seul, '.sql',
          'ALTER TABLE t ADD KEY k (a' + ' ' * 300000 + 'b);\n'),
+        # SQLite full-text tables whose argument list never closes
+        ('fts ouverts', fts_seul, '.sql', 'CREATE VIRTUAL TABLE f USING fts5((' * 30000
+         + 'CREATE VIRTUAL TABLE f USING fts5(a' + ' ' * 300000 + ', b'),
         ('sqlite conflit', conflit_seul, '.sql',
          'ON' + ' \t\n' * 300000 + 'CONFLICT' + ' ' * 300000 + 'x ' + 'ON CONFLICT DO ' * 100000),
         ('drizzle défauts ouverts', mcdview.analyser_drizzle, '.ts',

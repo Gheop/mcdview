@@ -508,19 +508,23 @@ RE_LONGUEUR_PREFIXE = re.compile(r'(?<=[\w"`\]])\(\d+\)')
 FINS_COL_INDEX = (' ASC', ' DESC', ' NULLS FIRST', ' NULLS LAST')
 
 
+def fin_liste(src, pos):
+    """Where the argument list of a statement opened at `pos` can end at the
+    latest: the next `;` or CREATE, 5000 characters at most. Many unclosed
+    lists are then each read up to the next statement, never overlapping."""
+    borne = min(len(src), pos + 5000)
+    fin = src.find(';', pos, borne)
+    prochain = RE_CREATE.search(src, pos, borne if fin == -1 else fin)
+    return prochain.start() if prochain else (borne if fin == -1 else fin)
+
+
 def cols_create_index(src, pos):
     """The columns of a CREATE INDEX list opened just before `pos`, split at
     its top-level commas: an expression keeps its parentheses whole and is
     shown as written (`lower(email)`, which indexes no column for a foreign
     key), a plain column loses its options. None when the list does not
-    close within reach: the list stops at the next `;` or CREATE, so the
-    lists of many unclosed CREATE INDEX are read once each, not overlapping."""
-    borne = min(len(src), pos + 5000)
-    fin = src.find(';', pos, borne)
-    prochain = RE_CREATE.search(src, pos, borne if fin == -1 else fin)
-    if prochain:
-        fin = prochain.start()
-    entrees, ok = decouper_corps(src[pos:borne if fin == -1 else fin])
+    close before the next statement."""
+    entrees, ok = decouper_corps(src[pos:fin_liste(src, pos)])
     if not ok:
         return None
     cols = []
@@ -1128,6 +1132,34 @@ def types_mots_sqlite(src):
     return RE_TYPE_MOTS_SQLITE.sub(lambda m: m.group(1) + re.sub(r'\s', '_', m.group(2)), src)
 
 
+RE_TABLE_FTS = re.compile(
+    r'CREATE\s+VIRTUAL\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["`\[]?(\w+)["`\]]?\.)?'
+    r'["`\[]?(\w+)["`\]]?\s+USING\s+fts[345]\s*\(', re.I)
+RE_COL_FTS = re.compile(r'\s*("[^"]+"|`[^`]+`|\[[^\]]+\]|\w+)')
+
+
+def colonnes_fts(src, tables):
+    """The columns of a SQLite full-text table (`CREATE VIRTUAL TABLE t USING
+    fts5(title, body UNINDEXED, content='docs', tokenize='porter')`), which
+    sqlglot cannot parse, so it leaves the table empty or drops it: each
+    argument that sets no option is a column, untyped. A list that does not
+    close before the next statement adds nothing."""
+    for m in RE_TABLE_FTS.finditer(src):
+        sch, nom = m.group(1) or 'public', m.group(2)
+        t = tables.get(f'{sch}.{nom}') or nouvelle_table(sch, nom)
+        if t['cols']:
+            continue
+        entrees, ok = decouper_corps(src[m.end():fin_liste(src, m.end())])
+        if not ok:
+            continue
+        for e in entrees:
+            mc = RE_COL_FTS.match(e)
+            if mc and '=' not in e:
+                t['cols'].append(nouvelle_colonne(mc.group(1).strip('"`[]'), ''))
+        if t['cols']:
+            tables[f'{sch}.{nom}'] = t
+
+
 def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
     # sqlglot has no MariaDB dialect: its DDL is MySQL's
     if dialecte == 'mariadb':
@@ -1356,6 +1388,8 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                             {'nom': nom_unique(u), 'cols': noms, 'unique': True})
 
     ajouter_cles_alter(src, tables)
+    if dialecte == 'sqlite':
+        colonnes_fts(src, tables)
 
     # a reference without a column list points at the target's primary key
     for f in fks:

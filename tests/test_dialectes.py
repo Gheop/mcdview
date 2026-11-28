@@ -198,6 +198,18 @@ def principal():
             or tables['public.s']['pk'] != ['id']):
         echecs.append(f'SQLite ON CONFLICT: {cols}, {len(fks)} FK, pk {tables.get("public.s", {}).get("pk")}')
 
+    # a full-text table: sqlglot cannot parse its arguments and left it empty;
+    # an argument that sets an option is no column
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / 'fts.sql'
+        p.write_text('CREATE TABLE docs (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT);\n'
+                     'CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(\n  title,\n'
+                     '  "body" UNINDEXED,\n  content=\'docs\',\n  tokenize="trigram case_sensitive 0"\n);\n')
+        tables, _, dial = mcdview.analyser(str(p), 'sqlite')
+    cols = [(c['nom'], c['type']) for c in tables.get('public.docs_fts', {}).get('cols', [])]
+    if cols != [('title', ''), ('body', '')]:
+        echecs.append(f'SQLite FTS5 columns: {cols}')
+
     # type names of several words from SQLite's documentation: sqlglot cannot
     # parse them and dropped the table; a literal saying the same is left alone
     with tempfile.TemporaryDirectory() as td:
