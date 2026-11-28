@@ -571,6 +571,13 @@ def principal():
             or noms != {'Empresa': ['RFC', 'Activo'], 'Pix': ['Id', 'Name'], 'leave': ['ID', 'NOTE']}):
         echecs.append(f'table constraint with no comma before it: pk={pks}, cols={noms}')
 
+    # a primary key added afterwards without a constraint name (Oracle export)
+    sql = ('create table GOODS\n(\n  g_id NUMBER not null,\n  g_name VARCHAR2(10)\n)\n;\n'
+           'alter table GOODS\n  add primary key (G_ID)\n  using index;\n')
+    pk = mcdview.normaliser_casse(tables_de(sql), [])[0].get('public.GOODS', {}).get('pk')
+    if pk != ['g_id']:
+        echecs.append(f'unnamed ADD PRIMARY KEY: {pk}')
+
     # SQL Server's inline index: a name, then UNIQUE and [NON]CLUSTERED; an
     # index, not a column, and not a UNIQUE on a column named INDEX
     sql = ('CREATE TABLE dbo.agent (\n  id int NOT NULL,\n  hote nvarchar(100) NOT NULL,\n'

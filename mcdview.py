@@ -617,9 +617,10 @@ def analyser_sql_texte(src):
             cle = parent[cle]
         return cle
 
-    # primary keys declared afterwards (pg_dump -s style)
+    # primary keys declared afterwards (pg_dump -s style), named or not
+    # (Oracle exports write `alter table T add primary key (ID)`)
     for m in re.finditer(
-            r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+CONSTRAINT\s+"?\w+"?\s+'
+            r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+(?:CONSTRAINT\s+"?\w+"?\s+)?'
             r'PRIMARY\s+KEY\s*\(([^)]+)\)', src, re.I):
         cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
         if cle in tables and not tables[cle]['pk']:
