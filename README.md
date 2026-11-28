@@ -343,6 +343,7 @@ file's header.
 
 | Version | Date       | Changes |
 |---------|------------|---------|
+| 1.0.6   | 2026-11-28 | Add the v0.36.0 changelog entry |
 | 1.0.5   | 2026-11-28 | Add the v0.35.0 changelog entry; document link and key-column hover, focus degree, several-table focus and the schema toggle |
 | 1.0.4   | 2026-11-04 | Add the v0.34.7 changelog entry |
 | 1.0.3   | 2026-11-04 | Add the v0.34.6 changelog entry |
@@ -351,6 +352,34 @@ file's header.
 | 1.0.0   | 2026-09-01 | Initialize; add a CI section (local flags + hosted GitHub/GitLab integrations), document `--to-dico`/`--to-preview`/`--lint`/`--fail-on`, add the blog link, reconcile the tested-at-scale figure |
 
 ## Changelog
+
+### v0.36.0 — Native parser reads more layouts, sqlglot 30.29, one theme palette (2026-11-28)
+
+- The native parser reads several column definitions on one line, a column
+  written one clause per line (Oracle exports: type, `NOT NULL`, `DEFAULT`,
+  `PRIMARY KEY` each on its own line), continuation lines, keywords in any
+  case, and a last `CREATE TABLE` with no closing semicolon. `NULL`,
+  `AUTO_INCREMENT` and `IDENTITY` no longer stick to the column type.
+- Indexes declared inside a table body are read: MySQL `KEY` lines, SQL Server
+  inline `INDEX … [NON]CLUSTERED`, ClickHouse data-skipping `INDEX … TYPE`.
+  Oracle index names that hold `$` or `#` are read too.
+- A table constraint with no comma before it (SQL Server accepts it) no longer
+  makes the last column the primary key, and `ALTER TABLE … ADD PRIMARY KEY`
+  without a constraint name is read. MySQL `#` comments no longer split a line.
+- Long runs of blanks inside a column or an index column list no longer take
+  minutes to parse: a crafted file could stall 0.35.0 and earlier.
+- sqlglot 30.29 is supported (CI and release now pin it): unique key names
+  survive its new reading of phpMyAdmin `ALTER TABLE` blocks, and SQLite
+  `ON CONFLICT` clauses no longer drop their table.
+- Across 9,908 test `.sql` files, against 0.35.0 with the same sqlglot: tables
+  104,368 → 104,415, foreign keys 62,561 → 62,648, indexes 129,792 → 130,484;
+  348 tables gain a primary key and 44 get the right one. Columns go from
+  914,581 to 912,860: phantom columns named `AND`, `ON`, `OR`, `INDEX`… are
+  gone, while about 700 real columns written several per line come back.
+- The theme palette is written once with `light-dark()`. The ◐ toggle now
+  also switches the search field, the scrollbars and the `--credit` stamp,
+  which followed the system theme before; browsers without `light-dark()`
+  keep the previous palettes.
 
 ### v0.35.0 — Focus on several tables, key-column hover, schema names (2026-11-28)
 
