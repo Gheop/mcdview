@@ -617,12 +617,14 @@ def principal():
            'CREATE TABLE B\n(\n    ID int NOT NULL,\n    T_ID bigint NULL,\n'
            '    CONSTRAINT [PK_B] PRIMARY KEY NONCLUSTERED\n    (\n        ID DESC\n    )\n);\n'
            'CREATE TABLE C (\n  ID int NOT NULL\n);\n'
-           'ALTER TABLE C ADD CONSTRAINT PK_C PRIMARY KEY CLUSTERED (ID ASC);\n')
+           'ALTER TABLE C ADD CONSTRAINT PK_C PRIMARY KEY CLUSTERED (ID ASC);\n'
+           'CREATE INDEX IX_C ON C (ID DESC, "TXN" ASC);\n')
     t = tables_de(sql)
     vu = {k.split('.')[1]: ([c['nom'] for c in v['cols']], v['pk']) for k, v in t.items()}
-    if vu != {'TXNS': (['TXN_ID', 'TXN_STATE'], ['TXN_ID']), 'B': (['ID', 'T_ID'], ['ID']),
-              'C': (['ID'], ['ID'])}:
-        echecs.append(f'PRIMARY KEY CLUSTERED: {vu}')
+    ix = [i['cols'] for i in t.get('public.C', {}).get('index', [])]
+    if (vu != {'TXNS': (['TXN_ID', 'TXN_STATE'], ['TXN_ID']), 'B': (['ID', 'T_ID'], ['ID']),
+               'C': (['ID'], ['ID'])} or ix != [['ID', 'TXN']]):
+        echecs.append(f'PRIMARY KEY CLUSTERED: {vu}, CREATE INDEX columns {ix}')
 
     if echecs:
         print('ÉCHECS parser :')

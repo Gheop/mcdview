@@ -663,7 +663,7 @@ def analyser_sql_texte(src):
         cle = resoudre(f"{m.group(3) or 'public'}.{m.group(4)}")
         if cle in tables:
             tables[cle]['index'].append(
-                {'nom': m.group(2), 'cols': identifiants(m.group(5)),
+                {'nom': m.group(2), 'cols': cols_index(m.group(5)),
                  'unique': bool(m.group(1))})
     for m in re.finditer(
             r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+CONSTRAINT\s+'
@@ -671,7 +671,7 @@ def analyser_sql_texte(src):
         cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
         if cle in tables:
             tables[cle]['index'].append(
-                {'nom': m.group(3), 'cols': identifiants(m.group(4)), 'unique': True})
+                {'nom': m.group(3), 'cols': cols_index(m.group(4)), 'unique': True})
 
     for m in re.finditer(r"COMMENT\s+ON\s+TABLE\s+(?:\"?(\w+)\"?\.)?\"?(\w+)\"?\s+IS\s+E?'((?:[^']|'')*)'", src, re.I):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
