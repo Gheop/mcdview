@@ -62,6 +62,9 @@ __FAVICON__
   .table ul { margin: 0; padding: 3px 10px 5px; list-style: none; }
   .table li { white-space: nowrap; line-height: 1.45; color: var(--encre); }
   .table li .t { opacity: .55; font-size: 12px; margin-left: 6px; }
+  /* key columns lit by a hovered link or a hovered key column */
+  .table li.colvif { background: color-mix(in srgb, var(--ligne-vive) 22%, transparent);
+    box-shadow: inset 3px 0 0 var(--ligne-vive); margin: 0 -10px; padding: 0 10px; }
   /* level-of-detail: zoomed far out, show table names only (see rendre()) */
   #plan.compact .table ul { display: none; }
   #plan.compact .table h3 { border-radius: 5px; }
@@ -342,7 +345,7 @@ function htmlNoeud(cle, avecColonnes) {
   if (!avecColonnes) return entete;
   const fkCols = fkColsPar[cle] || new Set();
   return entete + "<ul>" +
-    t.cols.map(c => "<li" + (c.diff ? " class='" + DCLS[c.diff] + "'" : "") + ">" +
+    t.cols.map(c => "<li data-col='" + ech(c.nom) + "'" + (c.diff ? " class='" + DCLS[c.diff] + "'" : "") + ">" +
       (t.pk.includes(c.nom) ? "🔑 " : fkCols.has(c.nom) ? "🔗 " : "") +
       ech(c.nom) + "<span class='t'>" + ech(c.type) + "</span></li>").join("") + "</ul>";
 }
@@ -602,13 +605,49 @@ function survoler(cle) {
   });
 }
 
+// --- key-column highlight: a hovered link lights its column at both ends; a
+// hovered key column lights the columns it pairs with in the other tables (an
+// FK column its target, a referenced column every FK column pointing at it).
+// Nodes are rebuilt on isolation, so the lit <li> are only kept to unlight them
+// and the pairs are found again from the data on each hover ---
+let lisVifs = [];
+function colonneVisee(f) {  // a REFERENCES without columns targets the sole PK
+  const pk = parCle[f.vers] ? parCle[f.vers].pk : [];
+  return f.colcible || (pk.length === 1 ? pk[0] : "");
+}
+function pairesLien(f) { return [[f.de, f.col], [f.vers, colonneVisee(f)]]; }
+function pairesColonne(cle, col) {
+  const paires = [];
+  fksVisibles().forEach(f => {
+    if (f.de === cle && f.col === col) paires.push([f.vers, colonneVisee(f)]);
+    if (f.vers === cle && colonneVisee(f) === col) paires.push([f.de, f.col]);
+  });
+  if (paires.length) paires.push([cle, col]);
+  return paires;
+}
+function allumerColonnes(paires) {
+  lisVifs.forEach(li => li.classList.remove("colvif"));
+  lisVifs = [];
+  paires.forEach(([cle, col]) => {
+    const e = elems[cle];
+    if (!e || !col) return;
+    for (const li of e.querySelectorAll("li[data-col]")) {
+      if (li.dataset.col === col) { li.classList.add("colvif"); lisVifs.push(li); }
+    }
+  });
+}
+
 // --- hover: light up the links of the table under the pointer ---
 plan.addEventListener("mouseover", e => {
   const t = e.target.closest(".table");
   const cle = t ? t.dataset.cle : null;
   survoler(cle);
+  const li = t && e.target.closest("li[data-col]");
+  const lp = !t && e.target.closest("#liensClic path");
+  const f = lp ? liensVus[+lp.dataset.fk] : null;
+  allumerColonnes(li ? pairesColonne(cle, li.dataset.col) : f ? pairesLien(f) : []);
 });
-plan.addEventListener("mouseleave", () => survoler(null));
+plan.addEventListener("mouseleave", () => { survoler(null); allumerColonnes([]); });
 
 // --- pan / zoom ---
 let estCompact = false;
@@ -881,6 +920,7 @@ function isoler(cle) {
   }
   focusCle = cle;
   focusLien = null;  // leaving a link's detail clears its highlight
+  allumerColonnes([]);
   finIntro();  // a table click ends the intro and keeps the panel open below
   if (autoExpand && panneauReduit) reduirePanneau(false, true);  // reveal detail
   survolCle = null;
@@ -942,6 +982,7 @@ function isoler(cle) {
 }
 function vueGenerale() {
   sortirModes();  // back to overview clears any graph highlight / join mode
+  allumerColonnes([]);
   focusCle = null;
   focusLien = null;
   filtreTouchees = false;  // overview always shows everything

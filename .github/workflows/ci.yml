@@ -169,6 +169,8 @@ jobs:
         run: ./tests/test_lien_detail.py
       - name: incremental hover and drag (same layers as a full redraw)
         run: ./tests/test_survol.py
+      - name: key columns lit by a hovered link or key column
+        run: ./tests/test_colonnes.py
       - name: minimap cache never stale (pan, drag, isolate, overview, compact)
         run: ./tests/test_minimap.py
       - uses: actions/upload-pages-artifact@v5
