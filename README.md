@@ -343,6 +343,7 @@ file's header.
 
 | Version | Date       | Changes |
 |---------|------------|---------|
+| 1.0.7   | 2026-11-28 | Add the v0.37.0 changelog entry |
 | 1.0.6   | 2026-11-28 | Add the v0.36.0 changelog entry |
 | 1.0.5   | 2026-11-28 | Add the v0.35.0 changelog entry; document link and key-column hover, focus degree, several-table focus and the schema toggle |
 | 1.0.4   | 2026-11-04 | Add the v0.34.7 changelog entry |
@@ -352,6 +353,25 @@ file's header.
 | 1.0.0   | 2026-09-01 | Initialize; add a CI section (local flags + hosted GitHub/GitLab integrations), document `--to-dico`/`--to-preview`/`--lint`/`--fail-on`, add the blog link, reconcile the tested-at-scale figure |
 
 ## Changelog
+
+### v0.37.0 — SQL Server clustered keys, unlogged tables, index expressions, SQLite full-text tables (2026-11-28)
+
+- SQL Server's `PRIMARY KEY CLUSTERED` with its column list on the lines
+  below no longer ends the table body early, and
+  `ALTER TABLE … ADD … PRIMARY KEY CLUSTERED (id ASC)` is read; `ASC` and
+  `DESC` no longer stick to key column names.
+- `CREATE UNLOGGED TABLE`, as pg_dump writes it, is read as a table. `TEMP`
+  tables live for a session and stay out of the model.
+- A `CREATE INDEX` expression is kept whole (`lower((email)::text)`, it was cut
+  at its first parenthesis), and a plain column drops its operator class,
+  collation and ordering (`name gin_trgm_ops` is `name`), so the unindexed
+  foreign key check no longer misses such an index.
+- SQLite full-text tables (`CREATE VIRTUAL TABLE … USING fts5(…)`) show their
+  columns; option arguments such as `content='docs'` are not columns.
+- Across 9,908 test `.sql` files, against 0.36.0: tables 104,415 → 104,462,
+  columns 912,860 → 913,277, tables with a primary key 96,934 → 96,973,
+  about 3,800 index column lists corrected, no primary key or index lost.
+- The theme fallback for browsers without `light-dark()` is now tested.
 
 ### v0.36.0 — Native parser reads more layouts, sqlglot 30.29, one theme palette (2026-11-28)
 
