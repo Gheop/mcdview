@@ -533,7 +533,9 @@ def analyser_sql(chemin, src=None):
     return analyser_sql_texte(RE_LIGNE_COMMENTEE.sub('', src))
 
 
-RE_TETE_TABLE = re.compile(r'\bCREATE\s+TABLE\b', re.I)
+# pg_dump writes CREATE UNLOGGED TABLE for a table it does not WAL-log: a
+# real table. TEMP tables live for a session and stay out of the model
+RE_TETE_TABLE = re.compile(r'\bCREATE\s+(?:UNLOGGED\s+)?TABLE\b', re.I)
 RE_PARTITION_OF = re.compile(r'\sPARTITION\s+OF\s', re.I)
 
 
@@ -547,7 +549,8 @@ def analyser_sql_texte(src):
     # is delimited by string search, not by a lazy `.*?` regex: on malformed
     # input (many openers, no closer) the latter backtracks catastrophically.
     for m in re.finditer(
-            r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(\n', src, re.I):
+            r'CREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(\n',
+            src, re.I):
         if RE_PARTITION_OF.search(src, m.start(), m.end()):
             continue
         fin = src.find('\n)', m.end())
@@ -585,7 +588,8 @@ def analyser_sql_texte(src):
     # opener's own line so a "CREATE TABLE a (\n" bomb (newline right after the
     # paren) yields an empty body and costs nothing.
     for m in re.finditer(
-            r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(', src, re.I):
+            r'CREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(',
+            src, re.I):
         cle = f"{m.group(1) or 'public'}.{m.group(2)}"
         if cle in tables:  # already built by the multi-line pass
             continue
@@ -619,7 +623,7 @@ def analyser_sql_texte(src):
     # the parent, and the partitions themselves do not appear in the model
     parent = {}
     for m in re.finditer(
-            r'CREATE\s+TABLE\s+(?:(\w+)\.)?(\w+)\s+PARTITION\s+OF\s+(?:(\w+)\.)?(\w+)', src, re.I):
+            r'CREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:(\w+)\.)?(\w+)\s+PARTITION\s+OF\s+(?:(\w+)\.)?(\w+)', src, re.I):
         enfant = f"{m.group(1) or 'public'}.{m.group(2)}"
         parent[enfant] = f"{m.group(3) or 'public'}.{m.group(4)}"
     for m in re.finditer(
@@ -894,7 +898,7 @@ def analyser(chemin, dialecte='auto'):
 def tete_hors_natif(src):
     """True if a CREATE TABLE head is not written `CREATE TABLE` as pg_dump
     writes it (lower or mixed case): hand-written DDL, maybe another dialect."""
-    return any(m.group().split() != ['CREATE', 'TABLE'] for m in RE_TETE_TABLE.finditer(src))
+    return any(not m.group().isupper() for m in RE_TETE_TABLE.finditer(src))
 
 
 def tables_pleines(tables):

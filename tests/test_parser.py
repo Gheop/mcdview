@@ -626,6 +626,17 @@ def principal():
                'C': (['ID'], ['ID'])} or ix != [['ID', 'TXN']]):
         echecs.append(f'PRIMARY KEY CLUSTERED: {vu}, CREATE INDEX columns {ix}')
 
+    # pg_dump's CREATE UNLOGGED TABLE is a real table, a TEMP one is not;
+    # only a head pg_dump would not write marks hand-written DDL
+    sql = ('CREATE UNLOGGED TABLE public.rate_limits (\n    id bigint NOT NULL,\n'
+           '    key character varying NOT NULL\n);\n'
+           'CREATE TEMP TABLE scratch (\n    x integer\n);\n'
+           'CREATE UNLOGGED TABLE cache (k text PRIMARY KEY);\n')
+    noms = sorted(tables_de(sql))
+    if (noms != ['public.cache', 'public.rate_limits'] or mcdview.tete_hors_natif(sql)
+            or not mcdview.tete_hors_natif('create unlogged table a (\n x int\n);')):
+        echecs.append(f'CREATE UNLOGGED TABLE: {noms}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:

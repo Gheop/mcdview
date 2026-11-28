@@ -46,7 +46,7 @@ ATTENDUS = {
     # the CI runner's build), so it stays tested but without a pinned count
     'samples/northwind.dbm': (14, 13),
     'samples/usda.dbm': (10, 11),
-    'samples/cryptoconcept.dbm': (19, 19),
+    'samples/cryptoconcept.dbm': (20, 22),  # its UNLOGGED wallet_entries is now read
     'samples/3dcitydb.dbm': (60, 263),
     'conf/example.dbm': (3, 2),  # the quoted "table" is now read (was missed)
 }
