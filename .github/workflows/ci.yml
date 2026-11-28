@@ -175,6 +175,8 @@ jobs:
         run: ./tests/test_schema.py
       - name: focus at a chosen degree, on one table or several (Ctrl+click, permalinks)
         run: ./tests/test_focus.py
+      - name: light-dark() theme (system, toggle, form controls, stamp, minimap)
+        run: ./tests/test_theme.py
       - name: minimap cache never stale (pan, drag, isolate, overview, compact)
         run: ./tests/test_minimap.py
       - uses: actions/upload-pages-artifact@v5

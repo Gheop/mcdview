@@ -6,17 +6,29 @@
 <title>__TITRE__ — mcdview</title>
 __FAVICON__
 <style>
+  /* one palette, light-dark(light, dark): color-scheme picks the side. It
+     follows the system, and the theme toggle (data-theme) forces one; form
+     controls and scrollbars follow the same color-scheme */
   :root { color-scheme: light dark;
-    --fond: #f4f4f6; --encre: #1c1e22; --panneau: #ffffff; --bord: #d5d8dd;
-    --ligne: #9aa3ad; --ligne-vive: #0b74c4; --voile: #ffffffcc; }
-  /* dark palette: from prefers-color-scheme when the viewer has not chosen,
-     and from an explicit data-theme="dark" (the toggle) which always wins */
-  @media (prefers-color-scheme: dark) { :root:not([data-theme]) {
-    --fond: #1e2126; --encre: #e8eaed; --panneau: #262a30; --bord: #3a3f47;
-    --ligne: #566070; --ligne-vive: #4aa8e8; --voile: #1e2126cc; } }
-  :root[data-theme="dark"] {
-    --fond: #1e2126; --encre: #e8eaed; --panneau: #262a30; --bord: #3a3f47;
-    --ligne: #566070; --ligne-vive: #4aa8e8; --voile: #1e2126cc; }
+    --fond: light-dark(#f4f4f6, #1e2126); --encre: light-dark(#1c1e22, #e8eaed);
+    --panneau: light-dark(#ffffff, #262a30); --bord: light-dark(#d5d8dd, #3a3f47);
+    --ligne: light-dark(#9aa3ad, #566070); --ligne-vive: light-dark(#0b74c4, #4aa8e8);
+    --voile: light-dark(#ffffffcc, #1e2126cc);
+    --encre-tampon: light-dark(#c0261b, #e5675c); }  /* the --credit stamp */
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  /* browsers without light-dark() (before 2024: Chrome 123, Firefox 120,
+     Safari 17.5) would get no colour at all: they keep the two palettes */
+  @supports not (color: light-dark(#000, #fff)) {
+    :root { --fond: #f4f4f6; --encre: #1c1e22; --panneau: #ffffff; --bord: #d5d8dd;
+      --ligne: #9aa3ad; --ligne-vive: #0b74c4; --voile: #ffffffcc; --encre-tampon: #c0261b; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme]) {
+      --fond: #1e2126; --encre: #e8eaed; --panneau: #262a30; --bord: #3a3f47;
+      --ligne: #566070; --ligne-vive: #4aa8e8; --voile: #1e2126cc; --encre-tampon: #e5675c; } }
+    :root[data-theme="dark"] {
+      --fond: #1e2126; --encre: #e8eaed; --panneau: #262a30; --bord: #3a3f47;
+      --ligne: #566070; --ligne-vive: #4aa8e8; --voile: #1e2126cc; --encre-tampon: #e5675c; }
+  }
   html, body { margin: 0; height: 100%; overflow: hidden;
     background: var(--fond); color: var(--encre);
     font-family: system-ui, sans-serif; font-size: 14px; }
@@ -229,8 +241,7 @@ __FAVICON__
      diagram area (the detail panel is 340px wide on the right); empty unless
      --credit is given. Muted ink so it reads on light and dark themes */
   #credit { position: fixed; bottom: 22px; right: 366px; z-index: 10;
-    --encre-tampon: #c0261b; transform: rotate(-7deg); }
-  @media (prefers-color-scheme: dark) { #credit { --encre-tampon: #e5675c; } }
+    transform: rotate(-7deg); }
   #credit:empty { display: none; }
   #credit > a, #credit > span { color: var(--encre-tampon); text-decoration: none;
     display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
@@ -312,6 +323,16 @@ let vuePrise = false;  // the viewer panned/zoomed: stop auto-refitting the view
 D.tables.forEach(t => { parCle[t.schema + "." + t.nom] = t; });
 
 // injected model strings (names, types, comments) must never become markup
+// a colour token resolved for the current theme: reading the custom property
+// itself returns its light-dark(…) text, which a canvas silently refuses
+const sondeCouleur = document.createElement("span");
+sondeCouleur.hidden = true;
+sondeCouleur.id = "sondeCouleur";
+document.body.appendChild(sondeCouleur);
+function couleurCss(nom) {
+  sondeCouleur.style.color = "var(" + nom + ")";
+  return getComputedStyle(sondeCouleur).color;
+}
 function ech(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -719,8 +740,7 @@ function dessinerMinimap() {
   miniCtx.clearRect(0, 0, W, H);
   miniCtx.drawImage(miniCouche.c, 0, 0);
   const vx0 = -x / k, vy0 = -y / k;
-  miniCtx.strokeStyle = getComputedStyle(document.documentElement)
-    .getPropertyValue("--ligne-vive") || "#0b74c4";
+  miniCtx.strokeStyle = couleurCss("--ligne-vive") || "#0b74c4";
   miniCtx.lineWidth = 1.5;
   miniCtx.strokeRect(vx0 * s + ox, vy0 * s + oy,
                      vp.clientWidth / k * s, vp.clientHeight / k * s);
@@ -1533,6 +1553,7 @@ function exporterHTML() {
   const corps = doc.querySelector("body"); if (corps) corps.className = "panneau-reduit";  // fresh state
   // the copy opens on the overview: no focus controls, no leftover hint
   ["#vueGenerale", "#degres", "#indice"].forEach(sel => { const e = doc.querySelector(sel); if (e) e.hidden = true; });
+  const sonde = doc.querySelector("#sondeCouleur"); if (sonde) sonde.remove();  // re-created on load
   doc.removeAttribute("data-theme");                                          // do not bake a theme choice
   const d2 = JSON.parse(JSON.stringify(D));   // clone, then bake the overview positions
   d2.tables.forEach(t => {
