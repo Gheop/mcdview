@@ -86,7 +86,9 @@ RE_DEFAUT = re.compile(r'(?<!\s)\s*\bDEFAULT\s+(.*)$', re.I)
 # IDENTITY(1,1) follow the type; none of them is part of it
 RE_COUPE = re.compile(r'(?<!\s)\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT|PRIMARY|UNIQUE|CHECK'
                       r'|NULL|AUTO_INCREMENT|AUTOINCREMENT|IDENTITY)\b', re.I)
-RE_PK_TABLE = re.compile(r'(?:CONSTRAINT\s+"?\w+"?\s+)?PRIMARY\s+KEY\s*\(([^)]+)\)', re.I)
+# SQL Server writes `PRIMARY KEY CLUSTERED (id ASC)`, its names in brackets
+RE_PK_TABLE = re.compile(r'(?:CONSTRAINT\s+(?:"[^"\n]+"|`[^`\n]+`|\[[^\]\n]+\]|\w+)\s+)?'
+                         r'PRIMARY\s+KEY\s*(?:(?:NON)?CLUSTERED\s*)?\(([^)]+)\)', re.I)
 # FKs declared inside a CREATE TABLE body (pg_dump uses ALTER TABLE instead, but
 # hand-written schemas embed them): a table-level FOREIGN KEY (...) REFERENCES,
 # and a column-level inline REFERENCES. Both may carry a target column list or
@@ -175,7 +177,9 @@ def regrouper_lignes(lignes):
     joins the entry above it while a parenthesis stays open (a CHECK or a
     PRIMARY KEY spread over lines), or when that entry has no closing comma
     and the line opens with a continuation keyword or follows a column name
-    alone. A line that opens a table constraint never joins. Parentheses are
+    alone, or opens with a parenthesis (SQL Server puts a key's column list
+    on the lines below `PRIMARY KEY CLUSTERED`). A line that opens a table
+    constraint never joins. Parentheses are
     counted outside literals and comments, and only trusted when they
     balance."""
     deltas = [0] * len(lignes)
@@ -203,7 +207,7 @@ def regrouper_lignes(lignes):
         elif (derniere >= 0 and not vide and not nette.startswith(',')
               and not RE_CONTRAINTE_TABLE.match(ligne)
               and not (RE_CONTRAINTE_NOM.match(ligne) and RE_CONTRAINTE_TABLE.match(apres))
-              and (RE_LIGNE_SUITE.match(ligne)
+              and (RE_LIGNE_SUITE.match(ligne) or nette.startswith('(')
                    or (len(entrees[derniere]) == 1 and RE_NOM_SEUL.match(entrees[derniere][0])))
               and not RE_FIN_COMMENTAIRE.sub('', RE_LITTERAL.sub('', entrees[derniere][-1]))
                   .rstrip().endswith(',')):
@@ -417,7 +421,7 @@ def entrees_en_table(sch, nom, entrees):
             e = RE_BLANCS.sub(' ', e)
         cm = RE_PK_TABLE.match(e) if 'primary' in e.lower() else None
         if cm:
-            pk = identifiants(cm.group(1))
+            pk = cols_index(cm.group(1))
             continue
         ich = index_clickhouse(e) if e[:5].upper() == 'INDEX' else None
         if ich is not None:
@@ -547,6 +551,20 @@ def analyser_sql_texte(src):
         if RE_PARTITION_OF.search(src, m.start(), m.end()):
             continue
         fin = src.find('\n)', m.end())
+        # SQL Server closes a key's column list at the start of a line
+        # (`PRIMARY KEY CLUSTERED`, `(`, `id ASC`, `)`, `);`): while the body
+        # leaves a parenthesis open, that `)` is not the table's. A few steps
+        # at most, and never past another CREATE TABLE, so bodies stay apart
+        for _ in range(8):
+            if (fin == -1 or fin - m.end() > 100000
+                    or src.count('(', m.end(), fin) <= src.count(')', m.end(), fin)
+                    or RE_TETE_TABLE.search(src, m.end(), fin)
+                    or decouper_corps(src[m.end():fin] + '\n)')[1]):
+                break
+            suivant = src.find('\n)', fin + 2)
+            if suivant == -1 or RE_TETE_TABLE.search(src, fin, suivant):
+                break
+            fin = suivant
         # the statement ends with ';' or, for the file's last one, at the end
         # (a bounded slice: copying the rest of the file per opener would be
         # quadratic on many tables with no ';')
@@ -621,10 +639,10 @@ def analyser_sql_texte(src):
     # (Oracle exports write `alter table T add primary key (ID)`)
     for m in re.finditer(
             r'ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s+ADD\s+(?:CONSTRAINT\s+"?\w+"?\s+)?'
-            r'PRIMARY\s+KEY\s*\(([^)]+)\)', src, re.I):
+            r'PRIMARY\s+KEY\s*(?:(?:NON)?CLUSTERED\s*)?\(([^)]+)\)', src, re.I):
         cle = resoudre(f"{m.group(1) or 'public'}.{m.group(2)}")
         if cle in tables and not tables[cle]['pk']:
-            tables[cle]['pk'] = identifiants(m.group(3))
+            tables[cle]['pk'] = cols_index(m.group(3))
 
     # columns added afterwards: ALTER TABLE t ADD [COLUMN] name type;
     for m in re.finditer(

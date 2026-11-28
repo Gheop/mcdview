@@ -118,6 +118,10 @@ def verifier_dos(echecs):
         # many constraint names alone, each looking one line ahead
         'noms de contrainte': 'CREATE TABLE a (\n id int\n' + ' CONSTRAINT c\n' * 100000 + ');\n',
         'chevron ouvert': 'CREATE TABLE a (\n id int,\n m MAP<' + ', c int' * 200000 + '\n);\n',
+        # bodies that keep a parenthesis open past each line-start `)`: the
+        # search for the table's own `)` moves on a few steps, never further
+        'clé en colonne': 'CREATE TABLE a (\n((\n)\n);\n' * 20000
+                          + 'CREATE TABLE b (\n' + '((\n)\n' * 20000 + ');\n',
     }
     with tempfile.TemporaryDirectory() as td:
         cibles = [(f.name, f) for f in (RACINE / 'tests' / 'malveillant').glob('*.sql')]

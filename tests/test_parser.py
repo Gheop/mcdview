@@ -609,6 +609,21 @@ def principal():
             or ix != [('idx_pair', ('id', 'url')), ('idx_session', ('session_id',))]):
         echecs.append(f"ClickHouse INDEX … TYPE: {[x['nom'] for x in ev.get('cols', [])]}, {ix}")
 
+    # SQL Server's PRIMARY KEY CLUSTERED with its column list on the lines
+    # below, closed at the start of a line (Hive's metastore schema): the
+    # body runs to the table's own `)`, no phantom column, no ASC in the key
+    sql = ('CREATE TABLE TXNS(\n    TXN_ID bigint NOT NULL IDENTITY(1,1),\n'
+           '    TXN_STATE char(1) NOT NULL,\nPRIMARY KEY CLUSTERED\n(\n    TXN_ID ASC\n)\n);\n'
+           'CREATE TABLE B\n(\n    ID int NOT NULL,\n    T_ID bigint NULL,\n'
+           '    CONSTRAINT [PK_B] PRIMARY KEY NONCLUSTERED\n    (\n        ID DESC\n    )\n);\n'
+           'CREATE TABLE C (\n  ID int NOT NULL\n);\n'
+           'ALTER TABLE C ADD CONSTRAINT PK_C PRIMARY KEY CLUSTERED (ID ASC);\n')
+    t = tables_de(sql)
+    vu = {k.split('.')[1]: ([c['nom'] for c in v['cols']], v['pk']) for k, v in t.items()}
+    if vu != {'TXNS': (['TXN_ID', 'TXN_STATE'], ['TXN_ID']), 'B': (['ID', 'T_ID'], ['ID']),
+              'C': (['ID'], ['ID'])}:
+        echecs.append(f'PRIMARY KEY CLUSTERED: {vu}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:
