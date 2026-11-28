@@ -78,11 +78,13 @@ RE_MOT_CONTRAINTE = re.compile(
 RE_COLONNE = re.compile(r'"?(\w+)"?\s+(.+)$')
 # SQL keywords are case-insensitive: `create table`, `not null` and
 # `primary key` are as common as their upper-case forms in hand-written DDL
-RE_NOT_NULL = re.compile(r'\s*\bNOT\s+NULL\b', re.I)
-RE_DEFAUT = re.compile(r'\s*\bDEFAULT\s+(.*)$', re.I)
+# (?<!\s): a search starts once per run of blanks, not at each blank of it
+# (a column line with a long blank run was quadratic)
+RE_NOT_NULL = re.compile(r'(?<!\s)\s*\bNOT\s+NULL\b', re.I)
+RE_DEFAUT = re.compile(r'(?<!\s)\s*\bDEFAULT\s+(.*)$', re.I)
 # a bare NULL (nullable), MySQL's AUTO_INCREMENT and SQL Server's
 # IDENTITY(1,1) follow the type; none of them is part of it
-RE_COUPE = re.compile(r'\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT|PRIMARY|UNIQUE|CHECK'
+RE_COUPE = re.compile(r'(?<!\s)\s+\b(?:REFERENCES|GENERATED|COLLATE|CONSTRAINT|PRIMARY|UNIQUE|CHECK'
                       r'|NULL|AUTO_INCREMENT|AUTOINCREMENT|IDENTITY)\b', re.I)
 RE_PK_TABLE = re.compile(r'(?:CONSTRAINT\s+"?\w+"?\s+)?PRIMARY\s+KEY\s*\(([^)]+)\)', re.I)
 # FKs declared inside a CREATE TABLE body (pg_dump uses ALTER TABLE instead, but

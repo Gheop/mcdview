@@ -107,6 +107,9 @@ def verifier_dos(echecs):
         # a long blank line before the next one: the bare-name test on it
         # had two ways to eat each blank (quadratic)
         'nom seul blanc': 'CREATE TABLE a (\n' + ' ' * 300000 + '!\n b int\n);\n',
+        # a long blank run inside a column definition: NOT NULL, DEFAULT and
+        # the type cut each restarted at every blank of it
+        'blancs en colonne': 'CREATE TABLE a (\n id int,\n b int' + ' ' * 300000 + 'x\n);\n',
         'chevron ouvert': 'CREATE TABLE a (\n id int,\n m MAP<' + ', c int' * 200000 + '\n);\n',
     }
     with tempfile.TemporaryDirectory() as td:
