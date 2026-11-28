@@ -883,6 +883,19 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
     def cle(tbl):
         return f"{tbl.db or 'public'}.{tbl.name}"
 
+    def nom_unique(u):
+        """The name of a UNIQUE constraint in sqlglot's tree: `CONSTRAINT n UNIQUE
+        (a)` names the enclosing Constraint; MySQL's `UNIQUE KEY n (a)` names the
+        column Schema it holds (sqlglot >= 30.2x also parses phpMyAdmin's
+        multi-ADD ALTER that way, where older versions kept a raw Command)."""
+        cont = u.find_ancestor(exp.Constraint)
+        if cont is not None and cont.name:
+            return cont.name
+        sch = u.this
+        if isinstance(sch, exp.Schema) and isinstance(sch.this, exp.Identifier):
+            return sch.this.name
+        return ''
+
     def nom_fk(fk):
         # a named inline FK carries its name on the wrapping Constraint node,
         # not on the ForeignKey itself
@@ -996,7 +1009,7 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                     cd = u.find_ancestor(exp.ColumnDef)
                     noms = [cd.name] if cd else []
                 if noms:
-                    tables[k]['index'].append({'nom': '', 'cols': noms, 'unique': True})
+                    tables[k]['index'].append({'nom': nom_unique(u), 'cols': noms, 'unique': True})
             # MySQL declares plain indexes in the body: KEY / INDEX name (cols);
             # mysqldump writes one for every foreign key
             for ix in stmt.find_all(exp.IndexColumnConstraint):
@@ -1032,12 +1045,11 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
                 for u in stmt.find_all(exp.UniqueColumnConstraint):
                     if k not in tables:
                         continue
-                    cont = u.find_ancestor(exp.Constraint)
                     sch = u.this if u.this is not None else None
                     noms = [e.name for e in getattr(sch, 'expressions', [])] if sch else []
                     if noms:
                         tables[k]['index'].append(
-                            {'nom': cont.name if cont else '', 'cols': noms, 'unique': True})
+                            {'nom': nom_unique(u), 'cols': noms, 'unique': True})
 
     ajouter_cles_alter(src, tables)
 
