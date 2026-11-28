@@ -295,12 +295,53 @@ def colonne_declare_pk(ligne):
     return bool(RE_PK_MOT.search(s))
 
 
+def scinder_entree(e):
+    """An entry holding several definitions on one line (`a text, b int`, a
+    line of a multi-line body): split at its top-level commas, literals,
+    comments and parentheses respected. Left whole when its parentheses do
+    not balance, or past decouper_corps's bound."""
+    if ',' not in e:
+        return [e]
+    morceaux, ok = decouper_corps(e + '\n)')
+    if not ok:
+        return [e]
+    # a Spark/Hive type keeps its commas inside angle brackets
+    # (MAP<STRING, INT>, STRUCT<a: INT, b: STRING>): rejoin while one is
+    # open. The balance runs over the pieces, each read once
+    sortie, ouverts = [], 0
+    for m in morceaux:
+        if ouverts > 0:
+            sortie[-1].append(m)
+        else:
+            sortie.append([m])
+        ouverts = max(0, ouverts + solde_chevrons(m))
+    return [','.join(g) for g in sortie]
+
+
+def solde_chevrons(texte):
+    """`<` minus `>` outside parentheses: a CHECK (a < b) compares, it opens
+    nothing."""
+    if '<' not in texte and '>' not in texte:
+        return 0
+    prof = solde = 0
+    for c in texte:
+        if c == '(':
+            prof += 1
+        elif c == ')':
+            prof -= 1
+        elif prof == 0 and c == '<':
+            solde += 1
+        elif prof == 0 and c == '>':
+            solde -= 1
+    return solde
+
+
 def entrees_en_table(sch, nom, entrees):
     """Build a table record from the CREATE TABLE body split into entries (one
     per column or table constraint). Same logic whether an entry came from a
     line (multi-line DDL) or a top-level comma (single-line DDL)."""
     cols, pk, index = [], [], []
-    for e in entrees:
+    for e in (m for entree in entrees for m in scinder_entree(entree)):
         # strip a separating comma at EITHER end: leading-comma DDL style
         # (",\n  col TYPE") is common in hand-written schemas, and left the
         # comma glued to the column/constraint so it parsed as neither

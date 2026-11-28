@@ -101,6 +101,10 @@ def verifier_dos(echecs):
         'tables sans ;': 'CREATE TABLE a (\n x int\n)\n' * 60000,
         # a paren left open joins every following line to one entry
         'parenthèse ouverte': 'CREATE TABLE a (\n c int CHECK (\n' + ' OR b > 0\n' * 150000 + ')\n);\n',
+        # one line of a multi-line body split at its commas, and a Spark type
+        # left open: the pieces are rejoined with a running balance
+        'virgules en ligne': 'CREATE TABLE a (\n id int,\n' + ' c int,' * 200000 + '\n x int\n);\n',
+        'chevron ouvert': 'CREATE TABLE a (\n id int,\n m MAP<' + ', c int' * 200000 + '\n);\n',
     }
     with tempfile.TemporaryDirectory() as td:
         cibles = [(f.name, f) for f in (RACINE / 'tests' / 'malveillant').glob('*.sql')]

@@ -524,6 +524,19 @@ def principal():
             or actions != [('a_id', 'CASCADE', 'SET NULL')]):
         echecs.append(f'continuation lines: cols={cols}, index={ix}, fks={actions}')
 
+    # several definitions on one line of a multi-line body are several
+    # columns; a Spark type keeps the commas between its angle brackets, a
+    # literal and a CHECK keep theirs
+    sql = ('CREATE TABLE c (\n  id integer, nom text NOT NULL, note text DEFAULT \'a, b\',\n'
+           '  m MAP<STRING, INT>, s STRUCT<a: INT, b: STRING>,\n'
+           '  n integer CHECK (n < 5 OR n > 9), fin date\n);\n')
+    c = tables_de(sql).get('public.c', {})
+    cols = [(x['nom'], x['type'], x['defaut']) for x in c.get('cols', [])]
+    if cols != [('id', 'integer', ''), ('nom', 'text', ''), ('note', 'text', "'a, b'"),
+                ('m', 'MAP<STRING, INT>', ''), ('s', 'STRUCT<a: INT, b: STRING>', ''),
+                ('n', 'integer', ''), ('fin', 'date', '')]:
+        echecs.append(f'several definitions on one line: {cols}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:
