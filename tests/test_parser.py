@@ -554,6 +554,23 @@ def principal():
             or o.get('pk') != ['ID'] or liens != {('O', 'P_ID', 'O', 'ID')}):
         echecs.append(f"one clause per line: {cols_o}, pk={o.get('pk')}, fks={liens}")
 
+    # SQL Server takes a table constraint with no comma before it: it does not
+    # continue the last column (which used to become the PK). A constraint
+    # name alone on its line is a table constraint when a column list follows,
+    # an inline one otherwise
+    sql = ('CREATE TABLE Empresa(\n  RFC varchar(12) NOT NULL,\n  Activo BIT DEFAULT 1\n\n'
+           '  CONSTRAINT PK_Empresa\n    PRIMARY KEY (RFC)\n);\n'
+           'CREATE TABLE Pix(\n  Id INT NOT NULL,\n  Name NVARCHAR(50) NOT NULL\n'
+           '  CONSTRAINT pk_pix PRIMARY KEY (Id)\n);\n'
+           'CREATE TABLE leave(\n  ID NUMBER(20) not null\n    constraint PK_LEAVE\n'
+           '    primary key,\n  NOTE varchar2(10)\n);\n')
+    t = tables_de(sql)
+    pks = {k.split('.')[1]: v['pk'] for k, v in t.items()}
+    noms = {k.split('.')[1]: [c['nom'] for c in v['cols']] for k, v in t.items()}
+    if (pks != {'Empresa': ['RFC'], 'Pix': ['Id'], 'leave': ['ID']}
+            or noms != {'Empresa': ['RFC', 'Activo'], 'Pix': ['Id', 'Name'], 'leave': ['ID', 'NOTE']}):
+        echecs.append(f'table constraint with no comma before it: pk={pks}, cols={noms}')
+
     # SQL Server's inline index: a name, then UNIQUE and [NON]CLUSTERED; an
     # index, not a column, and not a UNIQUE on a column named INDEX
     sql = ('CREATE TABLE dbo.agent (\n  id int NOT NULL,\n  hote nvarchar(100) NOT NULL,\n'

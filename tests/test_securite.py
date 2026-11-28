@@ -115,6 +115,8 @@ def verifier_dos(echecs):
                             + ' INDEX j ' + ' ' * 300000 + 'z\n);\n',
         # a long blank run inside an index column list (prefix/order cleanup)
         'blancs en index': 'CREATE TABLE a (\n id int,\n KEY k (id' + ' ' * 300000 + 'x)\n);\n',
+        # many constraint names alone, each looking one line ahead
+        'noms de contrainte': 'CREATE TABLE a (\n id int\n' + ' CONSTRAINT c\n' * 100000 + ');\n',
         'chevron ouvert': 'CREATE TABLE a (\n id int,\n m MAP<' + ', c int' * 200000 + '\n);\n',
     }
     with tempfile.TemporaryDirectory() as td:

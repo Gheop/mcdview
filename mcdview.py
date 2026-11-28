@@ -115,6 +115,16 @@ RE_LIGNE_SUITE = re.compile(
 # an entry that is a column name alone so far: Oracle-style DDL puts the name,
 # the type and NOT NULL each on its own line
 RE_NOM_SEUL = re.compile(r'\s*(?:,\s*)?(?:"[^"\n]+"|`[^`\n]+`|\[[^\]\n]+\]|\w+)\s*$')
+# a line that opens a table constraint: SQL Server takes one with no comma
+# before it (`Activo BIT DEFAULT 1` then `CONSTRAINT PK_x PRIMARY KEY (id)`),
+# so it never continues the column above. The table form carries a column
+# list; the inline forms (`CONSTRAINT x PRIMARY KEY`, `CONSTRAINT x
+# REFERENCES t`) have none and still continue their column. A constraint name
+# alone on its line is told apart by the line after it
+RE_CONTRAINTE_TABLE = re.compile(
+    r'\s*(?:CONSTRAINT\s+(?:"[^"\n]+"|`[^`\n]+`|\[[^\]\n]+\]|\w+)\s+)?'
+    r'(?:PRIMARY\s+KEY|UNIQUE|FOREIGN\s+KEY)\b[^(\n]*\(', re.I)
+RE_CONTRAINTE_NOM = re.compile(r'\s*CONSTRAINT\s+(?:"[^"\n]+"|`[^`\n]+`|\[[^\]\n]+\]|\w+)\s*$', re.I)
 # what follows the last comma of a line: a -- comment, or MySQL's # comment
 RE_FIN_COMMENTAIRE = re.compile(r'(?:--|(?<!\S)#).*$')
 # MySQL's plain index in a CREATE TABLE body: `KEY name (a, b(10))`, and SQL
@@ -163,9 +173,11 @@ def cols_index(liste):
 def regrouper_lignes(lignes):
     """Group the lines of a multi-line CREATE TABLE body into entries: a line
     joins the entry above it while a parenthesis stays open (a CHECK or a
-    PRIMARY KEY spread over lines), or when it opens with a continuation
-    keyword and that entry has no closing comma. Parentheses are counted
-    outside literals and comments, and only trusted when they balance."""
+    PRIMARY KEY spread over lines), or when that entry has no closing comma
+    and the line opens with a continuation keyword or follows a column name
+    alone. A line that opens a table constraint never joins. Parentheses are
+    counted outside literals and comments, and only trusted when they
+    balance."""
     deltas = [0] * len(lignes)
     for i, ligne in enumerate(lignes):
         if '(' in ligne or ')' in ligne:
@@ -173,16 +185,24 @@ def regrouper_lignes(lignes):
             deltas[i] = nette.count('(') - nette.count(')')
     if sum(deltas):
         deltas = [0] * len(lignes)
+    # the next non-blank line of each line, for a constraint name alone
+    suivante, prochaine = [''] * len(lignes), ''
+    for i in range(len(lignes) - 1, -1, -1):
+        suivante[i] = prochaine
+        if lignes[i].strip():
+            prochaine = lignes[i]
     # each entry is a list of lines, joined at the end: appending to a string
     # would copy it per line, quadratic on a body that never closes a paren
     entrees, derniere, prof = [], -1, 0
-    for ligne, delta in zip(lignes, deltas):
+    for ligne, delta, apres in zip(lignes, deltas, suivante):
         nette = ligne.strip()
         vide = not nette or nette.startswith('--')
         if derniere >= 0 and prof > 0:
             if not vide:
                 entrees[derniere].append(ligne)
         elif (derniere >= 0 and not vide and not nette.startswith(',')
+              and not RE_CONTRAINTE_TABLE.match(ligne)
+              and not (RE_CONTRAINTE_NOM.match(ligne) and RE_CONTRAINTE_TABLE.match(apres))
               and (RE_LIGNE_SUITE.match(ligne)
                    or (len(entrees[derniere]) == 1 and RE_NOM_SEUL.match(entrees[derniere][0])))
               and not RE_FIN_COMMENTAIRE.sub('', RE_LITTERAL.sub('', entrees[derniere][-1]))
