@@ -565,6 +565,19 @@ def principal():
             or ix != [('IX_agent', ('hote', 'service'), True), ('IX_service', ('service',), False)]):
         echecs.append(f"SQL Server inline index: {[x['nom'] for x in a.get('cols', [])]}, {ix}")
 
+    # ClickHouse's data-skipping index: an index on a column or a tuple; an
+    # expression index is no column either; a column named index stays one
+    sql = ('CREATE TABLE ev (\n  id UUID,\n  session_id UUID,\n  url String,\n  index UInt32,\n'
+           '  INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,\n'
+           '  INDEX idx_pair (id, url) TYPE set(0) GRANULARITY 4,\n'
+           '  INDEX idx_low lower(url) TYPE tokenbf_v1(512, 3, 0) GRANULARITY 1\n'
+           ') ENGINE = MergeTree ORDER BY id;\n')
+    ev = tables_de(sql).get('public.ev', {})
+    ix = sorted((i['nom'], tuple(i['cols'])) for i in ev.get('index', []))
+    if ([x['nom'] for x in ev.get('cols', [])] != ['id', 'session_id', 'url', 'index']
+            or ix != [('idx_pair', ('id', 'url')), ('idx_session', ('session_id',))]):
+        echecs.append(f"ClickHouse INDEX … TYPE: {[x['nom'] for x in ev.get('cols', [])]}, {ix}")
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:

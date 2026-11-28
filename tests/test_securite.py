@@ -110,6 +110,9 @@ def verifier_dos(echecs):
         # a long blank run inside a column definition: NOT NULL, DEFAULT and
         # the type cut each restarted at every blank of it
         'blancs en colonne': 'CREATE TABLE a (\n id int,\n b int' + ' ' * 300000 + 'x\n);\n',
+        # ClickHouse INDEX lines with no TYPE, or a TYPE far away
+        'index clickhouse': 'CREATE TABLE a (\n id int,\n' + ' INDEX i x' + ' y' * 300000 + ',\n'
+                            + ' INDEX j ' + ' ' * 300000 + 'z\n);\n',
         'chevron ouvert': 'CREATE TABLE a (\n id int,\n m MAP<' + ', c int' * 200000 + '\n);\n',
     }
     with tempfile.TemporaryDirectory() as td:

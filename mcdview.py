@@ -127,6 +127,29 @@ RE_INDEX_CORPS = re.compile(
     r'\((?!\s*max\s*\))\s*(?P<cols>[`"\[]?[A-Za-z_](?:[^()]|\([^()]*\))*)\)', re.I)
 
 
+# ClickHouse's data-skipping index: `INDEX name expr TYPE bloom_filter
+# GRANULARITY 1`. Its TYPE is found by a plain search after the name (a lazy
+# regex up to TYPE would backtrack on a long line without one); the index is
+# kept when its expression is a column or a tuple of columns
+RE_INDEX_CH = re.compile(r'INDEX\s+[`"]?(\w+)[`"]?\s+(?=\S)', re.I)
+RE_TYPE_CH = re.compile(r'\sTYPE\s+\w', re.I)
+RE_NOMS_CH = re.compile(r'(?:tuple\s*)?\(?\s*[`"]?\w+[`"]?(?:\s*,\s*[`"]?\w+[`"]?)*\s*\)?', re.I)
+
+
+def index_clickhouse(e):
+    """The index of a ClickHouse `INDEX … TYPE …` entry, {} when its
+    expression is not a list of columns, None when the entry is not one."""
+    mc = RE_INDEX_CH.match(e)
+    mt = RE_TYPE_CH.search(e, mc.end() - 1) if mc else None
+    if not mt:
+        return None
+    expr = e[mc.end():mt.start()].strip()
+    if not RE_NOMS_CH.fullmatch(expr):
+        return {}
+    cols = cols_index(re.sub(r'^tuple\s*|[()]', '', expr, flags=re.I))
+    return {'nom': mc.group(1), 'cols': cols, 'unique': False} if cols else {}
+
+
 def cols_index(liste):
     """The column names of an index list, without prefix lengths or order."""
     return [c.strip('[]') for c in identifiants(re.sub(r'\(\d+\)|\s+(?:ASC|DESC)\b', '', liste, flags=re.I)) if c]
@@ -370,6 +393,11 @@ def entrees_en_table(sch, nom, entrees):
         cm = RE_PK_TABLE.match(e) if 'primary' in e.lower() else None
         if cm:
             pk = identifiants(cm.group(1))
+            continue
+        ich = index_clickhouse(e) if e[:5].upper() == 'INDEX' else None
+        if ich is not None:
+            if ich:
+                index.append(ich)
             continue
         mi = RE_INDEX_CORPS.match(e)
         if mi:
