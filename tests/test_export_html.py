@@ -4,8 +4,9 @@ downloads a self-contained copy of the page with the dragged positions baked
 into the `const D` island — not a dump of the rendered DOM.
 
 Checks, in a headless render: the export bakes the current overview positions,
-it is a pristine template (no rendered .table nodes → no bloat), and the data
-island keeps its no-raw-"<" security invariant.
+it is a pristine template (no rendered .table nodes → no bloat), an export made
+during a focus hides the focus controls, and the data island keeps its
+no-raw-"<" security invariant.
 
 Skips cleanly when no Chrome binary is available."""
 import json
@@ -32,6 +33,7 @@ window.addEventListener('load', function () {
     var cle = Object.keys(elems)[0];
     origines[cle] = { x: origines[cle].x + 500, y: origines[cle].y + 300 };
     var attendu = origines[cle];
+    isoler(cle);  // exported during a focus: the copy must still open on the overview
     exporterHTML();
     var rd = new FileReader();
     rd.onload = function () {
@@ -48,6 +50,8 @@ window.addEventListener('load', function () {
         liensRendus: doc.querySelectorAll('#plan #liens path').length,
         svgLiens: doc.querySelectorAll('#plan #liens').length,
         islandRawLt: island.indexOf('<') >= 0,
+        focusCache: ['#vueGenerale', '#degres', '#indice'].every(function (s) {
+          var e = doc.querySelector(s); return e && e.hidden; }),
         octets: s.length
       });
     };
@@ -100,6 +104,8 @@ def principal():
             echecs.append(f"{r['liensRendus']} rendered link path(s) left in the export")
         if r['svgLiens'] != 1:
             echecs.append(f"#plan should hold exactly one empty #liens svg, found {r['svgLiens']}")
+        if not r['focusCache']:
+            echecs.append('an export made during a focus shows the focus controls')
         if r['islandRawLt']:
             echecs.append('a raw "<" leaked into the const D island (XSS invariant broken)')
         if r['octets'] > octets_origine * 1.5:

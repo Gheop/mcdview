@@ -1531,6 +1531,8 @@ function exporterHTML() {
   const noms = doc.querySelector("#noms"); if (noms) noms.innerHTML = "";     // datalist options
   const leg = doc.querySelector("#legende"); if (leg) leg.innerHTML = "";     // schema chips
   const corps = doc.querySelector("body"); if (corps) corps.className = "panneau-reduit";  // fresh state
+  // the copy opens on the overview: no focus controls, no leftover hint
+  ["#vueGenerale", "#degres", "#indice"].forEach(sel => { const e = doc.querySelector(sel); if (e) e.hidden = true; });
   doc.removeAttribute("data-theme");                                          // do not bake a theme choice
   const d2 = JSON.parse(JSON.stringify(D));   // clone, then bake the overview positions
   d2.tables.forEach(t => {
