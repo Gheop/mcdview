@@ -536,13 +536,23 @@ def principal():
                 ('m', 'MAP<STRING, INT>', ''), ('s', 'STRUCT<a: INT, b: STRING>', ''),
                 ('n', 'integer', ''), ('fin', 'date', '')]:
         echecs.append(f'several definitions on one line: {cols}')
-
     # a MySQL # comment after the comma: its own commas split nothing, and the
     # comma before it still closes the entry
     sql = 'CREATE TABLE m (\n  a int, # note, with a comma\n  b int\n    UNIQUE,\n  c int\n);\n'
     noms = [x['nom'] for x in tables_de(sql).get('public.m', {}).get('cols', [])]
     if noms != ['a', 'b', 'c']:
         echecs.append(f'# comment after a comma: {noms}')
+
+    # Oracle-style DDL puts the name, the type and each clause on its own line
+    sql = ('CREATE TABLE "O" (\n  "ID"\n    NUMBER\n    GENERATED ALWAYS AS IDENTITY\n'
+           '    CONSTRAINT "O_PK" PRIMARY KEY\n  ,"NOM"\n    VARCHAR2(100)\n    NOT NULL\n'
+           '  ,"P_ID"\n    NUMBER\n    CONSTRAINT "O_FK" REFERENCES "O" ("ID")\n);\n')
+    o = tables_de(sql).get('public.O', {})
+    cols_o = [(x['nom'], x['type'], x['nn']) for x in o.get('cols', [])]
+    liens = fks_de(sql)
+    if (cols_o != [('ID', 'NUMBER', False), ('NOM', 'VARCHAR2(100)', True), ('P_ID', 'NUMBER', False)]
+            or o.get('pk') != ['ID'] or liens != {('O', 'P_ID', 'O', 'ID')}):
+        echecs.append(f"one clause per line: {cols_o}, pk={o.get('pk')}, fks={liens}")
 
     if echecs:
         print('ÉCHECS parser :')

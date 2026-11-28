@@ -104,6 +104,9 @@ def verifier_dos(echecs):
         # one line of a multi-line body split at its commas, and a Spark type
         # left open: the pieces are rejoined with a running balance
         'virgules en ligne': 'CREATE TABLE a (\n id int,\n' + ' c int,' * 200000 + '\n x int\n);\n',
+        # a long blank line before the next one: the bare-name test on it
+        # had two ways to eat each blank (quadratic)
+        'nom seul blanc': 'CREATE TABLE a (\n' + ' ' * 300000 + '!\n b int\n);\n',
         'chevron ouvert': 'CREATE TABLE a (\n id int,\n m MAP<' + ', c int' * 200000 + '\n);\n',
     }
     with tempfile.TemporaryDirectory() as td:

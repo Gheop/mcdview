@@ -109,7 +109,12 @@ RE_DEBUT_CONTRAINTE = re.compile(
 RE_LIGNE_SUITE = re.compile(
     r'\s*(?:ON\s+(?:DELETE|UPDATE)|MATCH\s+(?:FULL|PARTIAL|SIMPLE)|(?:NOT\s+)?DEFERRABLE'
     r'|INITIALLY\s+(?:DEFERRED|IMMEDIATE)|AND|OR|NOT\s+NULL|NULL|DEFAULT|REFERENCES|COLLATE'
-    r'|CHECK)\b', re.I)
+    r'|CHECK|GENERATED|IDENTITY|AUTO_INCREMENT|PRIMARY\s+KEY|UNIQUE|CONSTRAINT)\b', re.I)
+# an entry that is a column name alone so far: Oracle-style DDL puts the name,
+# the type and NOT NULL each on its own line
+RE_NOM_SEUL = re.compile(r'\s*(?:,\s*)?(?:"[^"\n]+"|`[^`\n]+`|\[[^\]\n]+\]|\w+)\s*$')
+# what follows the last comma of a line: a -- comment, or MySQL's # comment
+RE_FIN_COMMENTAIRE = re.compile(r'(?:--|(?<!\S)#).*$')
 # MySQL's plain index in a CREATE TABLE body: `KEY name (a, b(10))`. The
 # parentheses hold names, which tells it from a column named key:
 # `key varchar(255)` has a number there (or SQL Server's max)
@@ -145,8 +150,11 @@ def regrouper_lignes(lignes):
         if derniere >= 0 and prof > 0:
             if not vide:
                 entrees[derniere].append(ligne)
-        elif (derniere >= 0 and not vide and RE_LIGNE_SUITE.match(ligne)
-              and not RE_COMMENTAIRE.sub('', entrees[derniere][-1]).rstrip().endswith(',')):
+        elif (derniere >= 0 and not vide and not nette.startswith(',')
+              and (RE_LIGNE_SUITE.match(ligne)
+                   or (len(entrees[derniere]) == 1 and RE_NOM_SEUL.match(entrees[derniere][0])))
+              and not RE_FIN_COMMENTAIRE.sub('', RE_LITTERAL.sub('', entrees[derniere][-1]))
+                  .rstrip().endswith(',')):
             entrees[derniere].append(ligne)
         else:
             entrees.append([ligne])
