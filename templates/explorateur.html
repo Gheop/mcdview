@@ -52,6 +52,8 @@ __FAVICON__
   .table.choisie { border-color: var(--ligne-vive); border-width: 2.5px;
     box-shadow: 0 2px 12px #0b74c455; }
   .table.efface { opacity: 0; pointer-events: none; }
+  /* overview Ctrl+click: tables gathered to be focused together */
+  .table.marquee { outline: 2px dashed var(--ligne-vive); outline-offset: 3px; }
   .table.deplace { transition: none; cursor: grabbing; }
   /* restoring saved positions must be instant, never an animated slide from the
      auto-placement spot (the initial links would be drawn against the moving box
@@ -168,7 +170,10 @@ __FAVICON__
   #hud button { padding: 4px 10px; border: 1px solid var(--bord); border-radius: 5px;
     background: var(--panneau); color: var(--encre); cursor: pointer; }
   #hud label { display: flex; gap: 4px; align-items: center; font-size: 13px; }
-  #hud label[hidden] { display: none; }  /* author display:flex beats [hidden]; restore it */
+  #hud label[hidden] { display: none; }
+  #degres { display: flex; gap: 3px; align-items: center; font-size: 13px; }
+  #degres[hidden] { display: none; }
+  #hud #degres button { padding: 4px 8px; }  /* author display:flex beats [hidden]; restore it */
   #compte { font-size: 12px; opacity: .55; white-space: nowrap; }
   .table:hover { border-color: var(--ligne-vive); }
   #panneau { position: absolute; top: 0; right: 0; bottom: 0; width: 340px;
@@ -251,6 +256,8 @@ __FAVICON__
   <input id="cherche" type="search" placeholder="chercher table ou colonne…" list="noms">
   <datalist id="noms"></datalist>
   <button id="vueGenerale" hidden>← vue générale (Échap)</button>
+  <span id="degres" hidden title="tables montrées jusqu'à 1, 2 ou 3 relations de la sélection ; Ctrl+clic sur une table l'ajoute ou la retire">degré
+    <button data-degre="1">1</button><button data-degre="2">2</button><button data-degre="3">3</button></span>
   <button id="reorganiser" title="réétaler les tables pour dégager les liens">⇄ réorganiser</button>
   <button id="annuler" title="annuler la dernière disposition (Ctrl+Z)" hidden>↶ annuler</button>
   <button id="btnHubs" data-graphe title="teinter les tables par nombre de relations">◉ hubs</button>
@@ -285,7 +292,8 @@ __FAVICON__
 <button id="togglePanneau" type="button" title="réduire / agrandir le panneau">›</button>
 <div id="panneau"><p class="vide">Cliquer sur une table pour l'isoler avec ses
 tables liées et voir son détail ici.<br><br>Molette : zoom.
-Glisser : déplacer. Échap : vue générale.</p></div>
+Glisser : déplacer. Échap : vue générale.<br><br>Ctrl+clic : isoler plusieurs
+tables ensemble.</p></div>
 <script>
 "use strict";
 const D = __DONNEES__;
@@ -418,6 +426,7 @@ if (D.diff) {
   btnFiltre.addEventListener("click", () => {
     filtreTouchees = !filtreTouchees;
     btnFiltre.classList.toggle("actif", filtreTouchees);
+    quitterFocus();
     focusCle = null; btnRetour.hidden = true;
     if (location.hash) history.replaceState(null, "", location.pathname + location.search);
     Object.keys(elems).forEach(c => elems[c].classList.remove("choisie"));
@@ -542,7 +551,7 @@ function marqueCardin(p, nn, vif, pourExport) {
 // whether a link is highlighted (drawn blue in the overlay above the tables)
 function estVifLien(f) {
   return f === focusLien ||
-         (focusCle && (f.de === focusCle || f.vers === focusCle)) ||
+         (focusCle && (racines.includes(f.de) || racines.includes(f.vers))) ||
          (survolCle && (f.de === survolCle || f.vers === survolCle)) ||
          (mev && mev.liens.has(f.de + " " + f.vers));
 }
@@ -859,8 +868,14 @@ vp.addEventListener("pointerup", e => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
     const cible = el?.closest(".table");
     if (cible) {
-      if (jointure.actif) choisirJointure(cible.dataset.cle);  // pick join endpoints
-      else isoler(cible.dataset.cle);
+      const cle = cible.dataset.cle;
+      if (jointure.actif) choisirJointure(cle);  // pick join endpoints
+      else if (e.ctrlKey || e.metaKey || e.shiftKey) {
+        if (focusCle || racines.length) basculerRacine(cle);  // add/remove a root
+        else marquer(cle);                                   // gather in the overview
+      } else if (!focusCle && marquees.has(cle) && marquees.size > 1) {
+        ouvrirFocus([...marquees], degreFocus);  // focus the gathered tables together
+      } else isoler(cle);
     } else {  // no table under the pointer — maybe a link
       const lp = el?.closest("#liensClic path");
       if (lp && !jointure.actif) detaillerLien(liensVus[+lp.dataset.fk]);
@@ -878,8 +893,7 @@ function reduirePanneau(v, refit) {
   panneauReduit = v;
   document.body.classList.toggle("panneau-reduit", v);
   btnToggle.textContent = v ? "‹" : "›";
-  if (refit) setTimeout(() => cadrer(focusCle ? [focusCle, ...voisins(focusCle)]
-                                              : Object.keys(elems)), 260);
+  if (refit) setTimeout(() => cadrer(focusCle ? gardees : Object.keys(elems)), 260);
 }
 let introTimer = null;
 function finIntro() {  // stop the intro; leave the panel wherever it now is
@@ -921,46 +935,37 @@ btnToggle.addEventListener("click", () => {
 
 // --- DBeaver-like focus mode: the table in the center, its neighbours in a star ---
 const enrichis = new Set();   // huge-model nodes rebuilt with their columns (see isoler)
-function isoler(cle) {
-  sortirModes();  // drilling into a table drops any graph highlight / join mode
-  if (document.body.classList.contains("hubs")) {  // heatmap is an overview overlay
-    document.body.classList.remove("hubs");
-    document.getElementById("btnHubs").classList.remove("actif");
+// --- focus: one table or several (Ctrl/⌘/Shift+click), with the tables up to
+// degreFocus relations away. One table at degree 1 is laid out as a star
+// around it, anything wider in rings, one per distance. Above LIMITE_ANNEAUX
+// kept tables the rings would sprawl (a hub at degree 2 can reach most of the
+// model): they stay at their overview places, the rest faded. ---
+let racines = [], degreFocus = 1, gardees = [];
+const marquees = new Set();   // overview: tables Ctrl+clicked, to focus together
+const LIMITE_ANNEAUX = 120;
+const DEGRE_MAX = 3;
+const blocDegres = document.getElementById("degres");
+function distances(depart, degre) {  // BFS over the visible FKs, both directions
+  const adj = {};
+  fksVisibles().forEach(f => {
+    (adj[f.de] = adj[f.de] || []).push(f.vers);
+    (adj[f.vers] = adj[f.vers] || []).push(f.de);
+  });
+  const dist = new Map(depart.map(c => [c, 0]));
+  const origine = new Map(depart.map(c => [c, c]));  // the root that reached it first
+  let front = depart;
+  for (let d = 1; d <= degre && front.length; d++) {
+    const suivant = [];
+    front.forEach(c => (adj[c] || []).forEach(v => {
+      if (!dist.has(v)) { dist.set(v, d); origine.set(v, origine.get(c)); suivant.push(v); }
+    }));
+    front = suivant;
   }
-  focusCle = cle;
-  focusLien = null;  // leaving a link's detail clears its highlight
-  allumerColonnes([]);
-  finIntro();  // a table click ends the intro and keeps the panel open below
-  if (autoExpand && panneauReduit) reduirePanneau(false, true);  // reveal detail
-  survolCle = null;
-  history.replaceState(null, "", "#" + encodeURIComponent(cle));
-  btnRetour.hidden = false;
-  const voisinage = voisins(cle);
-  const garde = new Set([cle, ...voisinage]);
-  Object.keys(elems).forEach(c => elems[c].classList.toggle("efface", !garde.has(c)));
-  Object.keys(elems).forEach(c => elems[c].classList.toggle("choisie", c === cle));
-  // huge model: the kept tables were built header-only; give them their columns
-  // back now (cheap for a star of a few tables) so the isolated view is legible.
-  // Done before measuring sizes below, so the star layout uses the real heights.
-  if (NOEUDS_LEGERS) garde.forEach(c => {
-    if (!enrichis.has(c)) { elems[c].innerHTML = htmlNoeud(c, true); enrichis.add(c); }
-  });
-  // star: the chosen table keeps its place, neighbours circle around it.
-  // The radius grows with the table sizes (a big neighbour like a 40-column
-  // table would overlap the centre at a fixed radius) and a final de-overlap
-  // pass, centre kept fixed, guarantees nothing touches.
-  const c0 = centre(cle);
-  const til = c => { const e = elems[c]; return Math.hypot(e.offsetWidth, e.offsetHeight) / 2; };
-  const rC = til(cle);
-  let rMax = 0, somme = 0;
-  voisinage.forEach(v => { const t = til(v); rMax = Math.max(rMax, t); somme += t; });
-  const rayon = Math.max(360, rC + rMax + 90, somme / Math.PI + rMax);
-  const P = { [cle]: { x: c0.x, y: c0.y, r: rC } };
-  voisinage.forEach((v, i) => {
-    const a = -Math.PI / 2 + (2 * Math.PI * i) / voisinage.length;
-    P[v] = { x: c0.x + rayon * Math.cos(a), y: c0.y + rayon * Math.sin(a), r: til(v) };
-  });
-  const noeuds = [cle, ...voisinage];
+  dist.origine = origine;
+  return dist;
+}
+// push overlapping boxes apart (P: key -> {x, y, r} circles); `fixe` never moves
+function ecarter(P, noeuds, fixe) {
   for (let passe = 0; passe < 40; passe++) {
     let colle = false;
     for (let i = 0; i < noeuds.length; i++) {
@@ -971,8 +976,8 @@ function isoler(cle) {
         const dmin = A.r + B.r + 30;
         if (d < dmin) {
           const pousse = dmin - d; ex /= d; ey /= d;
-          if (noeuds[i] === cle) { B.x -= ex * pousse; B.y -= ey * pousse; }
-          else if (noeuds[j] === cle) { A.x += ex * pousse; A.y += ey * pousse; }
+          if (noeuds[i] === fixe) { B.x -= ex * pousse; B.y -= ey * pousse; }
+          else if (noeuds[j] === fixe) { A.x += ex * pousse; A.y += ey * pousse; }
           else { A.x += ex * pousse / 2; A.y += ey * pousse / 2; B.x -= ex * pousse / 2; B.y -= ey * pousse / 2; }
           colle = true;
         }
@@ -980,18 +985,215 @@ function isoler(cle) {
     }
     if (!colle) break;
   }
-  voisinage.forEach(v => {
+}
+const tilTable = c => { const e = elems[c]; return Math.hypot(e.offsetWidth, e.offsetHeight) / 2; };
+function poser(P, noeuds) {
+  noeuds.forEach(v => {
     const e = elems[v];
     e.style.left = Math.round(P[v].x - e.offsetWidth / 2) + "px";
     e.style.top = Math.round(P[v].y - e.offsetHeight / 2) + "px";
   });
+}
+// star: the chosen table keeps its place, neighbours circle around it.
+// The radius grows with the table sizes (a big neighbour like a 40-column
+// table would overlap the centre at a fixed radius) and a final de-overlap
+// pass, centre kept fixed, guarantees nothing touches.
+function etoile(cle, voisinage) {
+  const c0 = centre(cle);
+  const rC = tilTable(cle);
+  let rMax = 0, somme = 0;
+  voisinage.forEach(v => { const t = tilTable(v); rMax = Math.max(rMax, t); somme += t; });
+  const rayon = Math.max(360, rC + rMax + 90, somme / Math.PI + rMax);
+  const P = { [cle]: { x: c0.x, y: c0.y, r: rC } };
+  voisinage.forEach((v, i) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / voisinage.length;
+    P[v] = { x: c0.x + rayon * Math.cos(a), y: c0.y + rayon * Math.sin(a), r: tilTable(v) };
+  });
+  ecarter(P, [cle, ...voisinage], cle);
+  poser(P, voisinage);
+}
+// rings: each root in the middle of its own cluster, one ring per distance;
+// a table joins the cluster of the root that reached it first. A table sits
+// at the angle of the tables that bring it in from the ring inside, so links
+// stay short and rarely cross. Clusters are laid side by side in a grid, the
+// first root keeping its place.
+function grappe(racine, membres, dist, adj) {  // positions around (0, 0)
+  const parDist = [];
+  membres.forEach(c => (parDist[dist.get(c)] = parDist[dist.get(c)] || []).push(c));
+  const P = {}, angle = {};
+  let bord = 0;  // outer edge of the rings placed so far
+  parDist.forEach((anneau, d) => {
+    const n = anneau.length;
+    let rot = -Math.PI / 2;
+    if (d > 0) {
+      const cap = c => {  // mean direction of the neighbours one ring in
+        let sx = 0, sy = 0;
+        (adj[c] || []).forEach(v => {
+          if (v in angle && dist.get(v) === d - 1) { sx += Math.cos(angle[v]); sy += Math.sin(angle[v]); }
+        });
+        return Math.atan2(sy, sx);
+      };
+      const caps = new Map(anneau.map(c => [c, cap(c)]));
+      anneau.sort((u, v) => caps.get(u) - caps.get(v));
+      // turn the evenly spaced ring so each table sits closest to its cap
+      let sx = 0, sy = 0;
+      anneau.forEach((c, i) => {
+        const e = caps.get(c) - (2 * Math.PI * i) / n;
+        sx += Math.cos(e); sy += Math.sin(e);
+      });
+      rot = Math.atan2(sy, sx);
+    }
+    let rMax = 0, somme = 0;
+    anneau.forEach(c => { const t = tilTable(c); rMax = Math.max(rMax, t); somme += t; });
+    // as tight as the boxes allow: a sparse model at degree 2 or 3 would
+    // otherwise be framed so small that the columns are hidden
+    const rayon = d === 0 ? 0 : Math.max(bord + rMax + 70, somme / Math.PI + rMax);
+    anneau.forEach((c, i) => {
+      const a = rot + (2 * Math.PI * i) / n;
+      angle[c] = a;
+      P[c] = { x: rayon * Math.cos(a), y: rayon * Math.sin(a), r: tilTable(c) };
+    });
+    bord = rayon + rMax;
+  });
+  ecarter(P, membres, racine);
+  return P;
+}
+function anneaux(dist) {
+  const adj = {};
+  fksVisibles().forEach(f => {
+    (adj[f.de] = adj[f.de] || []).push(f.vers);
+    (adj[f.vers] = adj[f.vers] || []).push(f.de);
+  });
+  const groupes = racines.map(r => [...dist.keys()].filter(c => dist.origine.get(c) === r));
+  const plans = racines.map((r, i) => grappe(r, groupes[i], dist, adj));
+  const boites = plans.map((P, i) => {  // cluster extent around its root
+    let x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    groupes[i].forEach(c => {
+      const e = elems[c], w = e.offsetWidth / 2, h = e.offsetHeight / 2;
+      x0 = Math.min(x0, P[c].x - w); x1 = Math.max(x1, P[c].x + w);
+      y0 = Math.min(y0, P[c].y - h); y1 = Math.max(y1, P[c].y + h);
+    });
+    return { x0, y0, x1, y1 };
+  });
+  const parLigne = Math.ceil(Math.sqrt(racines.length)), ecart = 120;
+  const c0 = centre(racines[0]);
+  let oy = 0;
+  for (let l = 0; l * parLigne < racines.length; l++) {
+    const ligne = boites.slice(l * parLigne, (l + 1) * parLigne);
+    let ox = 0;
+    const hautLigne = Math.max(...ligne.map(b => b.y1 - b.y0));
+    ligne.forEach((b, j) => {
+      const i = l * parLigne + j;
+      // the grid starts where the first cluster's box does, so its root stays put
+      const dx = c0.x + boites[0].x0 + ox - b.x0, dy = c0.y + boites[0].y0 + oy - b.y0;
+      groupes[i].forEach(c => { plans[i][c].x += dx; plans[i][c].y += dy; });
+      ox += b.x1 - b.x0 + ecart;
+    });
+    oy += hautLigne + ecart;
+  }
+  racines.forEach((r, i) => poser(plans[i], groupes[i]));
+}
+function hashFocus() {
+  return racines.map(encodeURIComponent).join("+") + (degreFocus > 1 ? ";" + degreFocus : "");
+}
+// #a, #a+b, #a+b;2: '+' and ';' are always escaped inside a key by
+// encodeURIComponent, so they only ever separate. Unknown keys are dropped,
+// the degree is clamped; an old #schema.table permalink reads as before
+function lireHash() {
+  const [liste, deg] = location.hash.slice(1).split(";");
+  const cles = (liste || "").split("+").map(s => {
+    try { return decodeURIComponent(s); } catch (e) { return ""; }
+  }).filter(c => parCle[c]);
+  return { racines: [...new Set(cles)],
+           degre: Math.min(DEGRE_MAX, Math.max(1, parseInt(deg, 10) || 1)) };
+}
+function oublierMarques() {
+  marquees.forEach(c => elems[c] && elems[c].classList.remove("marquee"));
+  marquees.clear();
+}
+function marquer(cle) {  // overview Ctrl+click: gather tables to focus together
+  if (marquees.has(cle)) marquees.delete(cle); else marquees.add(cle);
+  elems[cle].classList.toggle("marquee", marquees.has(cle));
+  if (marquees.size) montrerIndice(marquees.size + " " + TXT.marquees, true);
+  else cacherIndice();
+}
+function isoler(cle) {
+  racines = [cle];
+  focaliser(cle);
+}
+function ouvrirFocus(cles, degre) {
+  racines = cles.slice();
+  degreFocus = degre;
+  focaliser(cles[cles.length - 1]);
+}
+function basculerRacine(cle) {  // focus Ctrl+click: add or remove a root
+  const i = racines.indexOf(cle);
+  if (i < 0) { racines.push(cle); focaliser(cle); return; }
+  if (racines.length === 1) { vueGenerale(); return; }
+  racines.splice(i, 1);
+  focaliser(cle === focusCle ? racines[racines.length - 1] : focusCle || racines[0]);
+}
+function choisirDegre(n) {
+  degreFocus = n;
+  if (racines.length) focaliser(focusCle || racines[racines.length - 1]);
+}
+blocDegres.querySelectorAll("button").forEach(b =>
+  b.addEventListener("click", () => choisirDegre(+b.dataset.degre)));
+// lay out the focus around `racines`; `cle` is the table the panel details
+function focaliser(cle) {
+  sortirModes();  // drilling into a table drops any graph highlight / join mode
+  if (document.body.classList.contains("hubs")) {  // heatmap is an overview overlay
+    document.body.classList.remove("hubs");
+    document.getElementById("btnHubs").classList.remove("actif");
+  }
+  if (marquees.size) { oublierMarques(); cacherIndice(); }
+  focusCle = cle;
+  focusLien = null;  // leaving a link's detail clears its highlight
+  allumerColonnes([]);
+  finIntro();  // a table click ends the intro and keeps the panel open below
+  if (autoExpand && panneauReduit) reduirePanneau(false, true);  // reveal detail
+  survolCle = null;
+  history.replaceState(null, "", "#" + hashFocus());
+  btnRetour.hidden = false;
+  blocDegres.hidden = false;
+  blocDegres.querySelectorAll("button").forEach(b =>
+    b.classList.toggle("actif", +b.dataset.degre === degreFocus));
+  const simple = racines.length === 1 && degreFocus === 1;
+  // a single root at degree 1 keeps the star's neighbour order (voisins)
+  const dist = simple ? null : distances(racines, degreFocus);
+  gardees = simple ? [cle, ...voisins(cle)] : [...dist.keys()];
+  const garde = new Set(gardees);
+  const enAnneaux = !simple && garde.size <= LIMITE_ANNEAUX;
+  Object.keys(elems).forEach(c => elems[c].classList.toggle("efface", !garde.has(c)));
+  Object.keys(elems).forEach(c => elems[c].classList.toggle("choisie", racines.includes(c)));
+  // huge model: the kept tables were built header-only; give them their columns
+  // back now (cheap for a few tables) so the isolated view is legible. Done
+  // before measuring sizes below, so the layout uses the real heights.
+  if (NOEUDS_LEGERS && (simple || enAnneaux)) garde.forEach(c => {
+    if (!enrichis.has(c)) { elems[c].innerHTML = htmlNoeud(c, true); enrichis.add(c); }
+  });
+  if (simple) etoile(cle, gardees.slice(1));
+  else if (enAnneaux) anneaux(dist);
+  else {
+    garde.forEach(c => {
+      elems[c].style.left = origines[c].x + "px";
+      elems[c].style.top = origines[c].y + "px";
+    });
+    montrerIndice(garde.size + " " + TXT.tropPourAnneaux);
+  }
   detailler(cle);
-  setTimeout(() => { dessinerLiens(); cadrer([...garde]); }, 380);
+  setTimeout(() => { dessinerLiens(); cadrer(gardees); }, 380);
   svg.innerHTML = "";
+}
+function quitterFocus() {  // the overview drops the focus roots, degree and marks
+  racines = []; gardees = []; degreFocus = 1;
+  blocDegres.hidden = true;
+  if (marquees.size) { oublierMarques(); cacherIndice(); }
 }
 function vueGenerale() {
   sortirModes();  // back to overview clears any graph highlight / join mode
   allumerColonnes([]);
+  quitterFocus();
   focusCle = null;
   focusLien = null;
   filtreTouchees = false;  // overview always shows everything
@@ -1056,7 +1258,7 @@ function montrerSchemas(v, retenir) {
 })();
 btnSchema.addEventListener("click", () => {
   montrerSchemas(!document.body.classList.contains("avec-schema"), true);
-  if (focusCle) isoler(focusCle); else dessinerLiens();
+  if (focusCle) focaliser(focusCle); else dessinerLiens();
 });
 
 // theme toggle: cycle system → light → dark, remembered per viewer. A click
@@ -1550,7 +1752,7 @@ document.getElementById("cherche").addEventListener("change", e => {
   else montrerIndice(TXT.rienTrouve);
 });
 ckAudit.addEventListener("change", () => {
-  if (focusCle) isoler(focusCle); else dessinerLiens();
+  if (focusCle) focaliser(focusCle); else dessinerLiens();
 });
 
 // ===================== graph analysis & hub heatmap =====================
@@ -1612,6 +1814,8 @@ const TXT = {
   unN: "un-à-plusieurs",
   autoRef: "auto-référence",
   nullable: "nullable",
+  marquees: "tables marquées : cliquer l'une d'elles pour les isoler ensemble (Échap pour annuler).",
+  tropPourAnneaux: "tables : trop pour les disposer autour de la sélection, elles restent à leur place.",
 };
 function afficherEncartJointure(a, b, chemin) {
   let corps;
@@ -1662,6 +1866,7 @@ function poserMev(cles, liens) {
 // leave isolation synchronously (all tables back home, visible) without the
 // async reframe vueGenerale schedules — so a caller can then frame its own set
 function reinitVue() {
+  quitterFocus();
   focusCle = null; btnRetour.hidden = true;
   if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   Object.keys(elems).forEach(c => {
@@ -1893,14 +2098,16 @@ window.addEventListener("load", () => { if (!vuePrise) refitInitial(); });
 // still re-fit AND reveal — never reveal edges at their provisional positions
 setTimeout(() => { if (!liensReveles) refitInitial(); }, 1200);
 
-// --- permalink: #schema.table opens straight on that table ---
+// --- permalink: #schema.table opens straight on that table; #a+b;2 on
+// several tables at degree 2 ---
 window.addEventListener("hashchange", () => {
-  const cle = decodeURIComponent(location.hash.slice(1));
-  if (parCle[cle] && cle !== focusCle) isoler(cle);
-  else if (!cle && focusCle) vueGenerale();
+  const h = lireHash();
+  if (h.racines.length) {
+    if (!focusCle || location.hash.slice(1) !== hashFocus()) ouvrirFocus(h.racines, h.degre);
+  } else if (focusCle) vueGenerale();
 });
-const cleInitiale = decodeURIComponent(location.hash.slice(1));
-if (parCle[cleInitiale]) setTimeout(() => isoler(cleInitiale), 60);
+const focusInitial = lireHash();
+if (focusInitial.racines.length) setTimeout(() => ouvrirFocus(focusInitial.racines, focusInitial.degre), 60);
 
 // --- view deep-links: ?focus=<table>&theme=dark&audit=show&schema=show&hubs&cycles ---
 // the hosting side passes the query string straight to the page; theme is

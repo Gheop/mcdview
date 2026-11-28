@@ -173,6 +173,8 @@ jobs:
         run: ./tests/test_colonnes.py
       - name: schema prefix toggle on table names (button, memory, SVG export, deep-link)
         run: ./tests/test_schema.py
+      - name: focus at a chosen degree, on one table or several (Ctrl+click, permalinks)
+        run: ./tests/test_focus.py
       - name: minimap cache never stale (pan, drag, isolate, overview, compact)
         run: ./tests/test_minimap.py
       - uses: actions/upload-pages-artifact@v5

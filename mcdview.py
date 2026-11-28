@@ -1865,10 +1865,16 @@ TRADUCTIONS = {
         "> FK d'audit": '> audit FKs',
         "Cliquer sur une table pour l'isoler avec ses\n"
         "tables liées et voir son détail ici.<br><br>Molette : zoom.\n"
-        "Glisser : déplacer. Échap : vue générale.":
+        "Glisser : déplacer. Échap : vue générale.<br><br>Ctrl+clic : isoler plusieurs\n"
+        "tables ensemble.":
             'Click a table to isolate it with its\n'
             'related tables and see its details here.<br><br>Wheel: zoom.\n'
-            'Drag: pan. Escape: overview.',
+            'Drag: pan. Escape: overview.<br><br>Ctrl+click: isolate several\n'
+            'tables together.',
+        'title="tables montrées jusqu\'à 1, 2 ou 3 relations de la sélection ; Ctrl+clic sur '
+        'une table l\'ajoute ou la retire">degré':
+            'title="tables shown up to 1, 2 or 3 relations from the selection; Ctrl+click '
+            'a table to add or remove it">degree',
         '⇄ réorganiser': '⇄ rearrange',
         '⋈ cardinalités': '⋈ cardinalities',
         '"afficher les cardinalités (patte d\'oie)"': '"show cardinalities (crow\'s foot)"',
@@ -1943,6 +1949,10 @@ TRADUCTIONS = {
         '"un-à-plusieurs"': '"one-to-many"',
         '"auto-référence"': '"self-reference"',
         '"nullable"': '"nullable"',
+        '"tables marquées : cliquer l\'une d\'elles pour les isoler ensemble (Échap pour annuler)."':
+            '"tables marked: click one of them to isolate them together (Esc to cancel)."',
+        '"tables : trop pour les disposer autour de la sélection, elles restent à leur place."':
+            '"tables: too many to lay out around the selection, they stay in place."',
     },
 }
 
