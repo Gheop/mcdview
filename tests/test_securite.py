@@ -113,6 +113,8 @@ def verifier_dos(echecs):
         # ClickHouse INDEX lines with no TYPE, or a TYPE far away
         'index clickhouse': 'CREATE TABLE a (\n id int,\n' + ' INDEX i x' + ' y' * 300000 + ',\n'
                             + ' INDEX j ' + ' ' * 300000 + 'z\n);\n',
+        # a long blank run inside an index column list (prefix/order cleanup)
+        'blancs en index': 'CREATE TABLE a (\n id int,\n KEY k (id' + ' ' * 300000 + 'x)\n);\n',
         'chevron ouvert': 'CREATE TABLE a (\n id int,\n m MAP<' + ', c int' * 200000 + '\n);\n',
     }
     with tempfile.TemporaryDirectory() as td:
@@ -185,6 +187,8 @@ def verifier_dos_natifs(echecs):
          'point\n(' + 'a' * 1000000 + ' \t\n' * 300000 + 'x'),
         ('spatial presque', spatial_seul, '.sql', ',a point(' * 100000 + '(a SRID x' * 100000),
         # SQLite conflict clauses: long blank runs between the words, near-misses
+        ('alter blancs en index', alter_seul, '.sql',
+         'ALTER TABLE t ADD KEY k (a' + ' ' * 300000 + 'b);\n'),
         ('sqlite conflit', conflit_seul, '.sql',
          'ON' + ' \t\n' * 300000 + 'CONFLICT' + ' ' * 300000 + 'x ' + 'ON CONFLICT DO ' * 100000),
         ('drizzle défauts ouverts', mcdview.analyser_drizzle, '.ts',

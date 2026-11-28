@@ -150,9 +150,14 @@ def index_clickhouse(e):
     return {'nom': mc.group(1), 'cols': cols, 'unique': False} if cols else {}
 
 
+# a prefix length or a sort order in an index column list; (?<!\s) starts
+# the blank run once, not at each blank of a long one (quadratic)
+RE_ORDRE_INDEX = re.compile(r'\(\d+\)|(?<!\s)\s+(?:ASC|DESC)\b', re.I)
+
+
 def cols_index(liste):
     """The column names of an index list, without prefix lengths or order."""
-    return [c.strip('[]') for c in identifiants(re.sub(r'\(\d+\)|\s+(?:ASC|DESC)\b', '', liste, flags=re.I)) if c]
+    return [c.strip('[]') for c in identifiants(RE_ORDRE_INDEX.sub('', liste)) if c]
 
 
 def regrouper_lignes(lignes):
@@ -932,7 +937,7 @@ def ajouter_cles_alter(src, tables):
         t = tables[cle]
         for c in RE_ALTER_CLE.finditer(src, m.end() - 3, borne):
             genre = c.group(1).upper()
-            cols = [x for x in identifiants(re.sub(r'\(\d+\)|\s+(?:ASC|DESC)\b', '', c.group(3), flags=re.I))
+            cols = [x for x in identifiants(RE_ORDRE_INDEX.sub('', c.group(3)))
                     if x]
             if not cols:
                 continue
