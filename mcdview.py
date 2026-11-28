@@ -115,17 +115,19 @@ RE_LIGNE_SUITE = re.compile(
 RE_NOM_SEUL = re.compile(r'\s*(?:,\s*)?(?:"[^"\n]+"|`[^`\n]+`|\[[^\]\n]+\]|\w+)\s*$')
 # what follows the last comma of a line: a -- comment, or MySQL's # comment
 RE_FIN_COMMENTAIRE = re.compile(r'(?:--|(?<!\S)#).*$')
-# MySQL's plain index in a CREATE TABLE body: `KEY name (a, b(10))`. The
+# MySQL's plain index in a CREATE TABLE body: `KEY name (a, b(10))`, and SQL
+# Server's inline one: `INDEX IX_name UNIQUE NONCLUSTERED (a, b)`. The
 # parentheses hold names, which tells it from a column named key:
 # `key varchar(255)` has a number there (or SQL Server's max)
 RE_INDEX_CORPS = re.compile(
-    r'(?:(?:FULLTEXT|SPATIAL)\s+)?(?:KEY|INDEX)\s+(?:[`"]?(\w+)[`"]?\s*)?(?:USING\s+\w+\s*)?'
-    r'\((?!\s*max\s*\))\s*([`"]?[A-Za-z_](?:[^()]|\([^()]*\))*)\)', re.I)
+    r'(?:(?:FULLTEXT|SPATIAL)\s+)?(?:KEY|INDEX)\s+(?:[`"\[]?(?P<nom>\w+)[`"\]]?\s*)?'
+    r'(?P<unique>UNIQUE\s+)?(?:(?:NON)?CLUSTERED\s*)?(?:USING\s+\w+\s*)?'
+    r'\((?!\s*max\s*\))\s*(?P<cols>[`"\[]?[A-Za-z_](?:[^()]|\([^()]*\))*)\)', re.I)
 
 
 def cols_index(liste):
     """The column names of an index list, without prefix lengths or order."""
-    return [c for c in identifiants(re.sub(r'\(\d+\)|\s+(?:ASC|DESC)\b', '', liste, flags=re.I)) if c]
+    return [c.strip('[]') for c in identifiants(re.sub(r'\(\d+\)|\s+(?:ASC|DESC)\b', '', liste, flags=re.I)) if c]
 
 
 def regrouper_lignes(lignes):
@@ -369,8 +371,9 @@ def entrees_en_table(sch, nom, entrees):
             continue
         mi = RE_INDEX_CORPS.match(e)
         if mi:
-            if cols_index(mi.group(2)):
-                index.append({'nom': mi.group(1) or '', 'cols': cols_index(mi.group(2)), 'unique': False})
+            if cols_index(mi.group('cols')):
+                index.append({'nom': mi.group('nom') or '', 'cols': cols_index(mi.group('cols')),
+                              'unique': bool(mi.group('unique'))})
             continue
         if not e or e.startswith('--') or RE_MOT_CONTRAINTE.match(e):
             continue
@@ -665,6 +668,8 @@ def analyser_sql_texte(src):
             # UNIQUE in the body is an index too: table-level `[CONSTRAINT n]
             # UNIQUE (a, b)` or column-level `col type UNIQUE` (pg_dump writes
             # them as ALTER TABLE ... ADD CONSTRAINT, read above)
+            if RE_INDEX_CORPS.match(e):
+                continue  # an inline index, read with the columns, not a column's UNIQUE
             mu = RE_UNIQUE_TABLE.match(e)
             if mu:
                 ajouter_unique(de, mu.group(1) or '', identifiants(mu.group(2)))
@@ -1099,9 +1104,9 @@ def analyser_sqlglot(chemin, dialecte, strict=True, src=None):
         if typ is None or typ.this != exp.DataType.Type.USERDEFINED or debut is None:
             return None
         mi = RE_INDEX_CORPS.match(src, debut)
-        if not mi or not cols_index(mi.group(2)):
+        if not mi or not cols_index(mi.group('cols')):
             return None
-        return {'nom': mi.group(1) or '', 'cols': cols_index(mi.group(2)), 'unique': False}
+        return {'nom': mi.group('nom') or '', 'cols': cols_index(mi.group('cols')), 'unique': False}
 
     def ajouter_fk(de, cols, ref, nom):
         cible = ref.find(exp.Table)

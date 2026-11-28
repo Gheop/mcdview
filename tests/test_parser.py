@@ -554,6 +554,17 @@ def principal():
             or o.get('pk') != ['ID'] or liens != {('O', 'P_ID', 'O', 'ID')}):
         echecs.append(f"one clause per line: {cols_o}, pk={o.get('pk')}, fks={liens}")
 
+    # SQL Server's inline index: a name, then UNIQUE and [NON]CLUSTERED; an
+    # index, not a column, and not a UNIQUE on a column named INDEX
+    sql = ('CREATE TABLE dbo.agent (\n  id int NOT NULL,\n  hote nvarchar(100) NOT NULL,\n'
+           '  service nvarchar(100),\n  INDEX IX_agent UNIQUE NONCLUSTERED (hote, [service]),\n'
+           '  INDEX IX_service CLUSTERED (service DESC)\n);\n')
+    a = tables_de(sql).get('dbo.agent', {})
+    ix = sorted((i['nom'], tuple(i['cols']), i['unique']) for i in a.get('index', []))
+    if ([x['nom'] for x in a.get('cols', [])] != ['id', 'hote', 'service']
+            or ix != [('IX_agent', ('hote', 'service'), True), ('IX_service', ('service',), False)]):
+        echecs.append(f"SQL Server inline index: {[x['nom'] for x in a.get('cols', [])]}, {ix}")
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:
