@@ -295,6 +295,9 @@ def colonne_declare_pk(ligne):
     return bool(RE_PK_MOT.search(s))
 
 
+RE_DIESE = re.compile(r'(?<!\S)#[^\n]*')
+
+
 def scinder_entree(e):
     """An entry holding several definitions on one line (`a text, b int`, a
     line of a multi-line body): split at its top-level commas, literals,
@@ -302,6 +305,8 @@ def scinder_entree(e):
     not balance, or past decouper_corps's bound."""
     if ',' not in e:
         return [e]
+    if '#' in e:  # MySQL's # comment: its commas separate nothing
+        e = RE_DIESE.sub('', e)
     morceaux, ok = decouper_corps(e + '\n)')
     if not ok:
         return [e]

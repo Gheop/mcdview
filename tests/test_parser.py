@@ -537,6 +537,13 @@ def principal():
                 ('n', 'integer', ''), ('fin', 'date', '')]:
         echecs.append(f'several definitions on one line: {cols}')
 
+    # a MySQL # comment after the comma: its own commas split nothing, and the
+    # comma before it still closes the entry
+    sql = 'CREATE TABLE m (\n  a int, # note, with a comma\n  b int\n    UNIQUE,\n  c int\n);\n'
+    noms = [x['nom'] for x in tables_de(sql).get('public.m', {}).get('cols', [])]
+    if noms != ['a', 'b', 'c']:
+        echecs.append(f'# comment after a comma: {noms}')
+
     if echecs:
         print('ÉCHECS parser :')
         for e in echecs:
